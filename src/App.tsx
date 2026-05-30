@@ -1,4 +1,4 @@
-import './polyfills/webGlobals';
+import './polyfills/webGlobals'; // Metro: webGlobals.web.ts en web, stub vacío en nativo
 import 'react-native-gesture-handler';
 
 import React, { useEffect } from 'react';
@@ -13,8 +13,6 @@ import { useAuthStore } from '@store/authStore';
 import { repairLocalAssignmentsStorage } from '@utils/localAssignments';
 import { StartupErrorScreen } from '@components/StartupErrorScreen';
 import { AppErrorBoundary } from '@components/AppErrorBoundary';
-import { WEB_MOBILE_CSS, installWebViewportListeners, webMinViewportStyle } from '@constants/webMobileLayout';
-
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -25,10 +23,14 @@ const queryClient = new QueryClient({
   },
 });
 
-/** Viewport dinámico (100dvh + --chamba-vh) para Safari/Chrome móvil. */
+/** Viewport dinámico (100dvh + --chamba-vh) — solo web. */
 function useWebRootStyles() {
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+
+    // Import dinámico: el módulo de layout web no se evalúa en Android/iOS.
+    const { WEB_MOBILE_CSS, installWebViewportListeners } =
+      require('@constants/webMobileLayout') as typeof import('@constants/webMobileLayout');
 
     const style = document.createElement('style');
     style.setAttribute('data-chamba-root', 'true');
@@ -42,7 +44,6 @@ function useWebRootStyles() {
     };
   }, []);
 }
-
 /** Evita bloqueo infinito en splash si Supabase/AsyncStorage tarda o no responde (web). */
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
   return Promise.race([
@@ -160,7 +161,12 @@ export default function App() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    ...webMinViewportStyle,
-    ...(Platform.OS === 'web' ? { height: '100dvh' as unknown as number, overflow: 'hidden' as const } : {}),
+    ...(Platform.OS === 'web'
+      ? {
+          minHeight: '100dvh' as unknown as number,
+          height: '100dvh' as unknown as number,
+          overflow: 'hidden' as const,
+        }
+      : {}),
   },
 });

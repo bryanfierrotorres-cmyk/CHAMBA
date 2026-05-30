@@ -1,3 +1,7 @@
+/**
+ * Estilos y utilidades exclusivas de layout web móvil (Vercel).
+ * En Android/iOS todas las exportaciones están protegidas con Platform.OS === 'web'.
+ */
 import { Platform, type ViewStyle } from 'react-native';
 
 /** Altura base de tab bar (sin safe area). */
