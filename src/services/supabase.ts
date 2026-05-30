@@ -1,23 +1,21 @@
 import 'react-native-url-polyfill/auto';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Constants from 'expo-constants';
-import { CONFIG } from '@constants/config';
+import { readPublicEnv, readSupabaseAnonKey } from '@utils/env';
+
+export interface SupabaseConfigResult {
+  url: string;
+  anonKey: string;
+  error: string | null;
+}
 
 /**
- * Resuelve credenciales de Supabase.
- * Prioriza app.config.js → extra (fiable) sobre process.env (puede quedar en caché de Metro).
+ * Resuelve credenciales de Supabase sin lanzar excepciones.
+ * Prioriza extra de app.config (build Vercel) → process.env EXPO_PUBLIC_*.
  */
-function resolveSupabaseConfig() {
-  const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, string | undefined>;
-
-  let url = CONFIG.supabase.url || extra.supabaseUrl || '';
-  let anonKey = CONFIG.supabase.anonKey || extra.supabaseAnonKey || '';
-
-  // Auto-fix typo común que Supabase rechaza con "Invalid API key".
-  if (anonKey.includes('publisable')) {
-    anonKey = anonKey.replace('publisable', 'publishable');
-  }
+export function resolveSupabaseConfig(): SupabaseConfigResult {
+  let url = readPublicEnv('EXPO_PUBLIC_SUPABASE_URL');
+  let anonKey = readSupabaseAnonKey();
 
   const isPlaceholder =
     !url ||
@@ -26,12 +24,14 @@ function resolveSupabaseConfig() {
     anonKey.includes('YOUR_');
 
   if (isPlaceholder) {
-    throw new Error(
-      '[Supabase] API key o URL inválidas.\n' +
-        '1. Verifica .env → EXPO_PUBLIC_SUPABASE_URL y EXPO_PUBLIC_SUPABASE_ANON_KEY\n' +
-        '2. La key debe empezar con sb_publishable_ (no sb_publisable_)\n' +
-        '3. Reinicia Expo: npx expo start --clear',
-    );
+    return {
+      url:     '',
+      anonKey: '',
+      error:
+        'Faltan las credenciales de Supabase en el build.\n\n' +
+        'Configura EXPO_PUBLIC_SUPABASE_URL y EXPO_PUBLIC_SUPABASE_ANON_KEY ' +
+        'en Vercel (Environment Variables) y vuelve a desplegar.',
+    };
   }
 
   if (__DEV__) {
@@ -39,27 +39,67 @@ function resolveSupabaseConfig() {
     console.log('[Supabase] Key prefix:', anonKey.slice(0, 18) + '...');
   }
 
-  return { url, anonKey };
+  return { url, anonKey, error: null };
 }
 
-const { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY } = resolveSupabaseConfig();
+let _client: SupabaseClient | null = null;
+let _cachedConfigError: string | null | undefined;
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-  realtime: {
-    params: { eventsPerSecond: 10 },
+/** Error de configuración detectado antes de crear el cliente (sin crash silencioso). */
+export function getSupabaseConfigError(): string | null {
+  if (_cachedConfigError !== undefined) {
+    return _cachedConfigError;
+  }
+  const cfg = resolveSupabaseConfig();
+  _cachedConfigError = cfg.error;
+  return cfg.error;
+}
+
+function createSupabaseClient(): SupabaseClient {
+  const cfg = resolveSupabaseConfig();
+  if (cfg.error) {
+    throw new Error(cfg.error);
+  }
+
+  return createClient(cfg.url, cfg.anonKey, {
+    auth: {
+      storage: AsyncStorage,
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+    },
+    realtime: {
+      params: { eventsPerSecond: 10 },
+    },
+  });
+}
+
+function getSupabaseClient(): SupabaseClient {
+  if (!_client) {
+    _client = createSupabaseClient();
+  }
+  return _client;
+}
+
+/**
+ * Cliente Supabase con inicialización perezosa.
+ * Evita crash al importar el módulo cuando faltan env vars en Vercel.
+ */
+export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
+  get(_target, prop, receiver) {
+    const client = getSupabaseClient();
+    const value = Reflect.get(client, prop, receiver);
+    if (typeof value === 'function') {
+      return (value as (...args: unknown[]) => unknown).bind(client);
+    }
+    return value;
   },
 });
 
 export const onAuthStateChange = (
   callback: (event: string, session: import('@supabase/supabase-js').Session | null) => void,
 ) => {
-  const { data } = supabase.auth.onAuthStateChange((event, session) => {
+  const { data } = getSupabaseClient().auth.onAuthStateChange((event, session) => {
     callback(event, session);
   });
   return data.subscription;

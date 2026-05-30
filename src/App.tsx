@@ -1,3 +1,6 @@
+import './polyfills/webGlobals';
+import 'react-native-gesture-handler';
+
 import React, { useEffect } from 'react';
 import { Platform, StyleSheet } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -5,9 +8,11 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { RootNavigator } from '@navigation/RootNavigator';
-import { supabase, onAuthStateChange } from '@services/supabase';
+import { getSupabaseConfigError, supabase, onAuthStateChange } from '@services/supabase';
 import { useAuthStore } from '@store/authStore';
 import { repairLocalAssignmentsStorage } from '@utils/localAssignments';
+import { StartupErrorScreen } from '@components/StartupErrorScreen';
+import { AppErrorBoundary } from '@components/AppErrorBoundary';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -52,7 +57,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
   ]);
 }
 
-export default function App() {
+function AppBootstrap() {
   const { setSession, setHydrated, setLoading, fetchProfile, loadFromStorage, reset } = useAuthStore();
 
   useWebRootStyles();
@@ -61,7 +66,6 @@ export default function App() {
     let cancelled = false;
     let subscription: { unsubscribe: () => void } | null = null;
 
-    // Garantía: nunca quedarse en splash más de 6s por hidratación colgada
     const hydrationFailsafe = setTimeout(() => {
       if (!cancelled && !useAuthStore.getState().isHydrated) {
         console.warn('[App] hydration timeout — continuing without session');
@@ -118,7 +122,6 @@ export default function App() {
           return;
         }
 
-        // Solo cerrar sesión en cierre explícito — no en INITIAL_SESSION vacío al refrescar
         if (event === 'SIGNED_OUT') {
           reset();
         }
@@ -143,6 +146,20 @@ export default function App() {
         </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
+  );
+}
+
+export default function App() {
+  const configError = getSupabaseConfigError();
+
+  if (configError) {
+    return <StartupErrorScreen message={configError} />;
+  }
+
+  return (
+    <AppErrorBoundary>
+      <AppBootstrap />
+    </AppErrorBoundary>
   );
 }
 

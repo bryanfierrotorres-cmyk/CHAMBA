@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { Platform } from 'react-native';
+import { NavigationContainer, type LinkingOptions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuthStore }    from '@store/authStore';
 import { useProfileStore } from '@store/profileStore';
@@ -12,6 +13,10 @@ import { SplashScreen }    from '@features/auth/screens/SplashScreen';
 import type { RootStackParamList } from '@/types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+/** En Vercel desactiva sync de URL nativa — el SPA siempre arranca en la raíz. */
+const webLinking: LinkingOptions<RootStackParamList> | undefined =
+  Platform.OS === 'web' ? { enabled: false } : undefined;
 
 export const RootNavigator: React.FC = () => {
   const { profile, isHydrated } = useAuthStore();
@@ -62,7 +67,7 @@ export const RootNavigator: React.FC = () => {
         : WorkerNavigator; // default: worker (also covers unknown future roles)
 
   return (
-    <NavigationContainer>
+    <NavigationContainer linking={webLinking} documentTitle={{ enabled: false }}>
       <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
         {!isAuthenticated ? (
           <Stack.Screen name="Auth" component={AuthNavigator} />
