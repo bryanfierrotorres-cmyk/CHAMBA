@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { WhatsAppBubble } from '@components/WhatsAppBubble';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -16,6 +16,7 @@ import { useAuthStore }              from '@store/authStore';
 import { WORKER_COLORS as COLORS, M3, FONT_SIZE, SPACING, BORDER_RADIUS } from '@constants/workerTheme';
 import { CARD_ELEVATION } from '@constants/stitchStyles';
 import { WorkerThemeProvider } from '@constants/workerThemeContext';
+import { webAppShellStyle, webTabScenePadding } from '@constants/webMobileLayout';
 import type { WorkerTabParamList, JobStackParamList, ProfileStackParamList } from '@/types';
 
 const Tab   = createBottomTabNavigator<WorkerTabParamList>();
@@ -105,10 +106,11 @@ export const WorkerNavigator: React.FC = () => {
       {needsOnboarding && <WorkerOnboardingScreen />}
       {!needsOnboarding && isPendingApproval && <PendingApprovalScreen />}
       {!needsOnboarding && !isPendingApproval && (
-        <View style={{ flex: 1 }}>
+        <View style={webAppShellStyle}>
           <Tab.Navigator
             tabBar={(props) => <WorkerTabBar {...props} />}
             screenOptions={{ headerShown: false }}
+            sceneContainerStyle={Platform.OS === 'web' ? { paddingBottom: webTabScenePadding(insets.bottom) } : undefined}
           >
             <Tab.Screen name="JobFeed" component={JobsStack} />
             <Tab.Screen name="MyJobs"  component={MyJobsScreen} />

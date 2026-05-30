@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@store/authStore';
 import { createJob } from '@features/jobs/services/jobsService';
 import { COLORS, FONT_SIZE, SPACING, BORDER_RADIUS } from '@constants/theme';
+import { ScreenBackButton } from '@components/navigation/ScreenBackButton';
 import {
   getSuggestedPrice,
   getMinimumPrice,
@@ -157,9 +158,7 @@ export const CreateJobFormScreen: React.FC = () => {
 
       {/* ── Header ── */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={22} color={COLORS.text.primary} />
-        </TouchableOpacity>
+        <ScreenBackButton onPress={() => navigation.goBack()} color={COLORS.text.primary} />
         <Text style={styles.headerTitle}>Nueva Solicitud</Text>
         <View style={{ width: 40 }} />
       </View>

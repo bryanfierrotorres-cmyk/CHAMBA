@@ -10,6 +10,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from '@components/Card';
+import { ScreenBackButton } from '@components/navigation/ScreenBackButton';
 import { useActiveJob, useStartJob, useCompleteJob } from '../hooks/useJobs';
 import { WORKER_COLORS as COLORS, M3, FONT_SIZE, SPACING, BORDER_RADIUS } from '@constants/workerTheme';
 import { JobLocationLabel } from '@components/worker/JobLocationLabel';
@@ -325,9 +326,7 @@ export const JobActiveScreen: React.FC = () => {
     <View style={{ flex: 1, backgroundColor: COLORS.bg.primary }}>
       {/* ── Header ── */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={12}>
-          <Ionicons name="arrow-back" size={24} color={COLORS.text.primary} />
-        </TouchableOpacity>
+        <ScreenBackButton onPress={() => navigation.goBack()} color={COLORS.text.primary} />
         <View style={{ flex: 1, marginLeft: SPACING.sm }}>
           <Text style={styles.headerLabel}>Trabajo Activo</Text>
           <Text style={styles.headerTitle} numberOfLines={1}>{job.title}</Text>

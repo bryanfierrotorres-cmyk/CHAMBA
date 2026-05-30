@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet, Platform } from 'react-native';
 import { M3, SPACING, BORDER_RADIUS, CARD_ELEVATION } from '@constants/stitchStyles';
+import { webMinViewportStyle } from '@constants/webMobileLayout';
 
 interface StartupErrorScreenProps {
   title?: string;
@@ -47,7 +48,7 @@ const styles = StyleSheet.create({
   root: {
     flex:            1,
     backgroundColor: M3.background,
-    ...(Platform.OS === 'web' ? { minHeight: '100vh' as unknown as number } : {}),
+    ...webMinViewportStyle,
   },
   scroll: {
     flexGrow:          1,

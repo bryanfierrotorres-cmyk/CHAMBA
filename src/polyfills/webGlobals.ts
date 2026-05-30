@@ -25,8 +25,12 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
   if (root) {
     root.style.display = 'flex';
     root.style.flexDirection = 'column';
-    root.style.height = '100%';
-    root.style.minHeight = '100%';
     root.style.width = '100%';
+    root.style.height = '100dvh';
+    root.style.minHeight = '-webkit-fill-available';
+    root.style.overflow = 'hidden';
   }
+
+  const vh = (window.visualViewport?.height ?? window.innerHeight) * 0.01;
+  document.documentElement.style.setProperty('--chamba-vh', `${vh}px`);
 }

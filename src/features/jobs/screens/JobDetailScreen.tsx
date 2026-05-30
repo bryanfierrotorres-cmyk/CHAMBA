@@ -13,6 +13,7 @@ import { Button } from '@components/Button';
 import { StatusBadge } from '@components/Badge';
 import { Avatar } from '@components/Avatar';
 import { Card } from '@components/Card';
+import { ScreenBackButton } from '@components/navigation/ScreenBackButton';
 import { useJobDetail, useAcceptJob } from '../hooks/useJobs';
 import { useAuthStore } from '@store/authStore';
 import { WORKER_COLORS as COLORS, M3, FONT_SIZE, SPACING, BORDER_RADIUS } from '@constants/workerTheme';
@@ -126,9 +127,7 @@ export const JobDetailScreen: React.FC = () => {
 
       {/* ── Header ─────────────────────────────────────────────── */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} hitSlop={12}>
-          <Ionicons name="arrow-back" size={20} color={COLORS.text.primary} />
-        </TouchableOpacity>
+        <ScreenBackButton onPress={() => navigation.goBack()} color={COLORS.text.primary} />
         <Text style={styles.headerTitle} numberOfLines={1}>
           {getCategoryLabel(job.category)}
         </Text>

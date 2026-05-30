@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -11,6 +11,7 @@ import { ProfileScreen }        from '@features/workers/screens/ProfileScreen';
 import { JobDetailScreen }      from '@features/jobs/screens/JobDetailScreen';
 import { MaterialSymbol } from '@components/admin/MaterialSymbol';
 import { M3, SPACING, TAB_BAR_SHADOW, stitchTypography } from '@constants/stitchStyles';
+import { webAppShellStyle, webFixedTabBarStyle, webTabScenePadding } from '@constants/webMobileLayout';
 import type { AdminTabParamList, JobStackParamList } from '@/types';
 
 const Tab   = createBottomTabNavigator<AdminTabParamList>();
@@ -39,7 +40,7 @@ const AdminTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) => {
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={[tabStyles.wrap, { paddingBottom: Math.max(insets.bottom, 8) }, TAB_BAR_SHADOW]}>
+    <View style={[tabStyles.wrap, webFixedTabBarStyle, { paddingBottom: Math.max(insets.bottom, 8) }, TAB_BAR_SHADOW]}>
       {ADMIN_TABS.map((tab) => {
         const routeIndex = state.routes.findIndex((r) => r.name === tab.route);
         if (routeIndex === -1) return null;
@@ -97,14 +98,21 @@ const tabStyles = StyleSheet.create({
   },
 });
 
-export const AdminNavigator: React.FC = () => (
-  <Tab.Navigator
-    tabBar={(props) => <AdminTabBar {...props} />}
-    screenOptions={{ headerShown: false }}
-  >
-    <Tab.Screen name="Dashboard"     component={DashboardStack} />
-    <Tab.Screen name="PublishJob"    component={CreateJobScreen} />
-    <Tab.Screen name="ManageWorkers" component={ManageWorkersScreen} />
-    <Tab.Screen name="Profile"       component={ProfileScreen} />
-  </Tab.Navigator>
-);
+export const AdminNavigator: React.FC = () => {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <View style={webAppShellStyle}>
+      <Tab.Navigator
+        tabBar={(props) => <AdminTabBar {...props} />}
+        screenOptions={{ headerShown: false }}
+        sceneContainerStyle={Platform.OS === 'web' ? { paddingBottom: webTabScenePadding(insets.bottom) } : undefined}
+      >
+        <Tab.Screen name="Dashboard"     component={DashboardStack} />
+        <Tab.Screen name="PublishJob"    component={CreateJobScreen} />
+        <Tab.Screen name="ManageWorkers" component={ManageWorkersScreen} />
+        <Tab.Screen name="Profile"       component={ProfileScreen} />
+      </Tab.Navigator>
+    </View>
+  );
+};

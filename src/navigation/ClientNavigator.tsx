@@ -1,5 +1,5 @@
 import React from 'react';
-import { View } from 'react-native';
+import { View, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,6 +10,7 @@ import { ClientOrdersScreen }  from '@features/client/screens/ClientOrdersScreen
 import { ProfileScreen }       from '@features/workers/screens/ProfileScreen';
 import { WhatsAppBubble }      from '@components/WhatsAppBubble';
 import { COLORS, FONT_SIZE }   from '@constants/theme';
+import { webAppShellStyle, webFixedTabBarStyle, webTabScenePadding } from '@constants/webMobileLayout';
 import type { ClientTabParamList, ClientStackParamList } from '@/types';
 
 const Tab   = createBottomTabNavigator<ClientTabParamList>();
@@ -40,8 +41,9 @@ export const ClientNavigator: React.FC = () => {
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={webAppShellStyle}>
     <Tab.Navigator
+      sceneContainerStyle={Platform.OS === 'web' ? { paddingBottom: webTabScenePadding(insets.bottom) } : undefined}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarStyle: {
@@ -51,6 +53,7 @@ export const ClientNavigator: React.FC = () => {
           height:          56 + insets.bottom,
           paddingBottom:   insets.bottom + 6,
           paddingTop:      8,
+          ...webFixedTabBarStyle,
         },
         tabBarActiveTintColor:   COLORS.brand[500],
         tabBarInactiveTintColor: COLORS.text.muted,

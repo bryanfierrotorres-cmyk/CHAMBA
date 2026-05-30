@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AvailabilityDot } from '@components/AvailabilitySelector';
 import { useProfileStore, selectAvailability } from '@store/profileStore';
 import { M3, SPACING, TAB_BAR_SHADOW, stitchTypography } from '@constants/stitchStyles';
+import { webFixedTabBarStyle } from '@constants/webMobileLayout';
 
 const TABS: {
   route: string;
@@ -23,7 +24,7 @@ export const WorkerTabBar: React.FC<BottomTabBarProps> = ({ state, navigation })
   const availability = useProfileStore(selectAvailability);
 
   return (
-    <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 8) }, TAB_BAR_SHADOW]}>
+    <View style={[styles.wrap, webFixedTabBarStyle, { paddingBottom: Math.max(insets.bottom, 8) }, TAB_BAR_SHADOW]}>
       {TABS.map((tab) => {
         const routeIndex = state.routes.findIndex((r) => r.name === tab.route);
         if (routeIndex === -1) return null;

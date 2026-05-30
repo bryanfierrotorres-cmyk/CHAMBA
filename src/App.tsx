@@ -13,6 +13,7 @@ import { useAuthStore } from '@store/authStore';
 import { repairLocalAssignmentsStorage } from '@utils/localAssignments';
 import { StartupErrorScreen } from '@components/StartupErrorScreen';
 import { AppErrorBoundary } from '@components/AppErrorBoundary';
+import { WEB_MOBILE_CSS, installWebViewportListeners, webMinViewportStyle } from '@constants/webMobileLayout';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,28 +25,21 @@ const queryClient = new QueryClient({
   },
 });
 
-/** Evita pantalla en blanco en web cuando html/body no tienen altura. */
+/** Viewport dinámico (100dvh + --chamba-vh) para Safari/Chrome móvil. */
 function useWebRootStyles() {
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
 
     const style = document.createElement('style');
     style.setAttribute('data-chamba-root', 'true');
-    style.textContent = `
-      html, body, #root {
-        height: 100%;
-        min-height: 100%;
-        width: 100%;
-        margin: 0;
-        padding: 0;
-      }
-      #root {
-        display: flex;
-        flex-direction: column;
-      }
-    `;
+    style.textContent = WEB_MOBILE_CSS;
     document.head.appendChild(style);
-    return () => style.remove();
+
+    const removeViewportListeners = installWebViewportListeners();
+    return () => {
+      style.remove();
+      removeViewportListeners();
+    };
   }, []);
 }
 
@@ -166,6 +160,7 @@ export default function App() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    ...(Platform.OS === 'web' ? { minHeight: '100vh' as unknown as number } : {}),
+    ...webMinViewportStyle,
+    ...(Platform.OS === 'web' ? { height: '100dvh' as unknown as number, overflow: 'hidden' as const } : {}),
   },
 });

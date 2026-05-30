@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Platform } from 'react-native';
-import { NavigationContainer, type LinkingOptions } from '@react-navigation/native';
+import { NavigationContainer, type LinkingOptions, useNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuthStore }    from '@store/authStore';
 import { useProfileStore } from '@store/profileStore';
@@ -10,6 +10,7 @@ import { WorkerNavigator } from './WorkerNavigator';
 import { AdminNavigator }  from './AdminNavigator';
 import { ClientNavigator } from './ClientNavigator';
 import { SplashScreen }    from '@features/auth/screens/SplashScreen';
+import { attachWebHistory, syncWebHistoryOnNavigate } from './webHistory';
 import type { RootStackParamList } from '@/types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -22,6 +23,18 @@ export const RootNavigator: React.FC = () => {
   const { profile, isHydrated } = useAuthStore();
   const { loadProfile, loadStats }       = useProfileStore();
   const [splashDone, setSplashDone]      = useState(false);
+  const navigationRef = useNavigationContainerRef<RootStackParamList>();
+  const detachHistoryRef = useRef<(() => void) | null>(null);
+
+  const onNavReady = useCallback(() => {
+    if (Platform.OS !== 'web') return;
+    detachHistoryRef.current?.();
+    detachHistoryRef.current = attachWebHistory(navigationRef);
+  }, [navigationRef]);
+
+  useEffect(() => () => {
+    detachHistoryRef.current?.();
+  }, []);
 
   // Preload extended worker profile when a worker logs in
   useEffect(() => {
@@ -67,7 +80,13 @@ export const RootNavigator: React.FC = () => {
         : WorkerNavigator; // default: worker (also covers unknown future roles)
 
   return (
-    <NavigationContainer linking={webLinking} documentTitle={{ enabled: false }}>
+    <NavigationContainer
+      ref={navigationRef}
+      linking={webLinking}
+      documentTitle={{ enabled: false }}
+      onReady={onNavReady}
+      onStateChange={(state) => syncWebHistoryOnNavigate(state, navigationRef)}
+    >
       <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
         {!isAuthenticated ? (
           <Stack.Screen name="Auth" component={AuthNavigator} />
