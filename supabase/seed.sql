@@ -1,0 +1,32 @@
+-- ============================================================
+-- CHAMBA — Development Seed Data
+-- Run AFTER schema.sql and after creating auth users manually
+-- ============================================================
+
+-- ⚠️  Replace UUIDs below with real UUIDs from auth.users
+
+-- Sample admin (replace 'ADMIN_UUID_HERE' with real UUID)
+-- UPDATE profiles
+-- SET role = 'admin', is_approved = TRUE
+-- WHERE email = 'admin@chamba.com';
+
+-- Sample jobs for testing
+-- INSERT INTO jobs (title, description, category, pay_amount, platform_fee, worker_payout, address, lat, lng, duration_hours, required_workers, created_by)
+-- VALUES
+--   ('Carga de materiales en bodega',
+--    'Se necesita cargar sacos de cemento de 50kg del camión a la bodega. Total de 200 sacos.',
+--    'carga', 850.00, 42.50, 807.50,
+--    'Av. Insurgentes Sur 1234, CDMX', 19.3893, -99.1729, 6, 2,
+--    'ADMIN_UUID_HERE'),
+--
+--   ('Limpieza post-obra departamento',
+--    'Limpieza profunda de departamento de 80m² recién terminado. Se proveen materiales.',
+--    'limpieza', 600.00, 30.00, 570.00,
+--    'Col. Polanco, CDMX', 19.4324, -99.1977, 4, 1,
+--    'ADMIN_UUID_HERE'),
+--
+--   ('Mudanza oficina piso 3',
+--    'Bajar muebles de oficina del 3er piso a camioneta. No hay elevador.',
+--    'mudanza', 1200.00, 60.00, 1140.00,
+--    'Centro Histórico, CDMX', 19.4326, -99.1332, 3, 3,
+--    'ADMIN_UUID_HERE');

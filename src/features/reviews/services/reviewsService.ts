@@ -1,0 +1,117 @@
+import { supabase } from '@services/supabase';
+import type { UserRole, WorkerReview, WorkerRatingSummary } from '@/types';
+import {
+  getLocalWorkerReviews,
+  upsertLocalWorkerReview,
+  computeLocalRatingSummary,
+} from '@utils/localReviews';
+
+const parseReviewsPayload = (data: unknown): WorkerReview[] => {
+  if (Array.isArray(data)) return data as WorkerReview[];
+  if (typeof data === 'string') {
+    try {
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? (parsed as WorkerReview[]) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
+export const fetchWorkerReviews = async (workerId: string): Promise<WorkerReview[]> => {
+  const local = await getLocalWorkerReviews(workerId);
+
+  const { data, error } = await supabase.rpc('get_worker_reviews', {
+    p_worker_id: workerId,
+  });
+
+  if (error) {
+    if (local.length > 0) return local;
+    return [];
+  }
+
+  const remote = parseReviewsPayload(data);
+  if (remote.length === 0 && local.length > 0) return local;
+
+  const byId = new Map<string, WorkerReview>();
+  for (const r of remote) byId.set(`${r.worker_id}-${r.reviewer_id}`, r);
+  for (const r of local) {
+    const key = `${r.worker_id}-${r.reviewer_id}`;
+    if (!byId.has(key)) byId.set(key, r);
+  }
+
+  return Array.from(byId.values()).sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+};
+
+export const fetchWorkerRatingSummary = async (
+  workerId: string,
+): Promise<WorkerRatingSummary> => {
+  const reviews = await fetchWorkerReviews(workerId);
+  const fromReviews = computeLocalRatingSummary(reviews);
+
+  const { data, error } = await supabase
+    .from('worker_profiles')
+    .select('rating_avg, total_reviews')
+    .eq('worker_id', workerId)
+    .maybeSingle();
+
+  if (error || !data) return fromReviews;
+
+  return {
+    rating_avg: data.rating_avg ?? fromReviews.rating_avg,
+    total_reviews: data.total_reviews ?? fromReviews.total_reviews,
+  };
+};
+
+export interface SubmitReviewParams {
+  workerId: string;
+  reviewerId: string;
+  reviewerRole: Extract<UserRole, 'admin' | 'client'>;
+  reviewerName: string;
+  rating: number;
+  comment: string;
+}
+
+export const submitWorkerReview = async ({
+  workerId,
+  reviewerId,
+  reviewerRole,
+  reviewerName,
+  rating,
+  comment,
+}: SubmitReviewParams): Promise<WorkerReview> => {
+  const trimmed = comment.trim();
+  if (trimmed.length < 3) {
+    throw new Error('El comentario debe tener al menos 3 caracteres');
+  }
+
+  const { data, error } = await supabase.rpc('submit_worker_review', {
+    p_worker_id:     workerId,
+    p_reviewer_id:   reviewerId,
+    p_reviewer_role: reviewerRole,
+    p_rating:        rating,
+    p_comment:       trimmed,
+  });
+
+  if (!error && data && (data as { success?: boolean }).success) {
+    return (data as { review: WorkerReview }).review;
+  }
+
+  const now = new Date().toISOString();
+  const localReview: WorkerReview = {
+    id: `${workerId}-${reviewerId}`,
+    worker_id: workerId,
+    reviewer_id: reviewerId,
+    reviewer_role: reviewerRole,
+    rating,
+    comment: trimmed,
+    created_at: now,
+    updated_at: now,
+    reviewer: { full_name: reviewerName, avatar_url: null },
+  };
+
+  return upsertLocalWorkerReview(localReview);
+};

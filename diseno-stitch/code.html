@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+
+<html lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ServicePro - Mi Perfil</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "on-error": "#ffffff",
+                      "on-primary-fixed": "#00174b",
+                      "surface-bright": "#f8f9ff",
+                      "surface-variant": "#d3e4fe",
+                      "error-container": "#ffdad6",
+                      "on-tertiary": "#ffffff",
+                      "surface-container-high": "#dce9ff",
+                      "on-surface-variant": "#434655",
+                      "on-primary-fixed-variant": "#003ea8",
+                      "surface-container-highest": "#d3e4fe",
+                      "on-tertiary-container": "#ffede6",
+                      "surface-container-lowest": "#ffffff",
+                      "primary-fixed-dim": "#b4c5ff",
+                      "background": "#f8f9ff",
+                      "on-tertiary-fixed-variant": "#7d2d00",
+                      "outline-variant": "#c3c6d7",
+                      "on-primary": "#ffffff",
+                      "on-secondary": "#ffffff",
+                      "secondary-container": "#6cf8bb",
+                      "on-error-container": "#93000a",
+                      "primary-container": "#2563eb",
+                      "on-tertiary-fixed": "#360f00",
+                      "on-background": "#0b1c30",
+                      "tertiary-container": "#bc4800",
+                      "tertiary": "#943700",
+                      "secondary-fixed-dim": "#4edea3",
+                      "surface-tint": "#0053db",
+                      "on-primary-container": "#eeefff",
+                      "on-secondary-fixed-variant": "#005236",
+                      "tertiary-fixed": "#ffdbcd",
+                      "surface-container-low": "#eff4ff",
+                      "on-secondary-container": "#00714d",
+                      "primary": "#004ac6",
+                      "outline": "#737686",
+                      "inverse-surface": "#213145",
+                      "inverse-on-surface": "#eaf1ff",
+                      "error": "#ba1a1a",
+                      "secondary-fixed": "#6ffbbe",
+                      "inverse-primary": "#b4c5ff",
+                      "surface-container": "#e5eeff",
+                      "surface-dim": "#cbdbf5",
+                      "secondary": "#006c49",
+                      "surface": "#f8f9ff",
+                      "tertiary-fixed-dim": "#ffb596",
+                      "primary-fixed": "#dbe1ff",
+                      "on-surface": "#0b1c30",
+                      "on-secondary-fixed": "#002113"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "base": "8px",
+                      "touch-target-min": "48px",
+                      "stack-gap": "12px",
+                      "container-padding": "16px"
+              },
+              "fontFamily": {
+                      "headline-md": [
+                              "Inter"
+                      ],
+                      "headline-lg": [
+                              "Inter"
+                      ],
+                      "label-bold": [
+                              "Inter"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "display-price": [
+                              "Inter"
+                      ],
+                      "body-sm": [
+                              "Inter"
+                      ]
+              },
+              "fontSize": {
+                      "headline-md": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-md-mobile": [
+                              "18px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-lg": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "headline-lg-mobile": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "label-bold": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "body-lg": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "display-price": [
+                              "32px",
+                              {
+                                      "lineHeight": "40px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "body-sm": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ]
+              }
+            },
+          }
+        }
+    </script>
+<style>
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #004ac6;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #004ac6;
+        }
+        .ambient-shadow {
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background antialiased pb-24">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-background dark:bg-on-background flex justify-between items-center px-container-padding h-touch-target-min">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full overflow-hidden bg-surface-variant flex-shrink-0">
+<img alt="Technician Profile" class="w-full h-full object-cover" data-alt="A close up portrait of a confident male service technician wearing a dark blue uniform. He has a friendly, professional expression. The lighting is bright and modern, suggesting a clean, efficient corporate environment. The background is a soft, out-of-focus light gray. The image perfectly aligns with a trustworthy, modern corporate identity." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBRfBvXUBiRiv73L9M3PGXI6xaV_2iOadT5_InyK3BTDl8RmEWr5983BuzAj9A64B8CYYorApt-VjF12vFTRpUmMO3QuQiAU4nQp7CByDHaZXl5B24lMQ2xaifGN8-aAryE9qBYWCiwbqxfqLoNhTw7So2cDn7DjR31_1kVdgiumxeR2R9I9N_GEBn8L4op9kCv3QgtPVhJl-ya0s4krNggr9mf8w5JynYtczmVp2bFYyix2ujjfcRrEblHz5Ih29mFJisfaCxY7l8"/>
+</div>
+<h1 class="text-headline-lg-mobile font-headline-lg font-bold text-primary dark:text-primary-fixed-dim">ServicePro</h1>
+</div>
+<button class="w-touch-target-min h-touch-target-min flex items-center justify-center text-primary dark:text-primary-fixed-dim hover:bg-surface-container-high dark:hover:bg-surface-container-highest rounded-full transition-colors">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+</header>
+<!-- Main Content Canvas -->
+<main class="pt-20 px-container-padding max-w-md mx-auto space-y-6">
+<!-- Header Profile Card -->
+<section class="bg-surface-container-lowest rounded-xl ambient-shadow p-5 flex flex-col items-center relative overflow-hidden">
+<!-- Decorative background element -->
+<div class="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-primary-fixed to-transparent opacity-50 z-0"></div>
+<div class="relative z-10 w-24 h-24 rounded-full border-4 border-surface-container-lowest overflow-hidden mb-4 shadow-sm">
+<img alt="Profile Photo" class="w-full h-full object-cover" data-alt="A high-quality, professional headshot of a male service technician in a clean blue uniform. The subject looks directly at the camera with a reassuring, competent smile. The background is bright, airy, and slightly blurred, emphasizing a modern, trustworthy corporate aesthetic. The lighting is soft and even." src="https://lh3.googleusercontent.com/aida-public/AB6AXuATCapjILSdSshW7O0E1RGKVU1EMxGDvne6yxaoVogSMIbKqLHDQL7Osx89v8j3qpEg9HBvoIKjgycrunVTo2jUxdcbTCRVUoWLnERwdmxQTLE2ZhogSGVTpGsI7gT-0-9Fr9Zd-xVdfKbFKzlFQP-kw4th0GfHQZmoO9Ba78G2AXnWL3laLK7fd2NMM68_OKRN5jXSUm-dFdVSyhYDzA2At0hJx3ZOCioGS3X0POWgn2nHPDmgXrfaGPgl1LRQYNLsVawdvFCDs4Q"/>
+</div>
+<h2 class="text-headline-md-mobile font-headline-md text-on-background mb-1">Carlos Mendoza</h2>
+<div class="flex items-center gap-1.5 px-3 py-1 bg-secondary-container rounded-full mb-4">
+<span class="material-symbols-outlined text-[16px] text-on-secondary-container" data-icon="verified" data-weight="fill" style="font-variation-settings: 'FILL' 1;">verified</span>
+<span class="text-label-bold font-label-bold text-on-secondary-container">Perfil Verificado</span>
+</div>
+<!-- Rating Bento Grid -->
+<div class="w-full grid grid-cols-2 gap-3 mt-2">
+<div class="bg-surface p-4 rounded-lg flex flex-col items-center justify-center border border-surface-variant">
+<div class="flex items-center gap-1 mb-1">
+<span class="material-symbols-outlined text-[28px] text-tertiary-container" data-icon="star" data-weight="fill" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="text-display-price font-display-price text-on-background">4.8</span>
+</div>
+<span class="text-body-sm font-body-sm text-on-surface-variant">Calificación</span>
+</div>
+<a class="bg-surface p-4 rounded-lg flex flex-col items-center justify-center border border-surface-variant hover:bg-surface-container-high transition-colors group" href="#">
+<span class="material-symbols-outlined text-[28px] text-primary mb-1 group-hover:scale-110 transition-transform" data-icon="reviews">reviews</span>
+<span class="text-body-sm font-body-sm text-on-surface-variant text-center">142 Comentarios</span>
+</a>
+</div>
+</section>
+<!-- Mis Servicios Section -->
+<section class="space-y-4">
+<h3 class="text-headline-md-mobile font-headline-md text-on-background px-1">Mis Servicios</h3>
+<div class="bg-surface-container-lowest rounded-xl ambient-shadow divide-y divide-surface-variant overflow-hidden">
+<!-- Servicio 1 -->
+<div class="p-4 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary">
+<span class="material-symbols-outlined" data-icon="cleaning_services">cleaning_services</span>
+</div>
+<div>
+<p class="text-body-lg font-body-lg text-on-background font-medium">Limpieza General</p>
+<p class="text-label-bold font-label-bold text-on-surface-variant">Activo</p>
+</div>
+</div>
+<!-- Toggle -->
+<div class="relative inline-block w-12 mr-2 align-middle select-none transition duration-200 ease-in">
+<input checked="" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer checked:bg-primary z-10" id="toggle-1" name="toggle" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-6 rounded-full bg-outline-variant cursor-pointer" for="toggle-1"></label>
+</div>
+</div>
+<!-- Servicio 2 -->
+<div class="p-4 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary">
+<span class="material-symbols-outlined" data-icon="pest_control">pest_control</span>
+</div>
+<div>
+<p class="text-body-lg font-body-lg text-on-background font-medium">Fumigación</p>
+<p class="text-label-bold font-label-bold text-on-surface-variant">Activo</p>
+</div>
+</div>
+<!-- Toggle -->
+<div class="relative inline-block w-12 mr-2 align-middle select-none transition duration-200 ease-in">
+<input checked="" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer checked:bg-primary z-10" id="toggle-2" name="toggle" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-6 rounded-full bg-outline-variant cursor-pointer" for="toggle-2"></label>
+</div>
+</div>
+<!-- Servicio 3 -->
+<div class="p-4 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary">
+<span class="material-symbols-outlined" data-icon="plumbing">plumbing</span>
+</div>
+<div>
+<p class="text-body-lg font-body-lg text-on-background font-medium">Plomería</p>
+<p class="text-label-bold font-label-bold text-on-surface-variant">Pausado</p>
+</div>
+</div>
+<!-- Toggle -->
+<div class="relative inline-block w-12 mr-2 align-middle select-none transition duration-200 ease-in">
+<input class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer checked:bg-primary z-10" id="toggle-3" name="toggle" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-6 rounded-full bg-outline-variant cursor-pointer" for="toggle-3"></label>
+</div>
+</div>
+</div>
+</section>
+<!-- Secondary Menu -->
+<section class="bg-surface-container-lowest rounded-xl ambient-shadow divide-y divide-surface-variant overflow-hidden">
+<a class="flex items-center justify-between p-4 hover:bg-surface-container-high transition-colors group" href="#">
+<div class="flex items-center gap-3 text-on-surface-variant group-hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="text-body-lg font-body-lg">Configuración de Cuenta</span>
+</div>
+<span class="material-symbols-outlined text-outline-variant group-hover:text-primary" data-icon="chevron_right">chevron_right</span>
+</a>
+<a class="flex items-center justify-between p-4 hover:bg-surface-container-high transition-colors group" href="#">
+<div class="flex items-center gap-3 text-on-surface-variant group-hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="help">help</span>
+<span class="text-body-lg font-body-lg">Centro de Ayuda</span>
+</div>
+<span class="material-symbols-outlined text-outline-variant group-hover:text-primary" data-icon="chevron_right">chevron_right</span>
+</a>
+<a class="flex items-center justify-between p-4 hover:bg-surface-container-high transition-colors group" href="#">
+<div class="flex items-center gap-3 text-on-surface-variant group-hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="gavel">gavel</span>
+<span class="text-body-lg font-body-lg">Términos y Condiciones</span>
+</div>
+<span class="material-symbols-outlined text-outline-variant group-hover:text-primary" data-icon="chevron_right">chevron_right</span>
+</a>
+</section>
+<div class="py-4 text-center">
+<button class="text-error font-body-lg text-body-lg hover:opacity-80 transition-opacity">Cerrar Sesión</button>
+</div>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-2 bg-surface-container-lowest dark:bg-inverse-surface shadow-[0_-4px_12px_rgba(0,0,0,0.08)] rounded-t-xl md:hidden">
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline-variant px-4 py-1 hover:opacity-80 transition-opacity" href="#">
+<span class="material-symbols-outlined text-primary dark:text-primary-fixed-dim" data-icon="radar">radar</span>
+<span class="text-label-bold font-label-bold mt-1">Inicio</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline-variant px-4 py-1 hover:opacity-80 transition-opacity" href="#">
+<span class="material-symbols-outlined text-primary dark:text-primary-fixed-dim" data-icon="event_note">event_note</span>
+<span class="text-label-bold font-label-bold mt-1">Agenda</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline-variant px-4 py-1 hover:opacity-80 transition-opacity" href="#">
+<span class="material-symbols-outlined text-primary dark:text-primary-fixed-dim" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span class="text-label-bold font-label-bold mt-1">Billetera</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-primary-container dark:bg-primary text-on-primary-container dark:text-on-primary rounded-xl px-4 py-1 scale-90 transition-all duration-200" href="#">
+<span class="material-symbols-outlined text-primary dark:text-primary-fixed-dim" data-icon="person" data-weight="fill" style="font-variation-settings: 'FILL' 1;">person</span>
+<span class="text-label-bold font-label-bold mt-1">Perfil</span>
+</a>
+</nav>
+<script>
+        // Micro-interaction for toggle switches
+        const toggles = document.querySelectorAll('input[type="checkbox"]');
+        toggles.forEach(toggle => {
+            toggle.addEventListener('change', function() {
+                const statusText = this.closest('.p-4').querySelector('.text-label-bold');
+                if(this.checked) {
+                    statusText.textContent = 'Activo';
+                    statusText.classList.remove('text-outline-variant');
+                    statusText.classList.add('text-on-surface-variant');
+                } else {
+                    statusText.textContent = 'Pausado';
+                    statusText.classList.add('text-outline-variant');
+                    statusText.classList.remove('text-on-surface-variant');
+                }
+            });
+        });
+    </script>
+</body></html>
