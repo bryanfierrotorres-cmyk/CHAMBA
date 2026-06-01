@@ -12,14 +12,10 @@ import { useAuthStore } from '@store/authStore';
 import { createJob } from '@features/jobs/services/jobsService';
 import { COLORS, FONT_SIZE, SPACING, BORDER_RADIUS } from '@constants/theme';
 import { ScreenBackButton } from '@components/navigation/ScreenBackButton';
-import {
-  getSuggestedPrice,
-  getMinimumPrice,
-  validateClientPrice,
-} from '@constants/servicePricing';
+import { validateClientPrice } from '@constants/servicePricing';
 import { formatCurrency } from '@utils/formatters';
-import { CATEGORY_EMOJIS, CLIENT_CATEGORY_MAP as CAT_MAP, CATEGORY_LABELS } from '@constants/chambaCategories';
-import type { ClientStackParamList, ClientCategory } from '@/types';
+import { useCatalog } from '@features/catalog/hooks/useCatalog';
+import type { ClientStackParamList } from '@/types';
 
 type Nav   = NativeStackNavigationProp<ClientStackParamList, 'CreateJobForm'>;
 type Route = RouteProp<ClientStackParamList, 'CreateJobForm'>;
@@ -71,13 +67,19 @@ export const CreateJobFormScreen: React.FC = () => {
   const insets     = useSafeAreaInsets();
   const profile    = useAuthStore((s) => s.profile);
 
-  const { clientCategory, serviceLabel } = route.params;
-  const emoji  = CATEGORY_EMOJIS[clientCategory as ClientCategory] ?? '💼';
-  const label  = CATEGORY_LABELS[clientCategory as ClientCategory] ?? serviceLabel;
-  const jobCat = CAT_MAP[clientCategory as ClientCategory];
+  const serviceTypeSlug =
+    route.params.serviceTypeSlug ?? route.params.clientCategory ?? '';
+  const serviceLabel = route.params.serviceLabel;
+  const catalog = useCatalog();
+  const emoji  = catalog.getEmoji(serviceTypeSlug);
+  const label  = catalog.getLabel(serviceTypeSlug) || serviceLabel;
+  const priceLookup = {
+    getSuggestedPrice: catalog.getSuggestedPrice,
+    getMinPrice: catalog.getMinPrice,
+  };
 
-  const suggestedPrice = getSuggestedPrice(clientCategory);
-  const minimumPrice   = getMinimumPrice(clientCategory);
+  const suggestedPrice = catalog.getSuggestedPrice(serviceTypeSlug);
+  const minimumPrice   = catalog.getMinPrice(serviceTypeSlug);
 
   const [title,           setTitle]           = useState(`Solicitud: ${serviceLabel}`);
   const [description,     setDescription]     = useState('');
@@ -90,8 +92,8 @@ export const CreateJobFormScreen: React.FC = () => {
 
   const budgetAmount = Number(budget);
   const priceValidation = useMemo(
-    () => (budget.trim() ? validateClientPrice(clientCategory, budgetAmount) : { valid: false, message: '' }),
-    [clientCategory, budget, budgetAmount],
+    () => (budget.trim() ? validateClientPrice(serviceTypeSlug, budgetAmount, priceLookup) : { valid: false, message: '' }),
+    [serviceTypeSlug, budget, budgetAmount, catalog],
   );
 
   const canSubmit =
@@ -107,14 +109,14 @@ export const CreateJobFormScreen: React.FC = () => {
       setBudgetError(null);
       return;
     }
-    const result = validateClientPrice(clientCategory, Number(cleaned));
+    const result = validateClientPrice(serviceTypeSlug, Number(cleaned), priceLookup);
     setBudgetError(result.valid ? null : result.message);
   };
 
   const handleSubmit = async () => {
     if (!profile?.id || !canSubmit) return;
 
-    const priceCheck = validateClientPrice(clientCategory, budgetAmount);
+    const priceCheck = validateClientPrice(serviceTypeSlug, budgetAmount, priceLookup);
     if (!priceCheck.valid) {
       setBudgetError(priceCheck.message);
       if (Platform.OS === 'web') window.alert(priceCheck.message);
@@ -127,7 +129,7 @@ export const CreateJobFormScreen: React.FC = () => {
       await createJob({
         title:           title.trim(),
         description:     description.trim(),
-        category:        jobCat,
+        category:        serviceTypeSlug,
         payAmount:       budgetAmount,
         address:         address.trim(),
         lat:             12.1328,

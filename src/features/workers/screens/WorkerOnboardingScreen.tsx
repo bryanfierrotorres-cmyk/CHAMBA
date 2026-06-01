@@ -22,23 +22,9 @@ import { uploadWorkerDocument } from '../services/documentUploadService';
 import { showMessage } from '@utils/confirmAction';
 import { useAuthStore } from '@store/authStore';
 import { WORKER_COLORS as COLORS, M3, FONT_SIZE, SPACING, BORDER_RADIUS } from '@constants/workerTheme';
-import { CHAMBA_CATEGORIES, CATEGORY_LABELS } from '@constants/chambaCategories';
+import { useCatalog } from '@features/catalog/hooks/useCatalog';
+import type { ServiceType } from '@features/catalog/types';
 import type { JobCategory } from '@constants/chambaCategories';
-
-// ─── Category picker ──────────────────────────────────────────────────────────
-
-const ALL_CATEGORIES = CHAMBA_CATEGORIES.map((c) => [c.id, c.label] as [JobCategory, string]);
-
-const CATEGORY_ICONS: Record<JobCategory, keyof typeof Ionicons.glyphMap> = {
-  limpieza_sofas:          'bed-outline',
-  limpieza_alfombra:       'layers-outline',
-  alfombra_institucional:  'business-outline',
-  fumigacion:              'bug-outline',
-  vehiculo_profundo:       'car-outline',
-  conserjeria_ocasional:   'time-outline',
-  conserjeria_contrato:    'document-text-outline',
-  jardineria:              'leaf-outline',
-};
 
 // ─── Step indicator ───────────────────────────────────────────────────────────
 
@@ -100,19 +86,15 @@ const uBtn = StyleSheet.create({
 // ─── Category chip ────────────────────────────────────────────────────────────
 
 const CatChip: React.FC<{
-  cat: JobCategory; label: string; selected: boolean; disabled?: boolean; onPress: () => void;
-}> = ({ cat, label, selected, disabled, onPress }) => (
+  emoji: string; label: string; selected: boolean; disabled?: boolean; onPress: () => void;
+}> = ({ emoji, label, selected, disabled, onPress }) => (
   <TouchableOpacity
     onPress={onPress}
     disabled={disabled}
     activeOpacity={0.8}
     style={[chip.wrap, selected && chip.wrapSel, disabled && chip.wrapDisabled]}
   >
-    <Ionicons
-      name={CATEGORY_ICONS[cat]}
-      size={16}
-      color={selected ? '#FFF' : disabled ? COLORS.text.muted : COLORS.brand[500]}
-    />
+    <Text style={{ fontSize: 16 }}>{emoji}</Text>
     <Text style={[chip.label, selected && chip.labelSel, disabled && chip.labelDisabled]}>
       {label}
     </Text>
@@ -135,6 +117,7 @@ export const WorkerOnboardingScreen: React.FC = () => {
   const navigation = useNavigation();
   const profile    = useAuthStore((s) => s.profile);
   const setProfile = useAuthStore((s) => s.setProfile);
+  const { serviceTypes, getLabel, getEmoji } = useCatalog();
   // True when accessed via navigation (has back stack), false when gating entry
   const canGoBack  = navigation.canGoBack();
 
@@ -379,15 +362,15 @@ export const WorkerOnboardingScreen: React.FC = () => {
             </Text>
 
             <View style={styles.chipWrap}>
-              {ALL_CATEGORIES.map(([cat, label]) => (
+              {serviceTypes.map((st: ServiceType) => (
                 <CatChip
-                  key={cat}
-                  cat={cat}
-                  label={label}
-                  selected={cat1 === cat}
+                  key={st.slug}
+                  emoji={st.icon}
+                  label={st.name}
+                  selected={cat1 === st.slug}
                   onPress={() => {
-                    setCat1((prev) => prev === cat ? null : cat);
-                    if (cat2 === cat) setCat2(null);
+                    setCat1((prev) => prev === st.slug ? null : st.slug);
+                    if (cat2 === st.slug) setCat2(null);
                   }}
                 />
               ))}
@@ -401,14 +384,14 @@ export const WorkerOnboardingScreen: React.FC = () => {
             </Text>
 
             <View style={styles.chipWrap}>
-              {ALL_CATEGORIES.map(([cat, label]) => (
+              {serviceTypes.map((st: ServiceType) => (
                 <CatChip
-                  key={cat}
-                  cat={cat}
-                  label={label}
-                  selected={cat2 === cat}
-                  disabled={cat1 === cat}
-                  onPress={() => setCat2((prev) => prev === cat ? null : cat)}
+                  key={st.slug}
+                  emoji={st.icon}
+                  label={st.name}
+                  selected={cat2 === st.slug}
+                  disabled={cat1 === st.slug}
+                  onPress={() => setCat2((prev) => prev === st.slug ? null : st.slug)}
                 />
               ))}
             </View>
@@ -450,17 +433,17 @@ export const WorkerOnboardingScreen: React.FC = () => {
                 <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
               </View>
               <View style={[styles.summaryRow, { borderBottomWidth: 0 }]}>
-                <Ionicons name={CATEGORY_ICONS[cat1!]} size={18} color={COLORS.brand[500]} />
+                <Text style={{ fontSize: 18 }}>{getEmoji(cat1!)}</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.summaryLabel}>{CATEGORY_LABELS[cat1!]}</Text>
+                  <Text style={styles.summaryLabel}>{getLabel(cat1!)}</Text>
                   <Text style={[styles.summaryMeta, { color: COLORS.success }]}>✓ Aprobación instantánea</Text>
                 </View>
               </View>
               {cat2 && (
                 <View style={[styles.summaryRow, { borderBottomWidth: 0 }]}>
-                  <Ionicons name={CATEGORY_ICONS[cat2]} size={18} color={COLORS.warning} />
+                  <Text style={{ fontSize: 18 }}>{getEmoji(cat2)}</Text>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.summaryLabel}>{CATEGORY_LABELS[cat2]}</Text>
+                    <Text style={styles.summaryLabel}>{getLabel(cat2)}</Text>
                     <Text style={[styles.summaryMeta, { color: COLORS.warning }]}>⏳ Requiere aprobación del admin</Text>
                   </View>
                 </View>

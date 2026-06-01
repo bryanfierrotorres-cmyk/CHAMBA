@@ -46,7 +46,8 @@ if (hasGoogleServices) {
 const easProjectId =
   process.env.EAS_PROJECT_ID ??
   process.env.EXPO_PUBLIC_EAS_PROJECT_ID ??
-  appJson.expo.extra?.eas?.projectId;
+  appJson.expo.extra?.eas?.projectId ??
+  'f66f053c-93e5-4170-ba77-a665f70c5772';
 
 module.exports = {
   expo: {

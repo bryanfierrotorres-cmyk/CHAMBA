@@ -7,7 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AdminDashboardScreen } from '@features/admin/screens/AdminDashboardScreen';
 import { CreateJobScreen }      from '@features/admin/screens/CreateJobScreen';
 import { ManageWorkersScreen }  from '@features/admin/screens/ManageWorkersScreen';
-import { ProfileScreen }        from '@features/workers/screens/ProfileScreen';
+import { ManageCatalogScreen }  from '@features/admin/screens/ManageCatalogScreen';
+import { AdminProfileScreen }   from '@features/admin/screens/AdminProfileScreen';
 import { JobDetailScreen }      from '@features/jobs/screens/JobDetailScreen';
 import { MaterialSymbol } from '@components/admin/MaterialSymbol';
 import { M3, SPACING, TAB_BAR_SHADOW, stitchTypography } from '@constants/stitchStyles';
@@ -32,6 +33,7 @@ const ADMIN_TABS: {
 }[] = [
   { route: 'Dashboard',     label: 'Control',    icon: 'monitor_heart' },
   { route: 'PublishJob',    label: 'Publicar',   icon: 'add_circle' },
+  { route: 'ManageCatalog', label: 'Catálogo',   icon: 'category' },
   { route: 'ManageWorkers', label: 'Equipo',     icon: 'engineering' },
   { route: 'Profile',       label: 'Perfil',     icon: 'person' },
 ];
@@ -110,8 +112,9 @@ export const AdminNavigator: React.FC = () => {
       >
         <Tab.Screen name="Dashboard"     component={DashboardStack} />
         <Tab.Screen name="PublishJob"    component={CreateJobScreen} />
+        <Tab.Screen name="ManageCatalog" component={ManageCatalogScreen} />
         <Tab.Screen name="ManageWorkers" component={ManageWorkersScreen} />
-        <Tab.Screen name="Profile"       component={ProfileScreen} />
+        <Tab.Screen name="Profile"       component={AdminProfileScreen} />
       </Tab.Navigator>
     </View>
   );

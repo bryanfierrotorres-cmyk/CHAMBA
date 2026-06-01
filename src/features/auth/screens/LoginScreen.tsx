@@ -3,7 +3,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet,
   Animated, KeyboardAvoidingView,
   Platform, ScrollView, TextInput, ActivityIndicator,
-  ImageBackground,
+  Image, useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@store/authStore';
@@ -11,6 +11,9 @@ import { COLORS, FONT_SIZE, SPACING, BORDER_RADIUS } from '@constants/theme';
 import type { UserRole } from '@/types';
 
 const LOGIN_BG = require('../../../../assets/login-hero-bg.png');
+
+/** Por debajo de este ancho usamos contain para no recortar a los personajes. */
+const COMPACT_BREAKPOINT = 640;
 
 // ─── Nicaragua phone validation ───────────────────────────────────────────────
 // Valid prefixes: 2 (landline), 5, 7, 8 (mobile). Total: 8 digits.
@@ -82,6 +85,10 @@ const rStyles = StyleSheet.create({
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export const LoginScreen: React.FC = () => {
+  const { width: screenWidth } = useWindowDimensions();
+  const isCompactLayout = screenWidth < COMPACT_BREAKPOINT;
+  const heroImageHeight = Math.min(screenWidth * 0.58, 300);
+
   const { phoneSignIn, pilotSignIn, isLoading, error, setError } = useAuthStore();
 
   const [fullName,   setFullName]   = useState('');
@@ -148,19 +155,34 @@ export const LoginScreen: React.FC = () => {
   };
 
   return (
-    <ImageBackground
-      source={LOGIN_BG}
-      style={styles.root}
-      imageStyle={styles.bgImage}
-    >
-      <View style={styles.bgOverlay} pointerEvents="none" />
+    <View style={styles.root}>
+      <Image
+        source={LOGIN_BG}
+        accessibilityIgnoresInvertColors
+        style={
+          isCompactLayout
+            ? [styles.bgImageCompact, { height: heroImageHeight }]
+            : styles.bgImageCover
+        }
+        resizeMode={isCompactLayout ? 'contain' : 'cover'}
+      />
+      <View
+        style={[
+          styles.bgOverlay,
+          isCompactLayout && { height: heroImageHeight },
+        ]}
+        pointerEvents="none"
+      />
 
       <KeyboardAvoidingView
         style={styles.flexFill}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[
+          styles.scroll,
+          isCompactLayout && { paddingTop: Math.min(heroImageHeight * 0.22, 56) },
+        ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -270,34 +292,69 @@ export const LoginScreen: React.FC = () => {
             Tus datos solo se usan para identificarte.
           </Text>
 
-          {/* Admin access — hidden tap counter */}
+          {/* Acceso administrador (piloto) */}
           <TouchableOpacity
             onPress={async () => {
               setError(null);
-              try { await pilotSignIn('admin'); } catch { /* error shown via store */ }
+              try {
+                await pilotSignIn('admin');
+              } catch (e: unknown) {
+                const msg = e instanceof Error ? e.message : 'No se pudo entrar como administrador';
+                setError(msg);
+              }
             }}
-            style={styles.adminLink}
-            activeOpacity={0.6}
+            disabled={isLoading}
+            style={styles.adminBtn}
+            activeOpacity={0.85}
           >
-            <Ionicons name="shield-outline" size={12} color={COLORS.text.muted} />
-            <Text style={styles.adminLinkText}>Acceso Administrador</Text>
+            {isLoading ? (
+              <ActivityIndicator color={COLORS.brand[500]} size="small" />
+            ) : (
+              <>
+                <Ionicons name="shield-checkmark" size={18} color={COLORS.brand[500]} />
+                <Text style={styles.adminBtnText}>Entrar como Administrador</Text>
+              </>
+            )}
           </TouchableOpacity>
         </Animated.View>
       </ScrollView>
       </KeyboardAvoidingView>
-    </ImageBackground>
+    </View>
   );
 };
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.bg.navy },
+  root: { flex: 1, backgroundColor: COLORS.bg.navy, overflow: 'hidden' },
   flexFill: { flex: 1 },
-  bgImage: { resizeMode: 'cover' },
+  /** Escritorio / tablet ancha: foto a pantalla completa */
+  bgImageCover: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+    ...(Platform.OS === 'web'
+      ? { objectFit: 'cover' as const, objectPosition: 'center center' }
+      : {}),
+  },
+  /** Móvil: ancho 100 %, contain para mostrar ambas personas */
+  bgImageCompact: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    width: '100%',
+    alignSelf: 'center',
+    ...(Platform.OS === 'web'
+      ? { objectFit: 'contain' as const, objectPosition: 'top center' }
+      : {}),
+  },
   /** Tinte oscuro sobre la foto para que el hero y el logo sigan leyéndose bien */
   bgOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     backgroundColor: 'rgba(15, 23, 42, 0.58)',
   },
 
@@ -400,9 +457,22 @@ const styles = StyleSheet.create({
     color: COLORS.text.muted, fontSize: 10,
     textAlign: 'center', marginTop: SPACING.md, lineHeight: 16,
   },
-  adminLink: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 4, marginTop: SPACING.sm, paddingVertical: 6, opacity: 0.5,
+  adminBtn: {
+    flexDirection:     'row',
+    alignItems:        'center',
+    justifyContent:    'center',
+    gap:               SPACING.sm,
+    marginTop:         SPACING.md,
+    paddingVertical:   SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius:      BORDER_RADIUS.full,
+    borderWidth:       1.5,
+    borderColor:       COLORS.brand[300],
+    backgroundColor:   COLORS.brand[50],
   },
-  adminLinkText: { color: COLORS.text.muted, fontSize: 10 },
+  adminBtnText: {
+    color:      COLORS.brand[600],
+    fontSize:   FONT_SIZE.sm,
+    fontWeight: '800',
+  },
 });

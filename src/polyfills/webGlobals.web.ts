@@ -13,7 +13,7 @@ if (typeof window !== 'undefined') {
   }
 
   if (typeof w.process === 'undefined') {
-    w.process = { env: {} };
+    w.process = { env: {} } as NonNullable<typeof w.process>;
   } else if (!w.process.env) {
     w.process.env = {};
   }

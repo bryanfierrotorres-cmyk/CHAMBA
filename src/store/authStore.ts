@@ -11,9 +11,17 @@ import {
   findExactProfileMatch,
   findProfileByPhone,
   fetchProfileByPhone,
+  ensureProfileInDb,
 } from '@utils/profileSync';
+import { useAssignmentsStore } from '@store/assignmentsStore';
 
 const PILOT_STORAGE_KEY = 'CHAMBA_PILOT_PROFILE';
+
+/** IDs fijos piloto — evitan cambiar created_by en cada login de admin. */
+const PILOT_PROFILE_IDS: Record<'admin' | 'worker', string> = {
+  admin:  'a0000000-0000-4000-8000-000000000001',
+  worker: 'a0000000-0000-4000-8000-000000000002',
+};
 
 /** Minimal UUID v4 — no external dependency needed. */
 const uuid4 = () =>
@@ -111,6 +119,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ profile });
     } catch (err: any) {
       console.error('[AuthStore] fetchProfile error:', err.message);
+      const current = get().profile;
+      if (current?.id === userId) return;
       set({ profile: null });
     }
   },
@@ -175,41 +185,140 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  // ── pilotSignIn — acceso rápido para prueba piloto ─────────────
+  // ── pilotSignIn — acceso rápido (admin / worker) con respaldo local ──
   pilotSignIn: async (role = 'worker') => {
     const creds = role === 'admin' ? CONFIG.pilot.admin : CONFIG.pilot.worker;
+    const pilotKey = role === 'admin' ? 'admin' : 'worker';
     set({ isLoading: true, error: null });
 
+    const buildLocalPilotProfile = (): UserProfile => {
+      const base: UserProfile = {
+        id:                 PILOT_PROFILE_IDS[pilotKey],
+        email:              creds.email,
+        full_name:          creds.fullName,
+        phone:              creds.phone,
+        avatar_url:         null,
+        role,
+        is_approved:        true,
+        worker_status:      role === 'worker' ? 'active' : null,
+        cedula_url:         role === 'worker' ? 'pilot-bypass' : null,
+        record_policia_url: role === 'worker' ? 'pilot-bypass' : null,
+        category_1:         null,
+        category_2:         null,
+        category_1_approved: role === 'worker',
+        category_2_approved: false,
+        stripe_account_id:  null,
+        fcm_token:          null,
+        created_at:         new Date().toISOString(),
+        updated_at:         new Date().toISOString(),
+      };
+      return role === 'worker' && CONFIG.pilot.enabled
+        ? applyPilotProfile(base)
+        : { ...base, is_approved: true, role: 'admin' };
+    };
+
+    const finishPilotSession = async (
+      profile: UserProfile,
+      session: Session | null,
+    ) => {
+      let normalized = profile;
+      if (CONFIG.pilot.enabled && profile.role === 'worker') {
+        normalized = applyPilotProfile(profile);
+      }
+      if (profile.role === 'admin') {
+        normalized = { ...normalized, role: 'admin', is_approved: true };
+      }
+
+      await AsyncStorage.setItem(PILOT_STORAGE_KEY, JSON.stringify(normalized));
+      set({
+        profile:     normalized,
+        session,
+        isPhoneAuth: true,
+        isLoading:   false,
+        error:       null,
+      });
+    };
+
+    // 1) Intentar Supabase Auth (opcional en piloto)
     try {
       let { data, error } = await supabase.auth.signInWithPassword({
         email:    creds.email,
         password: creds.password,
       });
 
-      // Si no existe, crear cuenta automáticamente
       if (error?.message.includes('Invalid login credentials')) {
-        await get().signUp({
-          email:    creds.email,
-          password: creds.password,
-          fullName: creds.fullName,
-          phone:    creds.phone,
-          role,
-        });
-        ({ data, error } = await supabase.auth.signInWithPassword({
-          email:    creds.email,
-          password: creds.password,
-        }));
+        try {
+          await get().signUp({
+            email:    creds.email,
+            password: creds.password,
+            fullName: creds.fullName,
+            phone:    creds.phone,
+            role,
+          });
+          ({ data, error } = await supabase.auth.signInWithPassword({
+            email:    creds.email,
+            password: creds.password,
+          }));
+        } catch (signUpErr: unknown) {
+          console.warn('[pilotSignIn] signUp falló, usando perfil local:', signUpErr);
+        }
       }
 
-      if (error) throw error;
-      if (data.session) set({ session: data.session });
-      if (data.user) await get().fetchProfile(data.user.id);
-    } catch (err: any) {
-      const msg = translateAuthError(err.message);
-      set({ error: msg });
+      if (!error && data.user) {
+        if (data.session) set({ session: data.session });
+        await get().fetchProfile(data.user.id);
+        let profile = get().profile;
+
+        if (profile) {
+          profile = {
+            ...profile,
+            role,
+            full_name: creds.fullName,
+            phone:     creds.phone,
+            is_approved: true,
+          };
+          profile = await syncProfileWithDatabase(profile);
+          await finishPilotSession(profile, data.session);
+          return;
+        }
+      }
+    } catch (authErr: unknown) {
+      console.warn('[pilotSignIn] Auth Supabase no disponible, respaldo local:', authErr);
+    }
+
+    // 2) Respaldo: perfil piloto local (sin JWT) — crítico para admin en web
+    try {
+      let profile = buildLocalPilotProfile();
+
+      const byPhone = await fetchProfileByPhone(creds.phone);
+      if (byPhone) {
+        profile = {
+          ...byPhone,
+          id:          byPhone.id ?? profile.id,
+          role,
+          full_name:   creds.fullName,
+          phone:       creds.phone,
+          is_approved: true,
+        };
+        if (role === 'worker' && CONFIG.pilot.enabled) {
+          profile = applyPilotProfile(profile);
+        }
+      } else {
+        await ensureProfileInDb({
+          id:          profile.id,
+          full_name:   profile.full_name,
+          phone:       profile.phone,
+          email:       profile.email,
+          role:        profile.role,
+          is_approved: true,
+        });
+      }
+
+      await finishPilotSession(profile, null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'No se pudo iniciar sesión piloto';
+      set({ error: msg, isLoading: false });
       throw new Error(msg);
-    } finally {
-      set({ isLoading: false });
     }
   },
 
@@ -335,6 +444,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (CONFIG.pilot.enabled && profile.role === 'worker') {
         profile = applyPilotProfile(profile);
       }
+      if (profile.role === 'admin') {
+        profile = { ...profile, role: 'admin', is_approved: true };
+      }
       await AsyncStorage.setItem(PILOT_STORAGE_KEY, JSON.stringify(profile));
       set({ profile, isPhoneAuth: true });
       return true;
@@ -346,7 +458,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   // ── signOut ───────────────────────────────────────────────────
   signOut: async () => {
     set({ isLoading: true });
-    const { useAssignmentsStore } = await import('@store/assignmentsStore');
     useAssignmentsStore.getState().clear();
     await Promise.allSettled([
       supabase.auth.signOut(),

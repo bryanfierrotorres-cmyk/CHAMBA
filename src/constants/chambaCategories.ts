@@ -13,9 +13,10 @@ export const CHAMBA_CATEGORY_IDS = [
   'jardineria',
 ] as const;
 
-export type JobCategory = (typeof CHAMBA_CATEGORY_IDS)[number];
+/** Slug del tipo de servicio (`service_types.slug`); compatible con IDs legacy. */
+export type JobCategory = (typeof CHAMBA_CATEGORY_IDS)[number] | string;
 
-export type ClientCategory = JobCategory;
+export type ClientCategory = string;
 
 /** @deprecated Usar JobCategory directamente; mapa 1:1 por compatibilidad. */
 export const CLIENT_CATEGORY_MAP: Record<ClientCategory, JobCategory> = Object.fromEntries(
@@ -59,6 +60,18 @@ export const CHAMBA_CATEGORIES: ChambaCategoryDef[] = CHAMBA_CATEGORY_IDS.map((i
 export const isJobCategory = (value: string): value is JobCategory =>
   (CHAMBA_CATEGORY_IDS as readonly string[]).includes(value);
 
+/** Precios de respaldo si el catálogo remoto no está disponible. */
+export const SUGGESTED_PRICES_FALLBACK: Record<string, number> = {
+  limpieza_sofas:          1400,
+  limpieza_alfombra:       950,
+  alfombra_institucional:  1800,
+  fumigacion:              1200,
+  vehiculo_profundo:       900,
+  conserjeria_ocasional:   850,
+  conserjeria_contrato:    2500,
+  jardineria:              1000,
+};
+
 /**
  * Valores del enum `job_category` en Supabase remoto (mezcla legacy + nuevos).
  * Escritura: siempre usar estos valores al insertar/actualizar.
@@ -93,7 +106,7 @@ export const toDbJobCategory = (category: JobCategory | string): string =>
 export const fromDbJobCategory = (dbCategory: string | null | undefined): JobCategory | null => {
   if (!dbCategory) return null;
   if (isJobCategory(dbCategory)) return dbCategory;
-  return LEGACY_DB_TO_APP[dbCategory] ?? null;
+  return LEGACY_DB_TO_APP[dbCategory] ?? dbCategory;
 };
 
 /** Valores DB a consultar (incluye alias legados usados en filas antiguas). */

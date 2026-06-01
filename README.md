@@ -259,5 +259,6 @@ npm run lint       # ESLint
 - [ ] Onboarding con verificación de ID (Stripe Identity)
 - [ ] Multi-idioma (i18n)
 - [ ] Analytics con Amplitude/Mixpanel
-#   C H A M B A  
+#   C H A M B A 
+ 
  

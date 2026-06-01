@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo } from 'react';
+import React, { useRef, useState, useMemo, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   Animated, ScrollView, Dimensions,
@@ -9,116 +9,28 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@store/authStore';
 import { FONT_SIZE, SPACING, BORDER_RADIUS } from '@constants/theme';
-import { SUGGESTED_PRICES } from '@constants/servicePricing';
-import { DB_JOB_CATEGORY } from '@constants/chambaCategories';
 import { formatCurrency } from '@utils/formatters';
+import { useCatalog } from '@features/catalog/hooks/useCatalog';
+import type { ServiceCategory, ServiceType } from '@features/catalog/types';
 import {
   M3, CARD_ELEVATION, stitchTypography,
 } from '@constants/stitchStyles';
-import type { ClientStackParamList, JobCategory } from '@/types';
+import type { ClientStackParamList } from '@/types';
 
 type Nav = NativeStackNavigationProp<ClientStackParamList, 'CategoryGrid'>;
 
-type ClientMainTab = 'limpieza' | 'vehiculos' | 'mascotas' | 'hogar';
-
-interface ClientSubcategory {
-  id: JobCategory;
-  label: string;
-  description: string;
-  /** Etiqueta legacy visible en UI (sofas, alfombra…) */
-  legacyDbLabel?: string;
-}
-
 const { width: SCREEN_W } = Dimensions.get('window');
-
-const MAIN_TABS: { id: ClientMainTab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { id: 'limpieza',  label: 'Limpieza',  icon: 'sparkles-outline' },
-  { id: 'vehiculos', label: 'Vehículos', icon: 'car-outline' },
-  { id: 'mascotas',  label: 'Mascotas',  icon: 'paw-outline' },
-  { id: 'hogar',     label: 'Hogar',     icon: 'home-outline' },
-];
-
-/** Subcategorías por pestaña — Limpieza usa IDs legacy de BD (sofas, alfombra). */
-const SUBCATEGORIES_BY_TAB: Record<ClientMainTab, ClientSubcategory[]> = {
-  limpieza: [
-    {
-      id: 'limpieza_sofas',
-      label: 'Limpieza de Sofás',
-      description: 'Tapicería, cuero y tela',
-      legacyDbLabel: DB_JOB_CATEGORY.limpieza_sofas,
-    },
-    {
-      id: 'limpieza_alfombra',
-      label: 'Limpieza de Alfombra',
-      description: 'Residencial profunda',
-      legacyDbLabel: DB_JOB_CATEGORY.limpieza_alfombra,
-    },
-    {
-      id: 'alfombra_institucional',
-      label: 'Alfombra Institucional',
-      description: 'Oficinas y centros comerciales',
-      legacyDbLabel: DB_JOB_CATEGORY.alfombra_institucional,
-    },
-    {
-      id: 'fumigacion',
-      label: 'Fumigación',
-      description: 'Control de plagas certificado',
-      legacyDbLabel: DB_JOB_CATEGORY.fumigacion,
-    },
-  ],
-  vehiculos: [
-    {
-      id: 'vehiculo_profundo',
-      label: 'Detallado de Vehículo',
-      description: 'Limpieza interior y exterior profunda',
-      legacyDbLabel: DB_JOB_CATEGORY.vehiculo_profundo,
-    },
-  ],
-  mascotas: [],
-  hogar: [
-    {
-      id: 'conserjeria_ocasional',
-      label: 'Conserjería Ocasional',
-      description: 'Limpieza puntual por evento',
-      legacyDbLabel: DB_JOB_CATEGORY.conserjeria_ocasional,
-    },
-    {
-      id: 'conserjeria_contrato',
-      label: 'Conserjería por Contrato',
-      description: 'Servicio mensual fijo',
-      legacyDbLabel: DB_JOB_CATEGORY.conserjeria_contrato,
-    },
-    {
-      id: 'jardineria',
-      label: 'Jardinería',
-      description: 'Poda, riego y mantenimiento',
-      legacyDbLabel: DB_JOB_CATEGORY.jardineria,
-    },
-  ],
-};
-
-const CATEGORY_ICONS: Record<JobCategory, keyof typeof Ionicons.glyphMap> = {
-  limpieza_sofas:          'bed-outline',
-  limpieza_alfombra:       'layers-outline',
-  alfombra_institucional:  'business-outline',
-  fumigacion:              'bug-outline',
-  vehiculo_profundo:       'car-sport-outline',
-  conserjeria_ocasional:   'time-outline',
-  conserjeria_contrato:    'document-text-outline',
-  jardineria:              'leaf-outline',
-};
 
 // ─── Tarjeta horizontal Stitch ─────────────────────────────────────────────────
 
 interface SubcategoryRowProps {
-  item: ClientSubcategory;
+  item: ServiceType;
   onPress: () => void;
+  suggestedPrice: number;
 }
 
-const SubcategoryRow: React.FC<SubcategoryRowProps> = ({ item, onPress }) => {
+const SubcategoryRow: React.FC<SubcategoryRowProps> = ({ item, onPress, suggestedPrice }) => {
   const scale = useRef(new Animated.Value(1)).current;
-  const price = SUGGESTED_PRICES[item.id];
-  const icon  = CATEGORY_ICONS[item.id];
 
   const press = () => {
     Animated.sequence([
@@ -131,19 +43,14 @@ const SubcategoryRow: React.FC<SubcategoryRowProps> = ({ item, onPress }) => {
     <TouchableOpacity onPress={press} activeOpacity={1}>
       <Animated.View style={[styles.subRow, { transform: [{ scale }] }]}>
         <View style={styles.subIconWrap}>
-          <Ionicons name={icon} size={24} color={M3.primary} />
+          <Text style={{ fontSize: 24 }}>{item.icon}</Text>
         </View>
 
         <View style={styles.subBody}>
-          <Text style={styles.subTitle} numberOfLines={1}>{item.label}</Text>
-          <Text style={styles.subDesc} numberOfLines={1}>{item.description}</Text>
+          <Text style={styles.subTitle} numberOfLines={1}>{item.name}</Text>
+          <Text style={styles.subDesc} numberOfLines={1}>{item.description ?? ''}</Text>
           <View style={styles.subMetaRow}>
-            {item.legacyDbLabel ? (
-              <View style={styles.legacyPill}>
-                <Text style={styles.legacyPillText}>{item.legacyDbLabel}</Text>
-              </View>
-            ) : null}
-            <Text style={styles.subPrice}>desde {formatCurrency(price)}</Text>
+            <Text style={styles.subPrice}>desde {formatCurrency(suggestedPrice)}</Text>
           </View>
         </View>
 
@@ -161,7 +68,14 @@ export const ClientHomeScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const insets     = useSafeAreaInsets();
   const profile    = useAuthStore((s) => s.profile);
-  const [activeTab, setActiveTab] = useState<ClientMainTab>('limpieza');
+  const catalog = useCatalog();
+  const [activeTab, setActiveTab] = useState('');
+
+  useEffect(() => {
+    if (catalog.categories.length > 0 && !activeTab) {
+      setActiveTab(catalog.categories[0].slug);
+    }
+  }, [catalog.categories, activeTab]);
 
   const firstName = profile?.full_name?.split(' ')[0] ?? 'Cliente';
 
@@ -169,14 +83,16 @@ export const ClientHomeScreen: React.FC = () => {
   const greeting =
     hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
 
-  const handlePress = (categoryId: JobCategory, serviceLabel: string) => {
-    navigation.navigate('CreateJobForm', { clientCategory: categoryId, serviceLabel });
+  const handlePress = (slug: string, serviceLabel: string) => {
+    navigation.navigate('CreateJobForm', { serviceTypeSlug: slug, serviceLabel });
   };
 
   const visibleSubcategories = useMemo(
-    () => SUBCATEGORIES_BY_TAB[activeTab],
-    [activeTab],
+    () => catalog.typesByCategory.get(activeTab) ?? [],
+    [catalog.typesByCategory, activeTab],
   );
+
+  const activeCategoryName = catalog.categories.find((c: ServiceCategory) => c.slug === activeTab)?.name ?? '';
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -212,22 +128,18 @@ export const ClientHomeScreen: React.FC = () => {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.tabScroll}
         >
-          {MAIN_TABS.map((tab) => {
-            const selected = activeTab === tab.id;
+          {catalog.categories.map((tab: ServiceCategory) => {
+            const selected = activeTab === tab.slug;
             return (
               <TouchableOpacity
                 key={tab.id}
-                onPress={() => setActiveTab(tab.id)}
+                onPress={() => setActiveTab(tab.slug)}
                 activeOpacity={0.85}
                 style={[styles.tabPill, selected && styles.tabPillActive]}
               >
-                <Ionicons
-                  name={tab.icon}
-                  size={18}
-                  color={selected ? M3.onPrimaryContainer : M3.onSurfaceVariant}
-                />
+                <Text style={{ fontSize: 16 }}>{tab.icon}</Text>
                 <Text style={[styles.tabLabel, selected && styles.tabLabelActive]}>
-                  {tab.label}
+                  {tab.name}
                 </Text>
               </TouchableOpacity>
             );
@@ -236,9 +148,7 @@ export const ClientHomeScreen: React.FC = () => {
 
         {/* ── Lista dinámica de subcategorías ── */}
         <View style={styles.listSection}>
-          <Text style={styles.listTitle}>
-            {MAIN_TABS.find((t) => t.id === activeTab)?.label}
-          </Text>
+          <Text style={styles.listTitle}>{activeCategoryName}</Text>
           <Text style={styles.listSub}>
             {visibleSubcategories.length}{' '}
             {visibleSubcategories.length === 1 ? 'servicio disponible' : 'servicios disponibles'}
@@ -258,7 +168,8 @@ export const ClientHomeScreen: React.FC = () => {
                 <SubcategoryRow
                   key={item.id}
                   item={item}
-                  onPress={() => handlePress(item.id, item.label)}
+                  suggestedPrice={catalog.getSuggestedPrice(item.slug)}
+                  onPress={() => handlePress(item.slug, item.name)}
                 />
               ))}
             </View>

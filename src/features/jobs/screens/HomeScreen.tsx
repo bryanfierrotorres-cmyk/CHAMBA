@@ -19,33 +19,16 @@ import { useJobStore } from '@store/jobStore';
 import { WORKER_COLORS as COLORS, M3, BORDER_RADIUS, FONT_SIZE, SPACING } from '@constants/workerTheme';
 import { stitchTypography, stitchLayout, CARD_ELEVATION } from '@constants/stitchStyles';
 import { getCategoryLabel, formatCurrency } from '@utils/formatters';
-import { CHAMBA_CATEGORIES, fromDbJobCategory } from '@constants/chambaCategories';
+import { fromDbJobCategory } from '@constants/chambaCategories';
+import { useCatalog } from '@features/catalog/hooks/useCatalog';
+import type { ServiceType } from '@features/catalog/types';
 import { getWorkerApprovedCategories } from '@utils/workerCategoryAccess';
 import { useAssignmentsStore } from '@store/assignmentsStore';
 import type { Job, JobCategory, JobStackParamList, WorkerTabParamList } from '@/types';
 
 type StackNav = NativeStackNavigationProp<JobStackParamList, 'JobList'>;
 
-const CATEGORY_ICONS: Record<JobCategory, keyof typeof Ionicons.glyphMap> = {
-  limpieza_sofas:          'bed-outline',
-  limpieza_alfombra:       'layers-outline',
-  alfombra_institucional:  'business-outline',
-  fumigacion:              'bug-outline',
-  vehiculo_profundo:       'car-outline',
-  conserjeria_ocasional:   'time-outline',
-  conserjeria_contrato:    'document-text-outline',
-  jardineria:              'leaf-outline',
-};
-
-const CATEGORIES = CHAMBA_CATEGORIES.map((c) => ({
-  value:  c.id,
-  label:  c.label.split(' ').slice(0, 2).join(' '),
-  icon:   CATEGORY_ICONS[c.id],
-  accent: M3.primary,
-}));
-
-// Pair categories — used for chip row
-type CategoryItem = typeof CATEGORIES[0];
+type CategoryItem = { value: string; label: string; emoji: string };
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
@@ -115,17 +98,17 @@ const FeedItem: React.FC<FeedItemProps> = ({
 // ─── Category chip ────────────────────────────────────────────────────────────
 
 interface CategoryChipProps {
-  label: string; icon: keyof typeof Ionicons.glyphMap;
+  label: string; emoji: string;
   isActive: boolean; disabled?: boolean; onPress: () => void;
 }
-const CategoryChip: React.FC<CategoryChipProps> = ({ label, icon, isActive, disabled, onPress }) => (
+const CategoryChip: React.FC<CategoryChipProps> = ({ label, emoji, isActive, disabled, onPress }) => (
   <TouchableOpacity
     onPress={onPress}
     disabled={disabled}
     activeOpacity={0.8}
     style={[styles.chip, isActive && styles.chipActive, disabled && styles.chipDisabled]}
   >
-    <Ionicons name={icon} size={16} color={isActive ? M3.onPrimaryContainer : M3.primary} />
+    <Text style={{ fontSize: 14 }}>{emoji}</Text>
     <Text style={[styles.chipText, isActive && styles.chipTextActive]} numberOfLines={1}>{label}</Text>
   </TouchableOpacity>
 );
@@ -173,10 +156,23 @@ export const HomeScreen: React.FC = () => {
   const [searchQuery, setSearchQuery]            = useState('');
   const acceptingRef = useRef<Set<string>>(new Set());
 
+  const catalog = useCatalog();
+
   const approvedCategories = useMemo(
     () => getWorkerApprovedCategories(profile),
     [profile],
   );
+
+  const filterChips = useMemo<CategoryItem[]>(() => {
+    const approved = new Set(approvedCategories);
+    return catalog.serviceTypes
+      .filter((t: ServiceType) => approved.has(t.slug))
+      .map((t: ServiceType) => ({
+        value: t.slug,
+        label: t.name.split(' ').slice(0, 2).join(' '),
+        emoji: t.icon,
+      }));
+  }, [catalog.serviceTypes, approvedCategories]);
 
   const effectiveCategories = useMemo<JobCategory[]>(() => {
     if (!profile?.is_approved) return [];
@@ -363,13 +359,13 @@ export const HomeScreen: React.FC = () => {
 
             {/* Category chips */}
             <View style={styles.chipsRow}>
-              {CATEGORIES.map((cat) => {
+              {filterChips.map((cat) => {
                 const disabled = approvedCategories.length > 0 && !approvedCategories.includes(cat.value);
                 return (
                   <CategoryChip
                     key={cat.value}
                     label={cat.label}
-                    icon={cat.icon}
+                    emoji={cat.emoji}
                     isActive={selectedCategory === cat.value}
                     disabled={disabled}
                     onPress={() => {
@@ -406,7 +402,7 @@ export const HomeScreen: React.FC = () => {
               title="No hay chambas"
               subtitle={
                 selectedCategory
-                  ? `No hay chambas de ${getCategoryLabel(selectedCategory)} disponibles ahora.`
+                  ? `No hay chambas de ${catalog.getLabel(selectedCategory)} disponibles ahora.`
                   : 'No hay trabajos disponibles en este momento. ¡Vuelve pronto!'
               }
               actionLabel="Actualizar"

@@ -86,7 +86,7 @@ export const syncAcceptedJobCache = async (
 
     JOB_KEYS.myJobs(workerId),
 
-    (old) => mergeAssignments(old ?? [], [assignment]),
+    (old: JobAssignment[] | undefined) => mergeAssignments(old ?? [], [assignment]),
 
   );
 
@@ -314,8 +314,8 @@ export const useCompleteJob = () => {
       if (profile?.id) {
         queryClient.setQueryData<JobAssignment[]>(
           JOB_KEYS.myJobs(profile.id),
-          (old) =>
-            (old ?? []).map((a) =>
+          (old: JobAssignment[] | undefined) =>
+            (old ?? []).map((a: JobAssignment) =>
               a.id === assignmentId
                 ? {
                     ...a,

@@ -17,7 +17,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 /** En Vercel desactiva sync de URL nativa — el SPA siempre arranca en la raíz. */
 const webLinking: LinkingOptions<RootStackParamList> | undefined =
-  Platform.OS === 'web' ? { enabled: false } : undefined;
+  Platform.OS === 'web' ? { enabled: false, prefixes: [] } : undefined;
 
 export const RootNavigator: React.FC = () => {
   const { profile, isHydrated } = useAuthStore();

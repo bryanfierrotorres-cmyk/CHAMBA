@@ -18,8 +18,8 @@ import {
   approveWorkerCategory2,
 } from '../services/adminService';
 import { formatDate } from '@utils/formatters';
-import { CATEGORY_LABELS } from '@/types';
-import type { UserProfile, JobCategory } from '@/types';
+import { useCatalog } from '@features/catalog/hooks/useCatalog';
+import type { UserProfile } from '@/types';
 import { WorkerReviewsPanel } from '@features/reviews/components/WorkerReviewsPanel';
 import { useAuthStore } from '@store/authStore';
 import {
@@ -45,8 +45,9 @@ const WorkerDetailModal: React.FC<WorkerModalProps> = ({
   worker, onClose, onApprove, onApproveCat2, approving, approvingCat2,
   adminId, adminName,
 }) => {
-  const cat1Label = worker.category_1 ? CATEGORY_LABELS[worker.category_1 as JobCategory] : null;
-  const cat2Label = worker.category_2 ? CATEGORY_LABELS[worker.category_2 as JobCategory] : null;
+  const { getLabel } = useCatalog();
+  const cat1Label = worker.category_1 ? getLabel(worker.category_1) : null;
+  const cat2Label = worker.category_2 ? getLabel(worker.category_2) : null;
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
@@ -352,7 +353,8 @@ const WorkerRow: React.FC<{
   onToggle: (approve: boolean) => void;
   toggling: boolean;
 }> = ({ worker, onOpen, onToggle, toggling }) => {
-  const cat1Label = worker.category_1 ? CATEGORY_LABELS[worker.category_1 as JobCategory] : null;
+  const { getLabel } = useCatalog();
+  const cat1Label = worker.category_1 ? getLabel(worker.category_1) : null;
   const hasDocs   = !!(worker.cedula_url && worker.record_policia_url);
 
   return (

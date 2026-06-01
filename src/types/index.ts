@@ -196,6 +196,7 @@ export type WorkerTabParamList = {
 export type AdminTabParamList = {
   Dashboard: undefined;
   PublishJob: undefined;
+  ManageCatalog: undefined;
   ManageWorkers: undefined;
   Profile: undefined;
 };
@@ -204,7 +205,12 @@ export type AdminTabParamList = {
 
 export type ClientStackParamList = {
   CategoryGrid: undefined;
-  CreateJobForm: { clientCategory: ClientCategory; serviceLabel: string };
+  CreateJobForm: {
+    serviceTypeSlug: string;
+    serviceLabel: string;
+    /** @deprecated usar serviceTypeSlug */
+    clientCategory?: ClientCategory;
+  };
   ClientJobDetail: { jobId: string };
 };
 

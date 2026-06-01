@@ -9,6 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { RootNavigator } from '@navigation/RootNavigator';
 import { getSupabaseConfigError, supabase, onAuthStateChange } from '@services/supabase';
+import { initializeStripe } from '@services/stripe';
 import { useAuthStore } from '@store/authStore';
 import { repairLocalAssignmentsStorage } from '@utils/localAssignments';
 import { StartupErrorScreen } from '@components/StartupErrorScreen';
@@ -56,6 +57,13 @@ function AppBootstrap() {
   const { setSession, setHydrated, setLoading, fetchProfile, loadFromStorage, reset } = useAuthStore();
 
   useWebRootStyles();
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    initializeStripe().catch((err) =>
+      console.warn('[App] Stripe init failed:', err),
+    );
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
