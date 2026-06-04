@@ -6,6 +6,8 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
+  Alert,
+  Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -48,6 +50,7 @@ import {
   CLIENT_HOGAR_HERO_SLIDES,
 } from '@constants/clientHomeHeroSlides';
 import type { ServiceType } from '@features/catalog/types';
+import { useClientPublishLimit } from '@features/jobs/hooks/useJobActiveLimits';
 import type { ClientStackParamList } from '@/types';
 
 type Nav = NativeStackNavigationProp<ClientStackParamList, 'CategoryGrid'>;
@@ -88,6 +91,7 @@ export const ClientHomeScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const profile = useAuthStore((s) => s.profile);
   const catalog = useCatalog();
+  const publishLimit = useClientPublishLimit();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('hogar');
   const [selectedExpressCat, setSelectedExpressCat] = useState<ExpressSubmenu | null>(null);
@@ -97,6 +101,12 @@ export const ClientHomeScreen: React.FC = () => {
   const firstName = profile?.full_name?.split(' ')[0] ?? 'Cliente';
 
   const handlePress = (slug: string, serviceLabel: string) => {
+    if (publishLimit.atLimit) {
+      const msg = publishLimit.message;
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Límite de solicitudes', msg);
+      return;
+    }
     navigation.navigate('CreateJobForm', { serviceTypeSlug: slug, serviceLabel });
   };
 

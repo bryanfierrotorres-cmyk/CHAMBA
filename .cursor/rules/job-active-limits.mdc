@@ -1,0 +1,31 @@
+---
+description: Límites de solicitudes activas — cliente 2 publicaciones, técnico 2 chambas hasta finalizar una
+alwaysApply: true
+---
+
+# Límites de chambas activas (2 + 2)
+
+## Reglas
+
+| Rol | Límite | Qué cuenta como activo |
+|-----|--------|------------------------|
+| **Cliente** | Máx. **2** solicitudes publicadas | `jobs` con `status` ≠ `completed` ni `cancelled` |
+| **Técnico** | Máx. **2** chambas hasta finalizar una | Postulación `pending` en job `open` + asignación `approved` en `taken` / `in_progress` |
+
+## Comportamiento UI
+
+- **Radar**: sigue mostrando todos los trabajos `open`; si el técnico está al límite, deshabilitar postulación (swipe/botón) con mensaje claro.
+- **Cliente**: bloquear nueva publicación en formulario e inicio si ya tiene 2 activas.
+
+## Backend (fuente de verdad)
+
+- Migración `020_job_active_limits.sql`
+- RPC: `count_client_active_jobs`, `count_worker_active_commitments`
+- Validación en: `create_client_job`, `accept_job`, `client_approve_worker_application`
+- Aplicar: `npm run db:apply-job-limits`
+
+## App
+
+- Constantes: `src/constants/jobLimits.ts`
+- Utilidades: `src/utils/jobActiveLimits.ts`
+- Hooks: `useClientPublishLimit`, `useWorkerCommitmentLimit`

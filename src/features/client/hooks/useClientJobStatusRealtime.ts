@@ -6,6 +6,10 @@ import { getClientOrderStatusLabel } from '@utils/formatters';
 import { syncProfileWithDatabase } from '@utils/profileSync';
 import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
 import { JOB_KEYS } from '@features/jobs/hooks/useJobs';
+import {
+  clientOrdersQueryKey,
+  patchClientOrderRowInCache,
+} from '@features/client/hooks/useClientOrders';
 import type { JobStatus } from '@/types';
 
 export interface ClientStatusToast {
@@ -23,13 +27,21 @@ type JobRow = {
 const statusKey = (row: JobRow): string =>
   `${row.status ?? ''}:${row.operational_phase ?? ''}`;
 
+const refreshClientOrders = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  clientId: string,
+): void => {
+  const key = clientOrdersQueryKey(clientId);
+  void queryClient.invalidateQueries({ queryKey: key });
+  void queryClient.refetchQueries({ queryKey: key, type: 'all' });
+};
+
 /**
  * Realtime (supabase.channel) sobre `jobs` (= solicitudes del cliente).
- * Cuando cambia `status` u `operational_phase`, dispara mensaje para el banner superior.
+ * Cuando cambia `status` u `operational_phase`, actualiza caché + banner superior.
  */
 export function useClientJobStatusRealtime(): ClientStatusToast | null {
   const profile = useAuthStore((s) => s.profile);
-  const isPhoneAuth = useAuthStore((s) => s.isPhoneAuth);
   const session = useAuthStore((s) => s.session);
   const queryClient = useQueryClient();
   const [toast, setToast] = useState<ClientStatusToast | null>(null);
@@ -48,12 +60,16 @@ export function useClientJobStatusRealtime(): ClientStatusToast | null {
       if (options?.skipIfUnchanged && lastStatusRef.current[row.id] === key) return;
       lastStatusRef.current[row.id] = key;
 
+      const clientId = clientIdRef.current;
+      if (clientId) {
+        patchClientOrderRowInCache(queryClient, clientId, row);
+        refreshClientOrders(queryClient, clientId);
+      }
+      void queryClient.invalidateQueries({ queryKey: JOB_KEYS.detail(row.id) });
+
       const label = getClientOrderStatusLabel(row.status, row.operational_phase);
       const title = row.title?.trim() ? `"${row.title.trim()}"` : 'Tu solicitud';
       pushToast(row.id, `${title}: ${label}`);
-
-      void queryClient.invalidateQueries({ queryKey: ['client-orders'] });
-      void queryClient.invalidateQueries({ queryKey: JOB_KEYS.detail(row.id) });
     },
     [pushToast, queryClient],
   );
@@ -77,7 +93,12 @@ export function useClientJobStatusRealtime(): ClientStatusToast | null {
         useAuthStore.getState().setProfile(synced);
       }
 
-      void ensurePhoneAuthSession(synced);
+      const authSession = await ensurePhoneAuthSession(synced);
+      if (cancelled) return;
+
+      if (authSession && !session?.access_token) {
+        useAuthStore.getState().setSession(authSession);
+      }
 
       const { data: existingJobs } = await supabase
         .from('jobs')
@@ -122,7 +143,7 @@ export function useClientJobStatusRealtime(): ClientStatusToast | null {
 
             const { data: jobRow } = await supabase
               .from('jobs')
-              .select('id, title, created_by')
+              .select('id, title, created_by, status, operational_phase')
               .eq('id', row.job_id)
               .maybeSingle();
 
@@ -135,12 +156,15 @@ export function useClientJobStatusRealtime(): ClientStatusToast | null {
               row.job_id,
               `${title}: un técnico postuló. Revisá su perfil en Mis Solicitudes.`,
             );
-            void queryClient.invalidateQueries({ queryKey: ['client-orders'] });
+            refreshClientOrders(queryClient, clientId);
           },
         )
-        .subscribe((status) => {
+        .subscribe((status, err) => {
           if (status === 'CHANNEL_ERROR') {
-            console.warn('[ClientRealtime] canal solicitudes: error de suscripción');
+            console.warn('[ClientRealtime] canal solicitudes:', err?.message ?? status);
+          }
+          if (status === 'TIMED_OUT') {
+            console.warn('[ClientRealtime] canal solicitudes: timeout');
           }
         });
     };
@@ -155,7 +179,6 @@ export function useClientJobStatusRealtime(): ClientStatusToast | null {
     profile?.id,
     profile?.role,
     profile?.phone,
-    isPhoneAuth,
     session?.access_token,
     notifyJobChange,
     pushToast,

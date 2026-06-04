@@ -15,6 +15,7 @@ import { Avatar } from '@components/Avatar';
 import { Card } from '@components/Card';
 import { ScreenBackButton } from '@components/navigation/ScreenBackButton';
 import { useJobDetail, useAcceptJob } from '../hooks/useJobs';
+import { useWorkerCommitmentLimit } from '@features/jobs/hooks/useJobActiveLimits';
 import { useAuthStore } from '@store/authStore';
 import { getLocalAssignments } from '@utils/localAssignments';
 import { WORKER_COLORS as COLORS, FONT_SIZE, SPACING, BORDER_RADIUS } from '@constants/workerTheme';
@@ -87,6 +88,7 @@ export const JobDetailScreen: React.FC = () => {
   const profile                          = useAuthStore((s) => s.profile);
   const { data: job, isLoading }         = useJobDetail(jobId);
   const { mutateAsync: accept, isPending } = useAcceptJob();
+  const workerLimit = useWorkerCommitmentLimit();
   const [accepted, setAccepted]          = useState(false);
   const [awaitingClientChoice, setAwaitingClientChoice] = useState(false);
   const [previewOpen, setPreviewOpen]    = useState(false);
@@ -121,7 +123,8 @@ export const JobDetailScreen: React.FC = () => {
     profile?.role === 'worker' &&
     profile?.is_approved &&
     !accepted &&
-    !awaitingClientChoice;
+    !awaitingClientChoice &&
+    !workerLimit.atLimit;
   const requestPhotoUrl = getJobRequestPhotoUrl(job);
   const payoutLabel = isAdmin ? 'Pago al técnico' : 'Tu ganancia';
   const payoutColor = isAdmin ? CHAMBA.blue : COLORS.brand[600];
@@ -390,6 +393,11 @@ export const JobDetailScreen: React.FC = () => {
               <Text style={styles.pendingText}>
                 Postulaste — el cliente revisará tu perfil y te elegirá
               </Text>
+            </View>
+          ) : workerLimit.atLimit ? (
+            <View style={styles.pendingBox}>
+              <Ionicons name="lock-closed-outline" size={18} color={COLORS.warning} />
+              <Text style={styles.pendingText}>{workerLimit.message}</Text>
             </View>
           ) : accepted ? (
             <View style={styles.takenBox}>

@@ -161,6 +161,7 @@ export interface JobAssignment {
   completed_at: string | null;
   payment_status: 'pending' | 'processing' | 'paid' | 'failed';
   payment_intent_id: string | null;
+  selection_status?: JobApplicationSelectionStatus | null;
   worker?: Partial<UserProfile>;
   job?: Partial<Job>;
 }

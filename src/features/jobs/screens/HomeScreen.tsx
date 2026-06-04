@@ -36,6 +36,7 @@ import { getLocalAssignments } from '@utils/localAssignments';
 import { syncProfileWithDatabase } from '@utils/profileSync';
 import { applyPilotProfile } from '@utils/pilotAccess';
 import { clearMismatchedAuthSession } from '@utils/phoneAuthSession';
+import { useWorkerCommitmentLimit } from '@features/jobs/hooks/useJobActiveLimits';
 import type { Job, JobCategory, JobStackParamList, WorkerTabParamList } from '@/types';
 
 type StackNav = NativeStackNavigationProp<JobStackParamList, 'JobList'>;
@@ -88,12 +89,15 @@ interface FeedItemProps {
   acceptedJobIds: Set<string>;
   processJobIds: Set<string>;
   awaitingClientChoice: boolean;
+  acceptBlocked: boolean;
+  acceptBlockedMessage: string;
   onPressDetail: () => void;
   onAccept: (job: Job) => Promise<void>;
   onInProcess: (job: Job) => void;
 }
 const FeedItem: React.FC<FeedItemProps> = ({
   job, isApproved, acceptingJobId, acceptedJobIds, processJobIds, awaitingClientChoice,
+  acceptBlocked, acceptBlockedMessage,
   onPressDetail, onAccept, onInProcess,
 }) => (
   <JobCard
@@ -101,6 +105,8 @@ const FeedItem: React.FC<FeedItemProps> = ({
     onPress={onPressDetail}
     showSwipe={isApproved && !awaitingClientChoice}
     awaitingClientChoice={awaitingClientChoice}
+    acceptBlocked={acceptBlocked}
+    acceptBlockedMessage={acceptBlockedMessage}
     onAccept={() => onAccept(job)}
     onInProcess={() => onInProcess(job)}
     isAccepting={acceptingJobId === job.id}
@@ -143,6 +149,7 @@ export const HomeScreen: React.FC = () => {
   const queryClient   = useQueryClient();
   const toast         = useToast();
   const { mutateAsync: acceptMut } = useAcceptJob();
+  const workerLimit = useWorkerCommitmentLimit();
 
   const [selectedCategory, setSelectedCategory] = useState<JobCategory | null>(null);
   const [acceptingJobId, setAcceptingJobId]      = useState<string | null>(null);
@@ -262,6 +269,10 @@ export const HomeScreen: React.FC = () => {
 
   const handleAccept = useCallback(async (job: Job) => {
     if (!profile?.id || !profile.is_approved) return;
+    if (workerLimit.atLimit) {
+      toast.show({ type: 'error', message: workerLimit.message }, 4000);
+      return;
+    }
     if (
       acceptingRef.current.has(job.id) ||
       acceptingJobId === job.id ||
@@ -306,7 +317,7 @@ export const HomeScreen: React.FC = () => {
       acceptingRef.current.delete(job.id);
       setAcceptingJobId(null);
     }
-  }, [profile, acceptMut, toast, acceptingJobId, acceptedJobIds, processJobIds]);
+  }, [profile, acceptMut, toast, acceptingJobId, acceptedJobIds, processJobIds, workerLimit.atLimit, workerLimit.message]);
 
   const handleInProcess = useCallback((job: Job) => {
     setProcessJobIds((prev) => new Set([...prev, job.id]));
@@ -379,6 +390,8 @@ export const HomeScreen: React.FC = () => {
             acceptedJobIds={acceptedJobIds}
             processJobIds={processJobIds}
             awaitingClientChoice={pendingApplicationIds.has(item.id)}
+            acceptBlocked={workerLimit.atLimit && !pendingApplicationIds.has(item.id)}
+            acceptBlockedMessage={workerLimit.message}
             onPressDetail={() => navigation.navigate('JobDetail', { jobId: item.id })}
             onAccept={handleAccept}
             onInProcess={handleInProcess}
@@ -405,6 +418,15 @@ export const HomeScreen: React.FC = () => {
                 <Ionicons name="time-outline" size={14} color={M3.tertiary} />
                 <Text style={styles.pendingText}>
                   Cuenta pendiente de aprobación — solo puedes ver las chambas
+                </Text>
+              </View>
+            )}
+
+            {isApproved && workerLimit.atLimit && (
+              <View style={styles.limitBanner}>
+                <Ionicons name="information-circle-outline" size={16} color={M3.primary} />
+                <Text style={styles.limitBannerText}>
+                  {workerLimit.message} Los trabajos siguen visibles en el radar.
                 </Text>
               </View>
             )}
@@ -508,6 +530,18 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: M3.tertiaryFixedDim,
   },
   pendingText: { color: M3.onTertiaryFixedVariant, fontSize: FONT_SIZE.xs, flex: 1 },
+  limitBanner: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    padding: SPACING.sm,
+    marginBottom: SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  limitBannerText: { color: '#1E40AF', fontSize: FONT_SIZE.xs, flex: 1, lineHeight: 18 },
 
   loadingWrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: SPACING['2xl'] },
 });

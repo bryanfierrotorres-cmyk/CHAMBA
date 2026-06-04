@@ -46,6 +46,7 @@ import {
 import { validateClientPrice } from '@constants/servicePricing';
 import { formatCurrency } from '@utils/formatters';
 import { useCatalog } from '@features/catalog/hooks/useCatalog';
+import { useClientPublishLimit } from '@features/jobs/hooks/useJobActiveLimits';
 import type { ClientStackParamList } from '@/types';
 
 type Nav = NativeStackNavigationProp<ClientStackParamList, 'CreateJobForm'>;
@@ -57,6 +58,7 @@ export const CreateJobFormScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const profile = useAuthStore((s) => s.profile);
   const queryClient = useQueryClient();
+  const publishLimit = useClientPublishLimit();
 
   const serviceTypeSlug =
     route.params.serviceTypeSlug ?? route.params.clientCategory ?? '';
@@ -102,7 +104,8 @@ export const CreateJobFormScreen: React.FC = () => {
     title.trim() &&
     description.trim() &&
     address.trim() &&
-    priceValidation.valid;
+    priceValidation.valid &&
+    !publishLimit.atLimit;
 
   const handleBudgetChange = (value: string) => {
     const cleaned = value.replace(/[^\d.]/g, '');
@@ -117,6 +120,13 @@ export const CreateJobFormScreen: React.FC = () => {
 
   const handleSubmit = async () => {
     if (!profile?.id || !canSubmit) return;
+
+    if (publishLimit.atLimit) {
+      const msg = publishLimit.message;
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Límite de solicitudes', msg);
+      return;
+    }
 
     const priceCheck = validateClientPrice(serviceTypeSlug, budgetAmount, priceLookup);
     if (!priceCheck.valid) {
@@ -209,6 +219,13 @@ export const CreateJobFormScreen: React.FC = () => {
         <Text style={[chambaStyles.sectionSubtitle, styles.sectionGap]}>
           Completa los campos para publicar tu pedido
         </Text>
+
+        {publishLimit.atLimit && (
+          <View style={styles.limitBanner}>
+            <Ionicons name="information-circle-outline" size={18} color="#0284C7" />
+            <Text style={styles.limitBannerText}>{publishLimit.message}</Text>
+          </View>
+        )}
 
         <View style={chambaStyles.stepCard}>
           <View style={chambaStyles.stepCardContent}>
@@ -376,6 +393,24 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   sectionGap: { marginBottom: 16 },
+  limitBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  limitBannerText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1E40AF',
+    lineHeight: 18,
+  },
   row: { flexDirection: 'row' },
   rowCol: { flex: 1 },
   rowGap: { width: 12 },

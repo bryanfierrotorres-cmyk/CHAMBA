@@ -28,6 +28,9 @@ interface JobCardProps {
   showSwipe?:     boolean;
   /** Postuló y espera que el cliente elija (máx. 3 técnicos). */
   awaitingClientChoice?: boolean;
+  /** Cupo de 2 chambas activas lleno — ver radar pero no postular. */
+  acceptBlocked?: boolean;
+  acceptBlockedMessage?: string;
 }
 
 export const JobCard: React.FC<JobCardProps> = ({
@@ -41,6 +44,8 @@ export const JobCard: React.FC<JobCardProps> = ({
   isInProcess = false,
   showSwipe = false,
   awaitingClientChoice = false,
+  acceptBlocked = false,
+  acceptBlockedMessage,
 }) => {
   const isUrgent = job.required_workers > 1 && job.slots_taken >= job.required_workers - 1;
   const hasClientPhoto = jobHasRequestPhoto(job);
@@ -130,6 +135,8 @@ export const JobCard: React.FC<JobCardProps> = ({
           isLoading={isAccepting}
           isAccepted={isAccepted}
           isInProcess={isInProcess}
+          disabled={acceptBlocked}
+          disabledLabel={acceptBlockedMessage}
         />
       ) : (
         <ChambaPressable onPress={onPress} style={styles.tapHint} pressScale={0.98}>

@@ -24,6 +24,9 @@ interface SwipeAcceptTrackProps {
   processLabel?:  string;
   /** Cambia al cambiar de trabajo para resetear el gesto. */
   resetKey?:      string;
+  /** Cupo de chambas activas lleno: solo ver en radar, no postular. */
+  disabled?:      boolean;
+  disabledLabel?: string;
 }
 
 type GestureEvent = {
@@ -44,7 +47,20 @@ export const SwipeAcceptTrack: React.FC<SwipeAcceptTrackProps> = ({
   successLabel = '¡Aceptado!',
   processLabel = 'En proceso',
   resetKey,
+  disabled = false,
+  disabledLabel = 'Finalizá una chamba en Agenda para postularte',
 }) => {
+  if (disabled) {
+    return (
+      <View style={styles.disabledBox}>
+        <Ionicons name="lock-closed-outline" size={18} color="#64748B" />
+        <Text style={styles.disabledText} numberOfLines={2}>
+          {disabledLabel}
+        </Text>
+      </View>
+    );
+  }
+
   const [trackWidth, setTrackWidth] = useState(0);
   const [phase, setPhase] = useState<SwipePhase>(() => {
     if (isInProcess) return 'in_process';
@@ -484,5 +500,23 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color:      CHAMBA.blue,
     textDecorationLine: 'underline',
+  },
+  disabledBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  disabledText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748B',
+    lineHeight: 18,
   },
 });

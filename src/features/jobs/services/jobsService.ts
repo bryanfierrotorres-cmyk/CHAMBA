@@ -37,6 +37,12 @@ import {
 } from '@utils/profileSync';
 import type { UserProfile } from '@/types';
 import { assertClientJobPlatformReady } from '@services/clientJobPlatform';
+import {
+  MAX_CLIENT_ACTIVE_JOBS,
+  MAX_WORKER_ACTIVE_COMMITMENTS,
+  CLIENT_ACTIVE_JOBS_LIMIT_MESSAGE,
+  WORKER_ACTIVE_COMMITMENTS_LIMIT_MESSAGE,
+} from '@constants/jobLimits';
 
 type ClientProfileRef = Pick<
   UserProfile,
@@ -463,6 +469,32 @@ export const fetchWorkerAssignments = async (
   return merged.length > 0 ? merged : localPool;
 };
 
+const coerceRpcCount = (data: unknown): number | null => {
+  if (typeof data === 'number' && Number.isFinite(data)) return data;
+  const n = Number(data);
+  return Number.isFinite(n) ? n : null;
+};
+
+const assertClientCanPublish = async (clientId: string): Promise<void> => {
+  const { data, error } = await supabase.rpc('count_client_active_jobs', {
+    p_client_id: clientId,
+  });
+  const count = coerceRpcCount(data);
+  if (!error && count !== null && count >= MAX_CLIENT_ACTIVE_JOBS) {
+    throw new Error(CLIENT_ACTIVE_JOBS_LIMIT_MESSAGE);
+  }
+};
+
+const assertWorkerCanPostulate = async (workerId: string): Promise<void> => {
+  const { data, error } = await supabase.rpc('count_worker_active_commitments', {
+    p_worker_id: workerId,
+  });
+  const count = coerceRpcCount(data);
+  if (!error && count !== null && count >= MAX_WORKER_ACTIVE_COMMITMENTS) {
+    throw new Error(WORKER_ACTIVE_COMMITMENTS_LIMIT_MESSAGE);
+  }
+};
+
 const tryRpcAccept = async (
   jobId: string,
   workerId: string,
@@ -515,6 +547,7 @@ const buildAssignment = (
     completed_at: null,
     payment_status: 'pending',
     payment_intent_id: null,
+    selection_status: selectionStatus,
     job: job
       ? {
           ...normalizeJobRow(job),
@@ -532,6 +565,7 @@ const acceptJobPilotFallback = async (
   jobId: string,
   workerId: string,
 ): Promise<{ assignmentId?: string; selectionStatus: 'pending' | 'approved' }> => {
+  await assertWorkerCanPostulate(workerId);
   const assignmentId = `${jobId}-${workerId}`;
 
   const { error: insertErr } = await supabase.from('job_assignments').insert({
@@ -731,6 +765,8 @@ export const acceptJob = async (
       }
     }
 
+    await assertWorkerCanPostulate(effectiveWorkerId);
+
     let rpc = await tryRpcAccept(jobId, effectiveWorkerId);
 
     const retriable =
@@ -809,6 +845,13 @@ export const acceptJob = async (
             assignment: localMine,
           };
         }
+      }
+
+      if (
+        rpc.error?.includes('2 chambas activas')
+        || rpc.error?.includes('worker_active_limit')
+      ) {
+        throw new Error(WORKER_ACTIVE_COMMITMENTS_LIMIT_MESSAGE);
       }
 
       if (!CONFIG.pilot.enabled) {
@@ -920,6 +963,10 @@ export const createJob = async (params: CreateJobParams): Promise<Job> => {
     throw new Error('Ingresa un monto válido mayor a cero');
   }
 
+  if (!params.relaxedPricing) {
+    await assertClientCanPublish(params.createdBy);
+  }
+
   const slugCategory = params.category.trim();
   const dbCategory = toDbJobCategory(params.category);
   const categoryAttempts = Array.from(new Set([slugCategory, dbCategory]));
@@ -958,6 +1005,13 @@ export const createJob = async (params: CreateJobParams): Promise<Job> => {
   }
 
   if (!job) {
+    if (
+      rpcFailedMsg.includes('2 solicitudes activas')
+      || rpcFailedMsg.includes('client_active_limit')
+    ) {
+      throw new Error(CLIENT_ACTIVE_JOBS_LIMIT_MESSAGE);
+    }
+
     let insertError: string | null = null;
 
     for (const cat of categoryAttempts) {

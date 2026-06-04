@@ -13,9 +13,10 @@ alwaysApply: true
 
 ## App
 
-- Hook: `useClientJobStatusRealtime` — escucha `UPDATE` en `jobs` y postulaciones en `job_assignments`.
+- Hook: `useClientJobStatusRealtime` — escucha `UPDATE` en `jobs` y postulaciones en `job_assignments`; **await** `ensurePhoneAuthSession` antes del canal; parchea caché con `patchClientOrderRowInCache`.
+- Lista: `useClientOrders` — polling cada 8s si hay solicitudes activas con técnico (`clientOrdersNeedLivePoll`).
 - UI: `ClientJobStatusToast` — banner superior (toast) en `ClientNavigator`.
-- Login teléfono: sincronizar perfil por teléfono + `ensurePhoneAuthSession` (no depender solo de JWT).
+- Login teléfono: sincronizar perfil por teléfono + `ensurePhoneAuthSession` (RLS realtime requiere `auth.uid()` = `created_by`).
 
 ## Supabase
 
