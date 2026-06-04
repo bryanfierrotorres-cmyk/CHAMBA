@@ -6,7 +6,7 @@ import {
   EXPRESS_SUBMENU_META,
 } from '@constants/clientHomeExpress';
 import type { ExpressSubmenu } from '@constants/servicesConfig';
-import { ALL_CONFIGURED_SERVICE_SLUGS } from '@constants/servicesConfig';
+import { ALL_CONFIGURED_SERVICE_SLUGS, CONFIGURED_SERVICE_SEEDS } from '@constants/servicesConfig';
 import { CONFIG } from '@constants/config';
 import type { UserProfile } from '@/types';
 
@@ -38,6 +38,18 @@ const findSubmenuForSlug = (slug: string): ExpressSubmenu | null => {
   return LEGACY_SPECIALTY_TO_SUBMENU[slug] ?? null;
 };
 
+const appendCatalogByCategorySlug = (out: Set<string>, categorySlug: string) => {
+  for (const seed of CONFIGURED_SERVICE_SEEDS) {
+    if (seed.categorySlug === categorySlug) out.add(seed.slug);
+  }
+};
+
+const appendCatalogSlugPrefix = (out: Set<string>, prefix: string) => {
+  for (const seed of CONFIGURED_SERVICE_SEEDS) {
+    if (seed.slug === prefix || seed.slug.startsWith(`${prefix}_`)) out.add(seed.slug);
+  }
+};
+
 /**
  * Todos los slugs de servicio incluidos al postular/aprobar una especialidad
  * (categoría principal Express + sus sub-servicios).
@@ -48,15 +60,21 @@ export const getWorkerCategoryFamily = (slug: string | null | undefined): JobCat
   const normalized = fromDbJobCategory(slug) ?? slug;
   const out = new Set<string>([normalized]);
 
+  const enrichSubmenuFamily = (menu: ExpressSubmenu) => {
+    collectSubmenuSlugs(menu).forEach((s) => out.add(s));
+    if (menu === 'limpieza') appendCatalogByCategorySlug(out, 'limpieza');
+    if (menu === 'jardineria') appendCatalogSlugPrefix(out, 'jardineria');
+  };
+
   const mainTile = EXPRESS_MAIN_TILES.find((t) => t.id === normalized || t.slug === normalized);
   if (mainTile?.submenu) {
-    collectSubmenuSlugs(mainTile.submenu).forEach((s) => out.add(s));
+    enrichSubmenuFamily(mainTile.submenu);
     return [...out] as JobCategory[];
   }
 
   const submenu = findSubmenuForSlug(normalized);
   if (submenu) {
-    collectSubmenuSlugs(submenu).forEach((s) => out.add(s));
+    enrichSubmenuFamily(submenu);
     return [...out] as JobCategory[];
   }
 
@@ -65,6 +83,11 @@ export const getWorkerCategoryFamily = (slug: string | null | undefined): JobCat
     for (const s of ALL_CONFIGURED_SERVICE_SLUGS) {
       if (s === prefix || s.startsWith(`${prefix}_`)) out.add(s);
     }
+  }
+
+  if (normalized === 'jardineria' || normalized.startsWith('jardineria_')) {
+    appendCatalogSlugPrefix(out, 'jardineria');
+    collectSubmenuSlugs('jardineria').forEach((s) => out.add(s));
   }
 
   return [...out] as JobCategory[];

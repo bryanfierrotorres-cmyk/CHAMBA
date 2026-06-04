@@ -140,8 +140,11 @@ export const fromDbJobCategory = (dbCategory: string | null | undefined): JobCat
 export const toDbJobCategoryQueryValues = (category: JobCategory | string): string[] => {
   const primary = toDbJobCategory(category);
   const legacyAliases: Record<string, string[]> = {
-    limpieza_sofas:         ['sofas'],
+    limpieza:               ['limpieza_sofas', 'limpieza_banos', 'limpieza_alfombra', 'conserjeria_ocasional', 'sofas', 'alfombra'],
+    limpieza_sofas:         ['sofas', 'limpieza_banos', 'conserjeria_ocasional', 'limpieza_alfombra', 'fumigacion', 'alfombra_institucional'],
     limpieza_alfombra:      ['alfombra', 'limpieza'],
+    limpieza_banos:         ['limpieza_banos'],
+    conserjeria_ocasional:  ['conserjeria_ocasional'],
     vehiculo_profundo:      ['vehiculos'],
     jardineria:             ['jardineria_corte', 'jardineria_poda', 'jardineria_patio'],
   };

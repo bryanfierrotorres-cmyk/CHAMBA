@@ -29,6 +29,9 @@ import {
 import { useJobStore } from '@store/jobStore';
 
 import { useAuthStore } from '@store/authStore';
+import { syncProfileWithDatabase } from '@utils/profileSync';
+import { applyPilotProfile } from '@utils/pilotAccess';
+import { clearMismatchedAuthSession } from '@utils/phoneAuthSession';
 
 import { useAssignmentsStore } from '@store/assignmentsStore';
 
@@ -125,21 +128,40 @@ export const useJobFeed = (
 
   const query = useInfiniteQuery({
 
-    queryKey: [...JOB_KEYS.feed(status, category), categories, profile?.id],
+    queryKey: [...JOB_KEYS.feed(status, category), categories, profile?.id, profile?.is_approved],
 
-    queryFn: ({ pageParam = 0 }) =>
-
-      fetchJobs({
+    queryFn: async ({ pageParam = 0 }) => {
+      let workerId: string | undefined;
+      if (profile?.role === 'worker') {
+        const synced = await syncProfileWithDatabase(profile);
+        workerId = synced.id;
+        await clearMismatchedAuthSession(synced);
+        if (
+          synced.id !== profile.id ||
+          synced.is_approved !== profile.is_approved ||
+          synced.category_1 !== profile.category_1 ||
+          synced.category_2 !== profile.category_2
+        ) {
+          const next = synced.role === 'worker' ? applyPilotProfile(synced) : synced;
+          useAuthStore.getState().setProfile(next);
+        }
+      }
+      return fetchJobs({
         status,
         category,
         categories,
         page: pageParam as number,
-        workerId: profile?.role === 'worker' ? profile.id : undefined,
-      }),
+        workerId,
+      });
+    },
 
     getNextPageParam: (last) => (last.hasMore ? last.page + 1 : undefined),
 
     initialPageParam: 0,
+
+    enabled: profile?.role !== 'worker' || !!profile?.id,
+
+    refetchOnMount: 'always',
 
   });
 

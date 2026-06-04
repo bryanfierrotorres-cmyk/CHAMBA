@@ -61,3 +61,18 @@ export const ensurePhoneAuthSession = async (
 
   return data.session;
 };
+
+/** Cierra sesión Auth si no coincide con el perfil (evita feed vacío por RLS). */
+export const clearMismatchedAuthSession = async (
+  profile: { id: string },
+): Promise<void> => {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const uid = data.session?.user?.id;
+    if (uid && uid !== profile.id) {
+      await supabase.auth.signOut();
+    }
+  } catch {
+    // ignorar
+  }
+};

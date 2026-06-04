@@ -1,0 +1,22 @@
+---
+description: Feed del técnico siempre conectado a trabajos publicados (prioridad app)
+alwaysApply: true
+---
+
+# Feed técnico (Radar) — prioridad máxima
+
+## Regla
+
+1. Los trabajos `open` publicados por clientes **deben** llegar al Radar del técnico aprobado con categoría compatible.
+2. El feed del técnico usa **`get_worker_open_jobs_feed(p_worker_id)`** como camino principal — **no** depender de JWT ni de `auth.uid()` (login nombre+teléfono).
+3. Antes de cada fetch, sincronizar perfil por teléfono (`syncProfileWithDatabase`) para usar el **ID canónico** de `profiles`.
+4. Si existe sesión Auth con `user.id` distinto al perfil, **cerrar sesión** (`clearMismatchedAuthSession`) para no vaciar el feed por RLS.
+
+## Prohibido
+
+- Usar solo `SELECT` en `jobs` para el Radar del técnico sin fallback RPC por `worker_id`.
+- Bloquear el feed con `categories: []` cuando el técnico está aprobado en BD pero el perfil local está desactualizado (sincronizar primero).
+
+## RPC / migración
+
+- `017_worker_feed_by_worker_id.sql` — obligatoria en Supabase producción.

@@ -324,10 +324,8 @@ export const fetchJobs = async ({
     };
   }
 
-  const { data: sessionWrap } = await supabase.auth.getSession();
-  const hasJwt = !!sessionWrap.session?.access_token;
-
-  if (workerId && !hasJwt) {
+  // Regla: feed del técnico SIEMPRE por worker_id (no depender de JWT / RLS).
+  if (workerId) {
     const workerFeed = await fetchJobsViaWorkerRpc({
       workerId,
       status,
