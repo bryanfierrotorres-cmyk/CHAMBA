@@ -17,6 +17,7 @@ import { Input } from '@components/Input';
 import { useAuthStore } from '@store/authStore';
 import { COLORS, FONT_SIZE, SPACING, BORDER_RADIUS } from '@constants/theme';
 import { validateRegistration } from '@utils/validation';
+import { showMessage } from '@utils/confirmAction';
 import type { AuthStackParamList, UserRole } from '@/types';
 
 type Nav = NativeStackNavigationProp<AuthStackParamList, 'Register'>;
@@ -67,14 +68,13 @@ const StepIndicator: React.FC<{ step: number; total: number }> = ({ step, total 
 
 export const RegisterScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
-  const { signUp, isLoading, error, setError } = useAuthStore();
+  const { registerPhoneProfile, isLoading, error, setError } = useAuthStore();
 
   // Form state
   const [step, setStep]           = useState(1);
   const [fullName, setFullName]   = useState('');
   const [email, setEmail]         = useState('');
   const [phone, setPhone]         = useState('');
-  const [password, setPassword]   = useState('');
   const [role, setRole]           = useState<UserRole>('worker');
   const [fieldError, setFieldError] = useState('');
 
@@ -96,7 +96,7 @@ export const RegisterScreen: React.FC = () => {
 
   // ── Validación por paso ───────────────────────────────────────
   const validateStep1 = () => {
-    const r = validateRegistration(fullName, email, phone, password);
+    const r = validateRegistration(fullName, email, phone);
     if (!r.valid) { setFieldError(r.message); return false; }
     setFieldError('');
     return true;
@@ -109,8 +109,15 @@ export const RegisterScreen: React.FC = () => {
 
   const handleRegister = async () => {
     try {
-      await signUp({ email, password, fullName, phone, role });
-      // El RootNavigator reacciona al cambio de sesión automáticamente
+      const telefono = phone.replace(/\D/g, '');
+      await registerPhoneProfile(fullName.trim(), telefono, role);
+      showMessage(
+        'Cuenta creada',
+        role === 'worker'
+          ? 'Ingresá con tu nombre y celular. Completá tus documentos y esperá la aprobación del administrador.'
+          : 'Ingresá con tu nombre y celular. Tu cuenta quedará en revisión hasta que el administrador la apruebe.',
+      );
+      navigation.navigate('Login');
     } catch {
       // Error ya está en el store
     }
@@ -133,7 +140,7 @@ export const RegisterScreen: React.FC = () => {
             style={styles.backBtn}
             hitSlop={12}
           >
-            <Ionicons name="arrow-back" size={22} color={COLORS.text.primary} />
+            <Ionicons name="chevron-back" size={26} color={COLORS.text.primary} />
           </TouchableOpacity>
           <StepIndicator step={step} total={2} />
         </View>
@@ -146,7 +153,6 @@ export const RegisterScreen: React.FC = () => {
               fullName={fullName}  setFullName={setFullName}
               email={email}        setEmail={setEmail}
               phone={phone}        setPhone={setPhone}
-              password={password}  setPassword={setPassword}
               fieldError={fieldError}
               onNext={handleNextStep}
             />
@@ -183,7 +189,6 @@ interface Step1Props {
   fullName: string; setFullName: (v: string) => void;
   email:    string; setEmail:    (v: string) => void;
   phone:    string; setPhone:    (v: string) => void;
-  password: string; setPassword: (v: string) => void;
   fieldError: string;
   onNext: () => void;
 }
@@ -192,12 +197,11 @@ const Step1: React.FC<Step1Props> = ({
   fullName, setFullName,
   email, setEmail,
   phone, setPhone,
-  password, setPassword,
   fieldError, onNext,
 }) => (
   <View style={styles.stepContent}>
     <Text style={styles.stepTitle}>Crea tu cuenta</Text>
-    <Text style={styles.stepSub}>Únete a CHAMBA y empieza a ganar</Text>
+    <Text style={styles.stepSub}>Sin contraseña — solo tu celular y correo</Text>
 
     <View style={styles.fields}>
       <Input
@@ -218,20 +222,16 @@ const Step1: React.FC<Step1Props> = ({
         leftIcon="mail-outline"
       />
       <Input
-        label="Teléfono (10 dígitos)"
-        placeholder="5512345678"
+        label="Celular Nicaragua (+505)"
+        placeholder="8888-8888"
         value={phone}
-        onChangeText={setPhone}
-        keyboardType="phone-pad"
+        onChangeText={(v) => {
+          const digits = v.replace(/\D/g, '').slice(0, 8);
+          setPhone(digits.length <= 4 ? digits : `${digits.slice(0, 4)}-${digits.slice(4)}`);
+        }}
+        keyboardType="number-pad"
+        maxLength={9}
         leftIcon="call-outline"
-      />
-      <Input
-        label="Contraseña"
-        placeholder="Mínimo 8 caracteres y un número"
-        value={password}
-        onChangeText={setPassword}
-        isPassword
-        leftIcon="lock-closed-outline"
       />
     </View>
 
@@ -347,9 +347,11 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xl,
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    minWidth: 48,
+    minHeight: 48,
+    width: 48,
+    height: 48,
+    borderRadius: 14,
     backgroundColor: COLORS.bg.elevated,
     alignItems: 'center',
     justifyContent: 'center',

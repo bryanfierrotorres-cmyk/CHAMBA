@@ -22,10 +22,14 @@ import { stitchTypography, stitchLayout, CARD_ELEVATION } from '@constants/stitc
 import { textInputWebFocusStyle } from '@constants/textInputFocus';
 import { getCategoryLabel, formatCurrency } from '@utils/formatters';
 import { sortServiceTypesByConfig } from '@constants/servicesConfig';
-import { fromDbJobCategory } from '@constants/chambaCategories';
 import { useCatalog } from '@features/catalog/hooks/useCatalog';
 import type { ServiceType } from '@features/catalog/types';
-import { getWorkerApprovedCategories } from '@utils/workerCategoryAccess';
+import {
+  expandWorkerFeedCategories,
+  getWorkerApprovedCategories,
+  getWorkerFeedCategories,
+  workerCoversJobCategory,
+} from '@utils/workerCategoryAccess';
 import { useAssignmentsStore } from '@store/assignmentsStore';
 import type { Job, JobCategory, JobStackParamList, WorkerTabParamList } from '@/types';
 
@@ -148,23 +152,30 @@ export const HomeScreen: React.FC = () => {
     [profile],
   );
 
+  const feedCategories = useMemo(
+    () => getWorkerFeedCategories(profile),
+    [profile],
+  );
+
   const filterChips = useMemo<CategoryItem[]>(() => {
-    const approved = new Set(approvedCategories);
+    const allowed = new Set(feedCategories);
     return sortServiceTypesByConfig(
-      catalog.serviceTypes.filter((t: ServiceType) => approved.has(t.slug)) as ServiceType[],
+      catalog.serviceTypes.filter((t: ServiceType) => allowed.has(t.slug)) as ServiceType[],
     ).map((t) => ({
       value: t.slug,
       label: t.name.trim(),
     }));
-  }, [catalog.serviceTypes, approvedCategories]);
+  }, [catalog.serviceTypes, feedCategories]);
 
-  const effectiveCategories = useMemo<JobCategory[]>(() => {
+  const effectiveCategories = useMemo<JobCategory[] | undefined>(() => {
     if (!profile?.is_approved) return [];
     if (selectedCategory) {
-      return approvedCategories.includes(selectedCategory) ? [selectedCategory] : [];
+      if (!approvedCategories.includes(selectedCategory)) return [];
+      return expandWorkerFeedCategories([selectedCategory]);
     }
-    return approvedCategories;
-  }, [selectedCategory, approvedCategories, profile?.is_approved]);
+    // Sin filtro chip: todas las especialidades + sub-servicios Express
+    return feedCategories.length > 0 ? feedCategories : undefined;
+  }, [selectedCategory, approvedCategories, feedCategories, profile?.is_approved]);
 
   const { data, isLoading, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useJobFeed('open', undefined, effectiveCategories);
@@ -181,17 +192,17 @@ export const HomeScreen: React.FC = () => {
   const storeMap  = useMemo(() => new Map(storeJobs.map((j) => [j.id, j])), [storeJobs]);
 
   const feedJobs = useMemo(() => {
-    const allowed = new Set(effectiveCategories);
+    const filterByCategory = effectiveCategories && effectiveCategories.length > 0;
     const byId = new Map<string, Job>();
 
     for (const j of queryJobs) {
+      if (filterByCategory && !workerCoversJobCategory(profile, j.category)) continue;
       byId.set(j.id, storeMap.get(j.id) ?? j);
     }
 
     for (const raw of storeJobs) {
       if (byId.has(raw.id)) continue;
-      const cat = fromDbJobCategory(raw.category as string) ?? raw.category;
-      if (!allowed.has(cat as JobCategory)) continue;
+      if (filterByCategory && !workerCoversJobCategory(profile, raw.category)) continue;
       if (raw.status !== 'open' && !processJobIds.has(raw.id)) continue;
       if (removedFromFeedIds.has(raw.id)) continue;
       byId.set(raw.id, storeMap.get(raw.id) ?? raw);
@@ -206,7 +217,7 @@ export const HomeScreen: React.FC = () => {
     return all.filter(
       (j) => j.title?.toLowerCase().includes(q) || j.description?.toLowerCase().includes(q),
     );
-  }, [queryJobs, storeMap, storeJobs, acceptedJobIds, processJobIds, removedFromFeedIds, effectiveCategories, searchQuery]);
+  }, [queryJobs, storeMap, storeJobs, acceptedJobIds, processJobIds, removedFromFeedIds, effectiveCategories, searchQuery, profile]);
 
   const handleAccept = useCallback(async (job: Job) => {
     if (!profile?.id || !profile.is_approved) return;

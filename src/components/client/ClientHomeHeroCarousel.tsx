@@ -1,147 +1,256 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, Image, StyleSheet, Pressable } from 'react-native';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import {
+  View,
+  Text,
+  Image,
+  StyleSheet,
+  FlatList,
+  Pressable,
+  useWindowDimensions,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { CARD_STEP_SHADOW, CHAMBA } from '@constants/chambaUI';
 import type { ClientHeroSlide } from '@constants/clientHomeHeroSlides';
 
-const ROTATE_MS = 2000;
-const FADE_MS = 320;
+const BANNER_HEIGHT = 196;
+const AUTO_ADVANCE_MS = 4500;
+const HORIZONTAL_PAD = 0;
+
+interface HeroSlidePhotoProps {
+  slide: ClientHeroSlide;
+}
+
+/** Foto con respaldo si la URL principal no carga (común en web con Unsplash). */
+const HeroSlidePhoto: React.FC<HeroSlidePhotoProps> = ({ slide }) => {
+  const [uri, setUri] = useState(slide.imageUri);
+  const [exhausted, setExhausted] = useState(false);
+
+  useEffect(() => {
+    setUri(slide.imageUri);
+    setExhausted(false);
+  }, [slide.id, slide.imageUri]);
+
+  const onError = () => {
+    if (slide.imageFallbackUri && uri !== slide.imageFallbackUri) {
+      setUri(slide.imageFallbackUri);
+      return;
+    }
+    setExhausted(true);
+  };
+
+  if (exhausted || !uri) {
+    return (
+      <View style={[styles.placeholder, exhausted && styles.placeholderFailed]}>
+        <Ionicons name="image-outline" size={36} color="#94A3B8" />
+        {slide.placeholderLabel ? (
+          <Text style={styles.placeholderLabel}>{slide.placeholderLabel}</Text>
+        ) : null}
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri }}
+      style={styles.photo}
+      resizeMode="cover"
+      accessibilityIgnoresInvertColors
+      onError={onError}
+    />
+  );
+};
 
 interface ClientHomeHeroCarouselProps {
   slides: ClientHeroSlide[];
 }
 
 /**
- * Banner del inicio cliente: rota mensajes cada 2 s con transición suave e indicadores.
+ * Banner superior del Home — deslizador horizontal aislado.
+ * No modifica ni depende de la grilla de categorías (Express, etc.).
  */
 export const ClientHomeHeroCarousel: React.FC<ClientHomeHeroCarouselProps> = ({
   slides,
 }) => {
-  const [index, setIndex] = useState(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const count = slides.length;
+  const { width: screenWidth } = useWindowDimensions();
+  const slideWidth = screenWidth - 40;
+  const listRef = useRef<FlatList<ClientHeroSlide>>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
 
-  const startAutoplay = useCallback(() => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    if (count <= 1) return;
-    intervalRef.current = setInterval(() => {
-      setIndex((i) => (i + 1) % count);
-    }, ROTATE_MS);
-  }, [count]);
+  const onScrollEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const x = e.nativeEvent.contentOffset.x;
+      const next = Math.round(x / slideWidth);
+      if (next >= 0 && next < slides.length) setActiveIndex(next);
+    },
+    [slideWidth, slides.length],
+  );
+
+  const goTo = useCallback(
+    (index: number) => {
+      if (index < 0 || index >= slides.length) return;
+      listRef.current?.scrollToIndex({ index, animated: true });
+      setActiveIndex(index);
+    },
+    [slides.length],
+  );
 
   useEffect(() => {
-    startAutoplay();
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [startAutoplay]);
+    if (slides.length <= 1) return undefined;
+    const timer = setInterval(() => {
+      setActiveIndex((prev) => {
+        const next = (prev + 1) % slides.length;
+        listRef.current?.scrollToIndex({ index: next, animated: true });
+        return next;
+      });
+    }, AUTO_ADVANCE_MS);
+    return () => clearInterval(timer);
+  }, [slides.length]);
 
-  useEffect(() => {
-    if (index >= count) setIndex(0);
-  }, [count, index]);
+  if (slides.length === 0) return null;
 
-  const goTo = (next: number) => {
-    setIndex(next);
-    startAutoplay();
-  };
+  const renderSlide = ({ item }: { item: ClientHeroSlide }) => (
+    <View style={[styles.slideOuter, { width: slideWidth }]}>
+      <View style={styles.slideCard}>
+        <HeroSlidePhoto slide={item} />
 
-  if (count === 0) return null;
-
-  const slide = slides[index];
+        <LinearGradient
+          colors={['transparent', 'rgba(15, 23, 42, 0.55)', 'rgba(15, 23, 42, 0.85)']}
+          locations={[0.35, 0.65, 1]}
+          style={styles.overlay}
+        >
+          <Text style={styles.heroTitle} numberOfLines={2}>
+            {item.title}
+          </Text>
+          <Text style={styles.heroSubtitle} numberOfLines={2}>
+            {item.subtitle}
+          </Text>
+        </LinearGradient>
+      </View>
+    </View>
+  );
 
   return (
-    <View style={styles.banner}>
-      <View style={styles.imageFrame}>
-        <Animated.View
-          key={`${slide.id}-${index}`}
-          entering={FadeIn.duration(FADE_MS)}
-          exiting={FadeOut.duration(FADE_MS * 0.7)}
-          style={styles.slideLayer}
-        >
-          <Image source={{ uri: slide.imageUri }} style={styles.heroImage} />
-        </Animated.View>
-      </View>
+    <View style={styles.bannerWrap}>
+      <FlatList
+        ref={listRef}
+        data={slides}
+        keyExtractor={(s) => s.id}
+        renderItem={renderSlide}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        decelerationRate="fast"
+        snapToInterval={slideWidth}
+        snapToAlignment="start"
+        bounces={slides.length > 1}
+        onMomentumScrollEnd={onScrollEnd}
+        onScrollToIndexFailed={(info) => {
+          setTimeout(() => {
+            listRef.current?.scrollToIndex({ index: info.index, animated: true });
+          }, 80);
+        }}
+        getItemLayout={(_, index) => ({
+          length: slideWidth,
+          offset: slideWidth * index,
+          index,
+        })}
+        contentContainerStyle={styles.listContent}
+        style={{ width: slideWidth }}
+      />
 
-      <Animated.View
-        key={`cap-${slide.id}-${index}`}
-        entering={FadeIn.duration(FADE_MS)}
-        exiting={FadeOut.duration(FADE_MS * 0.7)}
-        style={styles.heroCaption}
-      >
-        <Text style={styles.heroTitle} numberOfLines={2}>
-          {slide.title}
-        </Text>
-        <Text style={styles.heroSubtitle} numberOfLines={2}>
-          {slide.subtitle}
-        </Text>
-
-        {count > 1 && (
-          <View style={styles.dotsRow}>
-            {slides.map((s, i) => (
-              <Pressable
-                key={s.id}
-                onPress={() => goTo(i)}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Mensaje ${i + 1} de ${count}`}
-                accessibilityState={{ selected: i === index }}
-              >
-                <View style={[styles.dot, i === index && styles.dotActive]} />
-              </Pressable>
-            ))}
-          </View>
-        )}
-      </Animated.View>
+      {slides.length > 1 && (
+        <View style={styles.dotsRow}>
+          {slides.map((s, i) => (
+            <Pressable
+              key={s.id}
+              onPress={() => goTo(i)}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={`Banner ${i + 1} de ${slides.length}`}
+              accessibilityState={{ selected: i === activeIndex }}
+            >
+              <View style={[styles.dot, i === activeIndex && styles.dotActive]} />
+            </Pressable>
+          ))}
+        </View>
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  banner: {
+  bannerWrap: {
+    marginBottom: 20,
+    alignItems: 'flex-start',
+  },
+  listContent: {
+    paddingHorizontal: HORIZONTAL_PAD,
+  },
+  slideOuter: {
+    paddingRight: 0,
+  },
+  slideCard: {
+    height: BANNER_HEIGHT,
     borderRadius: 18,
     overflow: 'hidden',
-    marginBottom: 20,
-    backgroundColor: CHAMBA.white,
+    backgroundColor: '#CBD5E1',
     ...CARD_STEP_SHADOW,
   },
-  imageFrame: {
-    width: '100%',
-    height: 120,
-    backgroundColor: CHAMBA.border,
-    overflow: 'hidden',
-  },
-  slideLayer: {
+  photo: {
     ...StyleSheet.absoluteFillObject,
-  },
-  heroImage: {
     width: '100%',
     height: '100%',
   },
-  heroCaption: {
-    backgroundColor: CHAMBA.white,
+  placeholder: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#CBD5E1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  placeholderFailed: {
+    backgroundColor: '#94A3B8',
+  },
+  placeholderLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#94A3B8',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'flex-end',
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 14,
-    minHeight: 88,
+    paddingBottom: 16,
+    paddingTop: 24,
   },
   heroTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: CHAMBA.navy,
-    marginBottom: 4,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 6,
     letterSpacing: -0.3,
+    textShadowColor: 'rgba(0,0,0,0.35)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   heroSubtitle: {
-    fontSize: 13,
-    color: CHAMBA.muted,
-    fontWeight: '400',
-    lineHeight: 18,
+    fontSize: 14,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.92)',
+    lineHeight: 20,
   },
   dotsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
     marginTop: 10,
+    width: '100%',
   },
   dot: {
     width: 6,

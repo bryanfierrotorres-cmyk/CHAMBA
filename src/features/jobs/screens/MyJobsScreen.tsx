@@ -1,9 +1,15 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
-  View, Text, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity,
+  View,
+  Text,
+  FlatList,
+  RefreshControl,
+  ActivityIndicator,
+  TouchableOpacity,
   StyleSheet,
 } from 'react-native';
 import { ChambaPressable } from '@components/chamba/ChambaPressable';
+import { ChambaSlidingToggle } from '@components/chamba/ChambaSlidingToggle';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,21 +25,29 @@ import {
 } from '../hooks/useJobs';
 import { useAssignmentsStore } from '@store/assignmentsStore';
 import { useAuthStore } from '@store/authStore';
-import { M3, SPACING, CARD_ELEVATION, stitchTypography } from '@constants/stitchStyles';
+import { M3, SPACING, CARD_ELEVATION } from '@constants/stitchStyles';
 import { CHAMBA, chambaStyles } from '@constants/chambaUI';
 import { CategoryIconCircle } from '@utils/categoryVisual';
 import {
-  formatCurrency, formatDate, getCategoryLabel,
+  formatCurrency,
+  formatDate,
+  getCategoryLabel,
 } from '@utils/formatters';
 import { confirmAction, showMessage } from '@utils/confirmAction';
 import {
   isActiveOperationalJob,
+  isWorkerAssignmentActive,
+  isWorkerAssignmentHistory,
   getPhaseAction,
   resolveOperationalPhase,
 } from '@utils/workerOperationalPhase';
 import type { WorkerTabParamList, JobAssignment, WorkerOperationalPhase } from '@/types';
 
 type Nav = BottomTabNavigationProp<WorkerTabParamList, 'MyJobs'>;
+type AgendaFilter = 'activas' | 'historial';
+
+const sortByRecentAssignment = (a: JobAssignment, b: JobAssignment): number =>
+  new Date(b.assigned_at).getTime() - new Date(a.assigned_at).getTime();
 
 export const MyJobsScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
@@ -51,6 +65,47 @@ export const MyJobsScreen: React.FC = () => {
   const { mutateAsync: completeMut, isPending: isCompleting } = useCompleteJob();
   const { mutateAsync: advanceMut, isPending: isAdvancing } = useAdvanceOperationalPhase();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [agendaFilter, setAgendaFilter] = useState<AgendaFilter>('activas');
+
+  const { activeAssignments, historyAssignments } = useMemo(() => {
+    const active: JobAssignment[] = [];
+    const history: JobAssignment[] = [];
+    for (const item of assignments) {
+      if (isWorkerAssignmentHistory(item.job)) {
+        history.push(item);
+      } else if (isWorkerAssignmentActive(item.job)) {
+        active.push(item);
+      } else {
+        history.push(item);
+      }
+    }
+    active.sort(sortByRecentAssignment);
+    history.sort(sortByRecentAssignment);
+    return { activeAssignments: active, historyAssignments: history };
+  }, [assignments]);
+
+  const filterTabs = useMemo(
+    () => [
+      {
+        id: 'activas' as const,
+        label:
+          activeAssignments.length > 0
+            ? `Activas (${activeAssignments.length})`
+            : 'Activas',
+      },
+      {
+        id: 'historial' as const,
+        label:
+          historyAssignments.length > 0
+            ? `Historial (${historyAssignments.length})`
+            : 'Historial',
+      },
+    ],
+    [activeAssignments.length, historyAssignments.length],
+  );
+
+  const visibleAssignments =
+    agendaFilter === 'activas' ? activeAssignments : historyAssignments;
 
   useFocusEffect(
     useCallback(() => {
@@ -98,6 +153,7 @@ export const MyJobsScreen: React.FC = () => {
     try {
       await completeMut({ jobId: item.job_id, assignmentId: item.id });
       showMessage('¡Servicio finalizado!', 'La chamba fue marcada como completada.');
+      setAgendaFilter('historial');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'No se pudo finalizar';
       showMessage('Error', msg);
@@ -110,13 +166,50 @@ export const MyJobsScreen: React.FC = () => {
     .filter((a) => a.payment_status === 'paid')
     .reduce((sum, a) => sum + (a.job?.worker_payout ?? 0), 0);
 
+  const openAssignment = useCallback((item: JobAssignment) => {
+    if (!item.job_id) return;
+    const status = item.job?.status;
+    if (
+      status === 'taken'
+      || status === 'in_progress'
+      || status === 'completed'
+    ) {
+      navigation.navigate('JobFeed', {
+        screen: 'JobActive',
+        params: { jobId: item.job_id },
+      });
+      return;
+    }
+    navigation.navigate('JobFeed', {
+      screen: 'JobDetail',
+      params: { jobId: item.job_id },
+    });
+  }, [navigation]);
+
+  const listEmpty = agendaFilter === 'activas' ? (
+    <EmptyState
+      icon="flash-outline"
+      title="Sin chambas activas"
+      subtitle="Aceptá un trabajo en el radar y aparecerá aquí con los pasos del servicio."
+    />
+  ) : (
+    <EmptyState
+      icon="archive-outline"
+      title="Sin historial aún"
+      subtitle="Tus chambas completadas o canceladas se listarán en esta sección."
+    />
+  );
+
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <WorkerTopBar avatarName="CHAMBA" />
 
       <View style={styles.header}>
-        <Text style={stitchTypography.bodySm}>Agenda</Text>
-        <Text style={stitchTypography.headlineLg}>Mis Chambas</Text>
+        <Text style={styles.headerEyebrow}>Agenda</Text>
+        <Text style={styles.headerTitle}>Mis Chambas</Text>
+        <Text style={styles.headerSubtitle}>
+          Gestioná trabajos en curso y revisá tu historial
+        </Text>
 
         {totalEarned > 0 && (
           <View style={styles.walletCard}>
@@ -128,9 +221,29 @@ export const MyJobsScreen: React.FC = () => {
           </View>
         )}
 
+        <ChambaSlidingToggle
+          options={filterTabs}
+          active={agendaFilter}
+          onChange={setAgendaFilter}
+          style={styles.agendaToggle}
+        />
+
+        {agendaFilter === 'activas' && activeAssignments.length > 0 && (
+          <Text style={styles.sectionHint}>
+            {activeAssignments.length === 1
+              ? '1 chamba en curso — actualizá el estado desde la tarjeta'
+              : `${activeAssignments.length} chambas en curso`}
+          </Text>
+        )}
+        {agendaFilter === 'historial' && historyAssignments.length > 0 && (
+          <Text style={styles.sectionHint}>
+            Servicios finalizados o cancelados
+          </Text>
+        )}
+
         {!!error && (
           <View style={styles.errorCard}>
-            <Text style={styles.errorTitle}>No se pudo cargar tu historial</Text>
+            <Text style={styles.errorTitle}>No se pudo cargar tu agenda</Text>
             <Text style={styles.errorSub}>Verifica tu sesión y vuelve a intentar.</Text>
             <TouchableOpacity onPress={() => refetch()}>
               <Text style={styles.retryText}>Reintentar</Text>
@@ -145,30 +258,13 @@ export const MyJobsScreen: React.FC = () => {
         </View>
       ) : (
         <FlatList
-          data={assignments}
+          data={visibleAssignments}
           keyExtractor={(a) => a.id}
           renderItem={({ item }) => (
             <AssignmentCard
               assignment={item}
-              onPress={() => {
-                if (!item.job_id) return;
-                const status = item.job?.status;
-                if (
-                  status === 'taken'
-                  || status === 'in_progress'
-                  || status === 'completed'
-                ) {
-                  navigation.navigate('JobFeed', {
-                    screen: 'JobActive',
-                    params: { jobId: item.job_id },
-                  });
-                  return;
-                }
-                navigation.navigate('JobFeed', {
-                  screen: 'JobDetail',
-                  params: { jobId: item.job_id },
-                });
-              }}
+              variant={agendaFilter}
+              onPress={() => openAssignment(item)}
               onAdvance={(phase) => { void handleAdvance(item, phase); }}
               onFinalize={() => { void handleFinalize(item); }}
               isBusy={busyId === item.id && (isCompleting || isAdvancing)}
@@ -178,13 +274,7 @@ export const MyJobsScreen: React.FC = () => {
           refreshControl={
             <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={M3.primary} />
           }
-          ListEmptyComponent={
-            <EmptyState
-              icon="briefcase-outline"
-              title="Sin chambas aún"
-              subtitle="Acepta tu primera chamba y aparecerá aquí"
-            />
-          }
+          ListEmptyComponent={listEmpty}
         />
       )}
     </View>
@@ -193,18 +283,25 @@ export const MyJobsScreen: React.FC = () => {
 
 const AssignmentCard: React.FC<{
   assignment: JobAssignment;
+  variant: AgendaFilter;
   onPress: () => void;
   onAdvance: (phase: WorkerOperationalPhase) => void;
   onFinalize: () => void;
   isBusy?: boolean;
 }> = ({
-  assignment, onPress, onAdvance, onFinalize, isBusy = false,
+  assignment,
+  variant,
+  onPress,
+  onAdvance,
+  onFinalize,
+  isBusy = false,
 }) => {
   const job = assignment.job;
   const hasJob = !!job;
   const title = job?.title ?? `Trabajo ${assignment.job_id.slice(0, 8)}`;
+  const isHistory = variant === 'historial';
   const subtitle = job?.category
-    ? `${getCategoryLabel(job.category)} • ${formatDate(assignment.assigned_at)}`
+    ? `${getCategoryLabel(job.category)} · ${formatDate(assignment.assigned_at)}`
     : `Aceptado el ${formatDate(assignment.assigned_at)}`;
 
   const paymentColor =
@@ -224,10 +321,13 @@ const AssignmentCard: React.FC<{
       : 'Pendiente';
 
   const category = job?.category ?? '';
-  const showStepper = hasJob && isActiveOperationalJob(job);
+  const showStepper = !isHistory && hasJob && isActiveOperationalJob(job);
 
   return (
-    <ChambaPressable onPress={onPress} style={styles.card}>
+    <ChambaPressable
+      onPress={onPress}
+      style={[styles.card, isHistory && styles.cardHistory]}
+    >
       <View style={styles.cardRow}>
         <View style={styles.cardContent}>
           <View style={styles.badgeRow}>
@@ -238,7 +338,9 @@ const AssignmentCard: React.FC<{
           <Text style={styles.cardPrice}>
             {hasJob ? formatCurrency(job.worker_payout ?? 0) : '—'}
           </Text>
-          <Text style={[styles.paymentLabel, { color: paymentColor }]}>{paymentLabel}</Text>
+          {!isHistory && (
+            <Text style={[styles.paymentLabel, { color: paymentColor }]}>{paymentLabel}</Text>
+          )}
         </View>
 
         {category ? (
@@ -259,6 +361,13 @@ const AssignmentCard: React.FC<{
           compact
         />
       )}
+
+      {isHistory && (
+        <View style={styles.historyFooter}>
+          <Ionicons name="chevron-forward" size={16} color={CHAMBA.muted} />
+          <Text style={styles.historyFooterText}>Ver detalle</Text>
+        </View>
+      )}
     </ChambaPressable>
   );
 };
@@ -266,6 +375,31 @@ const AssignmentCard: React.FC<{
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: CHAMBA.bg },
   header: { paddingHorizontal: SPACING.md, paddingBottom: SPACING.sm },
+  headerEyebrow: {
+    fontSize: 12,
+    color: CHAMBA.muted,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  headerTitle: {
+    fontSize: 26,
+    fontWeight: '600',
+    color: CHAMBA.navy,
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    color: CHAMBA.muted,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  agendaToggle: { marginTop: SPACING.md, marginBottom: 8 },
+  sectionHint: {
+    fontSize: 12,
+    color: CHAMBA.muted,
+    marginBottom: 4,
+    paddingHorizontal: 2,
+  },
   walletCard: {
     marginTop: SPACING.md,
     backgroundColor: M3.secondaryContainer,
@@ -296,6 +430,10 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     marginBottom: 14,
     ...CARD_ELEVATION,
+  },
+  cardHistory: {
+    borderWidth: 1,
+    borderColor: CHAMBA.border,
   },
   cardRow: {
     flexDirection: 'row',
@@ -331,4 +469,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#007AFF',
   },
   paymentLabel: { fontSize: 12, fontWeight: '700', marginTop: 2 },
+  historyFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 4,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: CHAMBA.border,
+  },
+  historyFooterText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: CHAMBA.muted,
+  },
 });

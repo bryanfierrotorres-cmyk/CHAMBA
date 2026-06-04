@@ -6,23 +6,26 @@ import type { UserProfile } from '@/types';
 export const isPilotFreeAccess = (): boolean => CONFIG.pilot.enabled;
 
 /**
- * Normalizes any profile for unrestricted pilot/testing access:
- * approved, active, all categories enabled, docs bypassed.
+ * Piloto: bypass de documentos y categorías solo para perfiles ya aprobados en BD.
+ * No cambia is_approved — eso lo define el administrador.
  */
 export const applyPilotProfile = (profile: UserProfile): UserProfile => {
-  if (!CONFIG.pilot.enabled) return profile;
+  if (!CONFIG.pilot.enabled || !profile.is_approved) return profile;
 
   if (profile.role === 'client') {
-    return { ...profile, is_approved: true };
+    return profile;
+  }
+
+  if (profile.role !== 'worker') {
+    return profile;
   }
 
   return {
     ...profile,
-    is_approved:           true,
     worker_status:         profile.worker_status === 'suspended' ? 'active' : (profile.worker_status ?? 'active'),
     cedula_url:            profile.cedula_url            ?? PILOT_DOCUMENT_BYPASS,
     record_policia_url:    profile.record_policia_url    ?? PILOT_DOCUMENT_BYPASS,
-    category_1_approved:   true,
-    category_2_approved:   true,
+    category_1_approved:   profile.category_1 ? true : profile.category_1_approved,
+    category_2_approved:   profile.category_2 ? (profile.category_2_approved || true) : false,
   };
 };

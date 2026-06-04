@@ -1,69 +1,81 @@
-import {
-  CLIENT_EMPRESA_HERO_IMAGE,
-  CLIENT_HOGAR_HERO_IMAGE,
-  CLIENT_VEHICULOS_HERO_IMAGE,
-  EXPRESS_MAIN_SERVICE_IMAGES,
-} from '@constants/clientHomeImages';
+/**
+ * Datos del banner superior (Home) — carrusel tipo reel con foto de fondo.
+ */
+
+import { getHeroSlideImages } from '@constants/clientHomeImages';
 
 export interface ClientHeroSlide {
   id: string;
-  imageUri: string;
   title: string;
   subtitle: string;
+  imageUri: string;
+  imageFallbackUri: string;
+  placeholderLabel?: string;
 }
 
-/** Mensajes rotativos — tab Para tu Hogar. */
+const slide = (
+  id: string,
+  title: string,
+  subtitle: string,
+  placeholderLabel?: string,
+): ClientHeroSlide => {
+  const imgs = getHeroSlideImages(id);
+  return {
+    id,
+    title,
+    subtitle,
+    imageUri: imgs.primary,
+    imageFallbackUri: imgs.fallback,
+    placeholderLabel,
+  };
+};
+
+/** Slides — tab Para tu Hogar. */
 export const CLIENT_HOGAR_HERO_SLIDES: ClientHeroSlide[] = [
-  {
-    id: 'expertos',
-    imageUri: CLIENT_HOGAR_HERO_IMAGE,
-    title: 'Expertos listos para ayudarte',
-    subtitle: 'Garantía Chamba en cada servicio que contratás',
-  },
-  {
-    id: 'express',
-    imageUri: EXPRESS_MAIN_SERVICE_IMAGES.limpieza,
-    title: 'Servicios Express con precio fijo',
-    subtitle: 'Reservá en minutos, sin sorpresas en el cobro',
-  },
-  {
-    id: 'verificados',
-    imageUri: EXPRESS_MAIN_SERVICE_IMAGES.ac,
-    title: 'Técnicos verificados en Managua',
-    subtitle: 'Perfiles revisados antes de llegar a tu hogar',
-  },
-  {
-    id: 'rapido',
-    imageUri: CLIENT_VEHICULOS_HERO_IMAGE,
-    title: 'Respuesta rápida el mismo día',
-    subtitle: 'Seguimiento en tiempo real desde Mis Solicitudes',
-  },
+  slide(
+    'hogar-promo-segundo-servicio',
+    'Ahorra en tu próximo servicio',
+    'Obtén un 15% de descuento al realizar tu segundo servicio con nosotros.',
+    'Promoción',
+  ),
+  slide(
+    'hogar-limpieza',
+    'Tu hogar impecable sin complicaciones',
+    'Profesionales verificados, precio claro y reserva en minutos',
+    'Limpieza',
+  ),
+  slide(
+    'hogar-mantenimiento',
+    'Clima, plomería y más en un solo lugar',
+    'Técnicos capacitados para resolver antes de que empeore',
+    'Mantenimiento',
+  ),
+  slide(
+    'hogar-vida',
+    'Cuidado para tu familia y tus espacios',
+    'Jardinería, mascotas y mandados con seguimiento en la app',
+    'Hogar & mascotas',
+  ),
 ];
 
-/** Mensajes rotativos — tab Para tu Negocio. */
+/** Slides — tab Para tu Negocio. */
 export const CLIENT_EMPRESA_HERO_SLIDES: ClientHeroSlide[] = [
-  {
-    id: 'demanda',
-    imageUri: CLIENT_EMPRESA_HERO_IMAGE,
-    title: 'Personal bajo demanda para tu negocio',
-    subtitle: 'Cubrí picos de trabajo sin contratos largos',
-  },
-  {
-    id: 'modalidad',
-    imageUri: EXPRESS_MAIN_SERVICE_IMAGES.mandados,
-    title: 'Por horas o por jornadas completas',
-    subtitle: 'Elegí la modalidad que mejor se adapte a tu operación',
-  },
-  {
-    id: 'capacitado',
-    imageUri: EXPRESS_MAIN_SERVICE_IMAGES.limpieza,
-    title: 'Personal capacitado y supervisado',
-    subtitle: 'Conserjes, cocina, meseros y apoyo operativo',
-  },
-  {
-    id: 'premium',
-    imageUri: EXPRESS_MAIN_SERVICE_IMAGES.car,
-    title: 'Servicios Premium para empresas',
-    subtitle: 'Fumigación, alfombras institucionales y más',
-  },
+  slide(
+    'empresa-operativo',
+    'Personal operativo cuando lo necesitás',
+    'Cubrí picos de demanda sin contratos largos ni fricción',
+    'Operativo',
+  ),
+  slide(
+    'empresa-limpieza',
+    'Limpieza y conserjería para tu negocio',
+    'Equipos confiables para oficinas, locales y áreas comunes',
+    'Institucional',
+  ),
+  slide(
+    'empresa-eventos',
+    'Meseros, cocina y apoyo en eventos',
+    'Contratá por horas o jornada según tu operación del día',
+    'Servicio',
+  ),
 ];

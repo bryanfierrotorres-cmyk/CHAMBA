@@ -22,6 +22,22 @@ export const CARD_STEP_SHADOW = {
   elevation: 4,
 } as const;
 
+/** Área mínima táctil recomendada para móvil (Material / iOS HIG). */
+export const TOUCH_TARGET_MIN = 48;
+
+/** Fondos mate para íconos de subcategorías Express (sin azul uniforme). */
+export const SUBCATEGORY_MATT_COLORS = [
+  '#5B7A6A',
+  '#4A6578',
+  '#5C6470',
+  '#8A7342',
+  '#9A6B5C',
+  '#6B5B7A',
+] as const;
+
+export const getSubcategoryIconColor = (index: number): string =>
+  SUBCATEGORY_MATT_COLORS[index % SUBCATEGORY_MATT_COLORS.length];
+
 export const chambaStyles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: CHAMBA.bg },
   screenHeader: {
@@ -36,10 +52,11 @@ export const chambaStyles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   screenSubtitle: {
-    fontSize: 14,
+    fontSize: 15,
     color: CHAMBA.muted,
     marginTop: 2,
     fontWeight: '400',
+    lineHeight: 21,
   },
   sectionTitle: {
     fontSize: 22,
@@ -48,10 +65,11 @@ export const chambaStyles = StyleSheet.create({
     letterSpacing: -0.3,
   },
   sectionSubtitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: CHAMBA.muted,
     marginTop: 2,
     fontWeight: '400',
+    lineHeight: 20,
   },
   stepCard: {
     backgroundColor: CHAMBA.white,
@@ -65,10 +83,15 @@ export const chambaStyles = StyleSheet.create({
   },
   stepCardContent: { flex: 1, paddingRight: 12, minWidth: 0 },
   cardTitle: { fontSize: 16, fontWeight: '600', color: CHAMBA.navy, marginBottom: 2 },
-  cardSubtitle: { fontSize: 13, color: CHAMBA.muted, fontWeight: '400' },
+  cardSubtitle: {
+    fontSize: 14,
+    color: CHAMBA.muted,
+    fontWeight: '400',
+    lineHeight: 20,
+  },
   iconCircleRight: {
-    width: 44,
-    height: 44,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
     borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
@@ -97,18 +120,21 @@ export const chambaStyles = StyleSheet.create({
     elevation: 4,
   },
   gradientButton: {
+    minHeight: TOUCH_TARGET_MIN,
     paddingVertical: 12,
     alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 24,
   },
   tabInactiveButton: {
     flex: 1,
+    minHeight: TOUCH_TARGET_MIN,
     paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tabTextActive: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
-  tabTextInactive: { color: '#2D3748', fontSize: 14, fontWeight: '600' },
+  tabTextActive: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  tabTextInactive: { color: '#2D3748', fontSize: 15, fontWeight: '600' },
   panelCard: {
     backgroundColor: CHAMBA.white,
     borderRadius: 18,
@@ -150,9 +176,10 @@ export const chambaStyles = StyleSheet.create({
     ...CARD_STEP_SHADOW,
   },
   priceLine: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: CHAMBA.blue,
+    lineHeight: 18,
   },
   demandBadge: {
     backgroundColor: '#E0F2FE',

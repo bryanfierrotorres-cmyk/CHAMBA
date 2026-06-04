@@ -27,7 +27,7 @@ const MIGRATIONS = [
   '012_worker_operational_phase.sql',
   '013_job_work_photos.sql',
   '014_b2b_negocio_catalog.sql',
-  '015_pet_subcategories.sql',
+  '015_jobs_worker_feed_rls.sql',
   '016_vehiculos_subcategories.sql',
   '017_pet_grooming.sql',
   '018_fix_signup_client_role.sql',

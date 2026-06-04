@@ -57,7 +57,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 }
 
 function AppBootstrap() {
-  const { setSession, setHydrated, setLoading, fetchProfile, loadFromStorage, reset } = useAuthStore();
+  const { setSession, setHydrated, setLoading, fetchProfile, reset, loadFromStorage } = useAuthStore();
 
   useWebRootStyles();
 
@@ -98,21 +98,39 @@ function AppBootstrap() {
           }
         }
 
-        const foundPilot = await withTimeout(loadFromStorage(), 3000, false);
+        const { data: { session } } = await withTimeout(
+          supabase.auth.getSession(),
+          8000,
+          { data: { session: null }, error: null },
+        );
         if (cancelled) return;
 
-        if (!foundPilot) {
-          const { data: { session } } = await withTimeout(
-            supabase.auth.getSession(),
-            8000,
-            { data: { session: null }, error: null },
-          );
-          if (cancelled) return;
-
-          setSession(session);
-          if (session?.user) {
+        setSession(session);
+        if (!session?.user) {
+          await loadFromStorage();
+        } else if (session?.user) {
+          const { fetchProfileByPhone } = await import('@utils/profileSync');
+          const metaPhone = session.user.phone?.replace(/\D/g, '').slice(-8);
+          const byPhone = metaPhone ? await fetchProfileByPhone(metaPhone) : null;
+          if (byPhone) {
+            let restored = byPhone;
+            if (restored.role === 'worker') {
+              const { applyPilotProfile } = await import('@utils/pilotAccess');
+              const { ensureProfileInDb } = await import('@utils/profileSync');
+              restored = applyPilotProfile({ ...restored, id: session.user.id });
+              await ensureProfileInDb(restored);
+            }
+            useAuthStore.getState().setProfile(restored);
+          } else {
             await withTimeout(fetchProfile(session.user.id), 8000, undefined);
+            const p = useAuthStore.getState().profile;
+            if (p?.role === 'worker') {
+              const { applyPilotProfile } = await import('@utils/pilotAccess');
+              const { ensureProfileInDb } = await import('@utils/profileSync');
+              await ensureProfileInDb(applyPilotProfile({ ...p, id: session.user.id }));
+            }
           }
+          useAuthStore.getState().setPhoneAuth(false);
         }
       } catch (err) {
         console.warn('[App] bootstrap error:', err);

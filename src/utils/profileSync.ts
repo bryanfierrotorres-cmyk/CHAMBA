@@ -92,9 +92,7 @@ export const syncProfileWithDatabase = async (
 ): Promise<UserProfile> => {
   const phone = normalizePhone(profile.phone);
   if (!phone) {
-    return profile.role === 'client'
-      ? { ...profile, role: 'client', is_approved: true }
-      : applyPilotProfile(profile);
+    return profile.role === 'worker' ? applyPilotProfile(profile) : profile;
   }
 
   try {
@@ -102,23 +100,17 @@ export const syncProfileWithDatabase = async (
     if (byPhone) {
       const merged: UserProfile = {
         ...byPhone,
-        role: profile.role,
+        role: byPhone.role === 'admin' ? byPhone.role : profile.role,
         full_name: profile.full_name || byPhone.full_name,
-        is_approved: true,
+        is_approved: !!byPhone.is_approved,
       };
-      if (profile.role === 'client') {
-        return { ...merged, role: 'client', is_approved: true };
-      }
-      return applyPilotProfile(merged);
+      return merged.role === 'worker' ? applyPilotProfile(merged) : merged;
     }
   } catch {
     // Sin red: conservar perfil local
   }
 
-  if (profile.role === 'client') {
-    return { ...profile, role: 'client', is_approved: true };
-  }
-  return applyPilotProfile(profile);
+  return profile.role === 'worker' ? applyPilotProfile(profile) : profile;
 };
 
 /** Alinea el perfil local con el ID canónico de Supabase antes de aceptar chambas. */
@@ -138,30 +130,35 @@ export const persistPilotProfileIfChanged = async (
   useAuthStore.getState().setPhoneAuth(true);
 };
 
-/** Garantiza que el perfil exista en Supabase (piloto / teléfono). */
-export const ensureProfileInDb = async (
-  profile: SyncableProfile,
-): Promise<void> => {
-  if (!CONFIG.pilot.enabled) return;
+/**
+ * Alinea el perfil con auth.uid() en Supabase (RLS usa is_approved de la BD).
+ * En piloto, marca al técnico como aprobado y categorías habilitadas.
+ */
+export const ensureProfileInDb = async (profile: UserProfile): Promise<void> => {
+  const { data: { session } } = await supabase.auth.getSession();
+  const canonicalId = session?.user?.id ?? profile.id;
 
-  const phone = normalizePhone(profile.phone);
-
-  if (phone) {
-    const canonical = await fetchProfileByPhone(phone);
-    if (canonical?.id) return;
+  let effective: UserProfile = { ...profile, id: canonicalId };
+  if (effective.role === 'worker' && CONFIG.pilot.enabled) {
+    effective = applyPilotProfile(effective);
   }
+  const phone = normalizePhone(effective.phone);
+  const dbRole = toDbRole(effective.role);
 
-  const dbRole = toDbRole(profile.role);
-  const payload = {
-    id:          profile.id,
-    full_name:   profile.full_name.trim(),
+  const payload: Record<string, unknown> = {
+    id:          canonicalId,
+    full_name:   effective.full_name.trim(),
     phone:       phone || null,
-    email:       profile.email ?? pilotPhoneEmail(phone || profile.id.replace(/-/g, '')),
+    email:       effective.email ?? pilotPhoneEmail(phone || canonicalId.replace(/-/g, '')),
     role:        dbRole,
-    is_approved: profile.role === 'admin' || profile.role === 'client'
-      ? true
-      : (profile.is_approved ?? true),
+    is_approved:
+      effective.role === 'admin' ? true : !!effective.is_approved,
   };
+
+  if (effective.role === 'worker') {
+    payload.category_1_approved = effective.category_1_approved ?? false;
+    payload.category_2_approved = effective.category_2_approved ?? false;
+  }
 
   const { error: upsertErr } = await supabase
     .from('profiles')

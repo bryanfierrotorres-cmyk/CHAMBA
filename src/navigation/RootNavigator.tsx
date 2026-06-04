@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { NavigationContainer, type LinkingOptions, useNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuthStore }    from '@store/authStore';
+import { CONFIG } from '@constants/config';
 import { useProfileStore } from '@store/profileStore';
 import { registerForPushNotifications } from '@services/notifications';
 import { AuthNavigator }   from './AuthNavigator';
@@ -20,7 +21,7 @@ const webLinking: LinkingOptions<RootStackParamList> | undefined =
   Platform.OS === 'web' ? { enabled: false, prefixes: [] } : undefined;
 
 export const RootNavigator: React.FC = () => {
-  const { profile, isHydrated } = useAuthStore();
+  const { profile, isHydrated, session, isPhoneAuth } = useAuthStore();
   const { loadProfile, loadStats }       = useProfileStore();
   const [splashDone, setSplashDone]      = useState(false);
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
@@ -57,8 +58,9 @@ export const RootNavigator: React.FC = () => {
     );
   }
 
-  // Phone-auth users have no Supabase session — profile alone is enough.
-  const isAuthenticated = !!profile;
+  /** Ingreso por nombre + celular (piloto) o sesión Supabase. */
+  const isAuthenticated =
+    !!profile && (!!session?.access_token || isPhoneAuth);
 
   // ── Pick the right navigator based on role ───────────────────
   //

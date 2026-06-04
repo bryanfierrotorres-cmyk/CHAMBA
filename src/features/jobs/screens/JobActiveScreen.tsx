@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  ActivityIndicator, Linking, StyleSheet,
+  ActivityIndicator, StyleSheet,
   Animated,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -31,6 +31,7 @@ import { WORKER_COLORS as COLORS, M3, FONT_SIZE, SPACING, BORDER_RADIUS } from '
 import { JobLocationLabel } from '@components/worker/JobLocationLabel';
 import { formatCurrency, formatDate, formatTime, getCategoryEmoji, getCategoryLabel } from '@utils/formatters';
 import { confirmAction, showMessage } from '@utils/confirmAction';
+import { openJobLocationInMaps } from '@utils/openMaps';
 import type { JobStackParamList, WorkerTabParamList } from '@/types';
 
 type Route = RouteProp<JobStackParamList, 'JobActive'>;
@@ -293,9 +294,11 @@ export const JobActiveScreen: React.FC = () => {
 
   const handleOpenMap = useCallback(() => {
     if (!job?.location) return;
-    const { lat, lng } = job.location;
-    const url = `https://maps.google.com/?q=${lat},${lng}`;
-    Linking.openURL(url);
+    void openJobLocationInMaps({
+      lat: job.location.lat,
+      lng: job.location.lng,
+      address: job.location.address,
+    });
   }, [job]);
 
   const handleDismissSuccess = useCallback(() => {
@@ -396,7 +399,7 @@ export const JobActiveScreen: React.FC = () => {
             <View style={{ flex: 1 }}>
               <QuickAction
                 icon="map"
-                label="Ver en Mapa"
+                label="Abrir en Mapa"
                 onPress={handleOpenMap}
               />
             </View>

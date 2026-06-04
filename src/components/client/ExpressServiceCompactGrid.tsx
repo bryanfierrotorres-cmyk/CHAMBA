@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { ChambaPressable } from '@components/chamba/ChambaPressable';
-import { CARD_STEP_SHADOW, CHAMBA, chambaStyles } from '@constants/chambaUI';
+import { CARD_STEP_SHADOW, CHAMBA, chambaStyles, TOUCH_TARGET_MIN } from '@constants/chambaUI';
 
 const GAP = 10;
 const H_PAD = 20;
@@ -42,9 +42,9 @@ export const ExpressServiceCompactGrid: React.FC<ExpressServiceCompactGridProps>
           {item.title}
         </Text>
         {item.isCategory ? (
-          <View style={chambaStyles.demandBadge}>
-            <Text style={chambaStyles.demandBadgeText}>{item.footer}</Text>
-          </View>
+          <Text style={styles.categoryOptionsLabel} numberOfLines={1}>
+            {item.footer}
+          </Text>
         ) : (
           <Text style={[chambaStyles.priceLine, styles.priceCenter]} numberOfLines={1}>
             {item.footer}
@@ -67,33 +67,44 @@ const styles = StyleSheet.create({
     width: CARD_W,
     backgroundColor: CHAMBA.white,
     borderRadius: 18,
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 10,
     alignItems: 'center',
-    minHeight: 112,
+    minHeight: 120,
     justifyContent: 'flex-start',
     ...CARD_STEP_SHADOW,
   },
   iconWrap: {
-    width: 44,
-    height: 44,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   title: {
     ...chambaStyles.cardTitle,
     fontSize: 15,
     fontWeight: '600',
     textAlign: 'center',
-    lineHeight: 19,
-    minHeight: 38,
+    lineHeight: 20,
+    minHeight: 40,
     width: '100%',
     letterSpacing: -0.3,
   },
   priceCenter: {
     textAlign: 'center',
-    marginTop: 6,
+    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  categoryOptionsLabel: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: CHAMBA.muted,
+    textAlign: 'center',
   },
 });

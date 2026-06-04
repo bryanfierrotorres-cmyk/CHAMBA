@@ -19,6 +19,7 @@ export const TILE_ICON_BG: Record<string, string> = {
   limpieza: '#3B82F6',
   car: '#0D9488',
   ac: '#06B6D4',
+  jardineria: '#22C55E',
   grama: '#22C55E',
   pet: '#F97316',
   mandados: '#8B5CF6',
@@ -63,6 +64,7 @@ const renderMainIcon = (id: string): React.ReactNode => {
       return <Ionicons name="car-sport" size={SZ} color={WHITE} />;
     case 'ac':
       return <MaterialCommunityIcons name="air-conditioner" size={SZ} color={WHITE} />;
+    case 'jardineria':
     case 'grama':
       return <Ionicons name="leaf" size={SZ} color={WHITE} />;
     case 'pet':

@@ -20,7 +20,12 @@ import {
 } from '@components/client/ExpressServiceCompactGrid';
 import { useAuthStore } from '@store/authStore';
 import { Avatar } from '@components/Avatar';
-import { CARD_STEP_SHADOW, CHAMBA, chambaStyles } from '@constants/chambaUI';
+import {
+  CARD_STEP_SHADOW,
+  CHAMBA,
+  chambaStyles,
+  getSubcategoryIconColor,
+} from '@constants/chambaUI';
 import {
   getServiceIconBg,
   renderEmpresaServiceIcon,
@@ -138,12 +143,15 @@ export const ClientHomeScreen: React.FC = () => {
   };
 
   const expressCompactItems = useMemo((): ExpressCompactItem[] => {
-    return activeExpressTiles.map((tile) => {
+    return activeExpressTiles.map((tile, index) => {
       const isCategory = !!(tile.submenu || tile.priceLabel === 'Ver opciones');
+      const iconColor = selectedExpressCat
+        ? getSubcategoryIconColor(index)
+        : getServiceIconBg(tile.id, tile.slug);
       return {
         id: tile.id,
         title: tile.title,
-        iconColor: getServiceIconBg(tile.id, tile.slug),
+        iconColor,
         icon: renderExpressTileIcon(tile.id, selectedExpressCat),
         onPress: () => onExpressPress(tile),
         isCategory,
@@ -216,8 +224,8 @@ export const ClientHomeScreen: React.FC = () => {
                   style={styles.backBtn}
                   activeOpacity={0.85}
                 >
-                  <Ionicons name="arrow-back" size={14} color={BLUE} />
-                  <Text style={styles.backBtnText}> Volver</Text>
+                  <Ionicons name="chevron-back" size={22} color={BLUE} />
+                  <Text style={styles.backBtnText}>Volver</Text>
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity activeOpacity={0.7}>
@@ -351,12 +359,17 @@ const styles = StyleSheet.create({
   backBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: ICON_BG,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
+    backgroundColor: CHAMBA.white,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    minWidth: 48,
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: CHAMBA.border,
+    ...CARD_STEP_SHADOW,
   },
-  backBtnText: { fontSize: 12, fontWeight: '700', color: BLUE },
+  backBtnText: { fontSize: 14, fontWeight: '700', color: BLUE },
 
   chambearBanner: {
     backgroundColor: 'rgba(0, 242, 254, 0.1)',

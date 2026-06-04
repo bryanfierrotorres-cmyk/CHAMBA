@@ -1,7 +1,7 @@
 import React from 'react';
-import { Platform, TouchableOpacity, Text, StyleSheet, ViewStyle } from 'react-native';
+import { TouchableOpacity, Text, StyleSheet, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { M3, SPACING } from '@constants/stitchStyles';
+import { CARD_STEP_SHADOW, CHAMBA, TOUCH_TARGET_MIN } from '@constants/chambaUI';
 
 interface ScreenBackButtonProps {
   onPress: () => void;
@@ -10,24 +10,23 @@ interface ScreenBackButtonProps {
   label?: string;
 }
 
-/** Botón atrás visible en web móvil (gesto del navegador + UI explícita). */
+/** Botón atrás visible — esquina superior, área táctil 48px, alto contraste. */
 export const ScreenBackButton: React.FC<ScreenBackButtonProps> = ({
   onPress,
-  color = M3.onBackground,
+  color = CHAMBA.navy,
   style,
   label = 'Atrás',
 }) => (
   <TouchableOpacity
     onPress={onPress}
     style={[styles.btn, style]}
-    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
     accessibilityRole="button"
     accessibilityLabel={label}
+    activeOpacity={0.82}
   >
-    <Ionicons name="arrow-back" size={22} color={color} />
-    {Platform.OS === 'web' ? (
-      <Text style={[styles.label, { color }]}>{label}</Text>
-    ) : null}
+    <Ionicons name="chevron-back" size={26} color={color} />
+    <Text style={[styles.label, { color }]}>{label}</Text>
   </TouchableOpacity>
 );
 
@@ -35,13 +34,21 @@ const styles = StyleSheet.create({
   btn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
-    minWidth: Platform.OS === 'web' ? 72 : 40,
-    minHeight: 44,
+    gap: 2,
+    minWidth: TOUCH_TARGET_MIN,
+    minHeight: TOUCH_TARGET_MIN,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     justifyContent: 'flex-start',
+    backgroundColor: CHAMBA.white,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: CHAMBA.border,
+    ...CARD_STEP_SHADOW,
   },
   label: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: -0.2,
   },
 });

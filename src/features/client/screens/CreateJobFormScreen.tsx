@@ -26,6 +26,8 @@ import { assertClientJobPlatformReady } from '@services/clientJobPlatform';
 import { JOB_KEYS } from '@features/jobs/hooks/useJobs';
 import { uploadJobRequestPhoto } from '@features/jobs/services/jobRequestPhotoService';
 import { JobRequestPhotoPicker } from '@components/jobs/JobRequestPhotoPicker';
+import { ClientJobLocationSection } from '@components/client/ClientJobLocationSection';
+import { hasUsableJobCoordinates } from '@utils/shareJobLocation';
 import { isExpressServiceSlug } from '@constants/servicesConfig';
 import { ScreenBackButton } from '@components/navigation/ScreenBackButton';
 import { ChambaPublishSuccess } from '@components/chamba/ChambaPublishSuccess';
@@ -34,6 +36,7 @@ import {
   CARD_STEP_SHADOW,
   CHAMBA,
   GRADIENT_TOGGLE,
+  TOUCH_TARGET_MIN,
   chambaStyles,
 } from '@constants/chambaUI';
 import {
@@ -72,6 +75,8 @@ export const CreateJobFormScreen: React.FC = () => {
   const [title, setTitle] = useState(`Solicitud: ${serviceLabel}`);
   const [description, setDescription] = useState('');
   const [address, setAddress] = useState('');
+  const [serviceLat, setServiceLat] = useState<number | null>(null);
+  const [serviceLng, setServiceLng] = useState<number | null>(null);
   const [budget, setBudget] = useState(String(suggestedPrice));
   const [durationHours, setDurationHours] = useState('2');
   const [requiredWorkers, setRequiredWorkers] = useState('1');
@@ -93,10 +98,13 @@ export const CreateJobFormScreen: React.FC = () => {
     [serviceTypeSlug, budget, budgetAmount, catalog],
   );
 
+  const hasLocation = hasUsableJobCoordinates(serviceLat, serviceLng);
+
   const canSubmit =
     title.trim() &&
     description.trim() &&
     address.trim() &&
+    hasLocation &&
     priceValidation.valid;
 
   const handleBudgetChange = (value: string) => {
@@ -111,7 +119,7 @@ export const CreateJobFormScreen: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    if (!profile?.id || !canSubmit) return;
+    if (!profile?.id || !canSubmit || serviceLat == null || serviceLng == null) return;
 
     const priceCheck = validateClientPrice(serviceTypeSlug, budgetAmount, priceLookup);
     if (!priceCheck.valid) {
@@ -138,8 +146,8 @@ export const CreateJobFormScreen: React.FC = () => {
         category: serviceTypeSlug,
         payAmount: budgetAmount,
         address: address.trim(),
-        lat: 12.1328,
-        lng: -86.2504,
+        lat: serviceLat,
+        lng: serviceLng,
         durationHours: Number(durationHours) || 2,
         requiredWorkers: Number(requiredWorkers) || 1,
         createdBy: creatorId,
@@ -241,12 +249,16 @@ export const CreateJobFormScreen: React.FC = () => {
           />
         )}
 
-        <ChambaFormField
-          label="Dirección del servicio"
-          value={address}
-          onChangeText={setAddress}
-          placeholder="Ej. Semáforos de Rubenia 2c al norte"
-          icon="location-outline"
+        <ClientJobLocationSection
+          address={address}
+          onAddressChange={setAddress}
+          lat={serviceLat}
+          lng={serviceLng}
+          onCoordsChange={(lat, lng) => {
+            setServiceLat(lat);
+            setServiceLng(lng);
+          }}
+          disabled={isSubmitting}
         />
 
         <View style={styles.row}>
@@ -423,6 +435,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     borderRadius: 24,
+    minHeight: TOUCH_TARGET_MIN,
     paddingVertical: 16,
     ...CARD_STEP_SHADOW,
   },

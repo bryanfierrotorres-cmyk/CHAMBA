@@ -13,6 +13,7 @@ import { ClientProfileScreen } from '@features/client/screens/ClientProfileScree
 import { WhatsAppBubble }      from '@components/WhatsAppBubble';
 import { PendingAccountScreen } from '@components/auth/PendingAccountScreen';
 import { ClientJobPlatformGate } from '@components/client/ClientJobPlatformGate';
+import { ClientJobStatusToast } from '@components/client/ClientJobStatusToast';
 import { useAuthStore } from '@store/authStore';
 import { webAppShellStyle, webFixedTabBarStyle, webTabScenePadding } from '@constants/webMobileLayout';
 import type { ClientTabParamList, ClientStackParamList, ClientOrdersStackParamList } from '@/types';
@@ -146,6 +147,7 @@ export const ClientNavigator: React.FC = () => {
   return (
     <ClientJobPlatformGate>
       <View style={webAppShellStyle}>
+        <ClientJobStatusToast />
         <Tab.Navigator
           tabBar={(props) => <ClientTabBar {...props} />}
           sceneContainerStyle={Platform.OS === 'web' ? { paddingBottom: webTabScenePadding(insets.bottom) } : undefined}

@@ -32,6 +32,7 @@ import { M3, FONT_SIZE, SPACING, BORDER_RADIUS, CARD_ELEVATION } from '@constant
 import { formatCurrency, formatRatingAvg, getCategoryLabel, coerceNumber } from '@utils/formatters';
 import { ServiceCatalogGroups } from '@components/catalog/ServiceCatalogGroups';
 import { ProfileSectionBoundary } from '@components/ProfileSectionBoundary';
+import { getWorkerCatalogHighlightSlugs } from '@utils/workerCategoryAccess';
 import type { AvailabilityStatus } from '@/types';
 
 const CATEGORY_ICONS: Partial<Record<JobCategory, keyof typeof Ionicons.glyphMap>> = {
@@ -223,6 +224,8 @@ export const ProfileScreen: React.FC = () => {
   const completedCount = myJobs.filter(
     (a) => a.completed_at || a.job?.status === 'completed',
   ).length || (stats?.completedJobs ?? 0);
+
+  const catalogHighlights = getWorkerCatalogHighlightSlugs(profile);
 
   const specialties: { id: string; label: string; icon: keyof typeof Ionicons.glyphMap; active: boolean }[] = [];
   if (profile.category_1) {
@@ -429,14 +432,12 @@ export const ProfileScreen: React.FC = () => {
         <View style={styles.section}>
           <SectionTitle
             label="Catálogo de servicios"
-            subtitle="Sincronizado con el cliente — verde = tus especialidades"
+            subtitle="Verde = tu especialidad y todos los sub-servicios incluidos"
           />
           <View style={chambaStyles.catalogPanel}>
             <ProfileSectionBoundary title="el catálogo">
               <ServiceCatalogGroups
-                highlightSlugs={
-                  [profile.category_1, profile.category_2].filter(Boolean) as JobCategory[]
-                }
+                highlightSlugs={catalogHighlights}
               />
             </ProfileSectionBoundary>
           </View>

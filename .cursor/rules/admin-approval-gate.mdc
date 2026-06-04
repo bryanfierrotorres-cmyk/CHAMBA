@@ -1,0 +1,28 @@
+---
+description: Alta de cliente/técnico requiere aprobación del administrador antes de usar la app
+alwaysApply: true
+---
+
+# Aprobación obligatoria (admin)
+
+## Regla de negocio
+
+1. **Cliente nuevo**: completa registro → `is_approved = false` → puede iniciar sesión pero solo ve pantalla de cuenta en revisión hasta que el admin apruebe.
+2. **Técnico nuevo**: completa registro → onboarding (documentos + especialidades) → `worker_status = pending_approval` y `is_approved = false` → pantalla de espera hasta aprobación del admin.
+3. **Sin aprobación**: no usar la app (home, radar, publicar servicios, aceptar chambas).
+4. **Tras aprobación**: el usuario entra las veces que quiera; `is_approved` viene de Supabase (`profiles.is_approved`), no del almacenamiento local.
+5. **Admin**: siempre `is_approved = true`.
+
+## Implementación
+
+- Fuente de verdad: columna `profiles.is_approved` (y `worker_status` para técnicos).
+- Gates de UI: `ClientNavigator` → `PendingAccountScreen`; `WorkerNavigator` → onboarding luego `PendingApprovalScreen`.
+- **No** forzar `is_approved: true` en `phoneSignIn`, `loadFromStorage` ni `syncProfileWithDatabase`.
+- `applyPilotProfile` solo amplía docs/categorías si el perfil **ya** está aprobado en BD; no aprueba cuentas nuevas.
+- Registro: `registerPhoneProfile` / `signUp` insertan con `is_approved: false` (excepto admin).
+- Aprobación: `toggleWorkerApproval` / `toggleClientApproval` en panel admin.
+
+## Prohibido
+
+- Auto-aprobar clientes o técnicos al primer login.
+- Saltar el gate de pendiente por modo piloto o caché AsyncStorage.

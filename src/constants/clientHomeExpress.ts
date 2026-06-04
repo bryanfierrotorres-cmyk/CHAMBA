@@ -29,7 +29,7 @@ export const EXPRESS_SUBMENU_META: Record<
   jardineria: {
     sectionTitle: 'Opciones de Jardinería',
     sectionSubtitle: 'Césped, poda y áreas verdes',
-    parentTileId: 'grama',
+    parentTileId: 'jardineria',
   },
   ac: {
     sectionTitle: 'Opciones de Aire Acondicionado',
@@ -48,7 +48,7 @@ export const EXPRESS_MAIN_TILES: ExpressTileDef[] = [
   { id: 'limpieza', title: 'Limpieza General', priceLabel: 'Ver opciones', submenu: 'limpieza' },
   { id: 'car', title: 'Car Wash', priceLabel: 'Ver opciones', submenu: 'vehiculos' },
   { id: 'ac', title: 'Mantenimiento AC', priceLabel: 'Ver opciones', submenu: 'ac' },
-  { id: 'grama', title: 'Corte de Grama', priceLabel: 'Ver opciones', submenu: 'jardineria' },
+  { id: 'jardineria', title: 'Jardinería', priceLabel: 'Ver opciones', submenu: 'jardineria' },
   { id: 'pet', title: 'Servicio para mascota', priceLabel: 'Ver opciones', submenu: 'mascotas' },
   { id: 'mandados', title: 'Mandados Express', slug: 'mandados_express', fallbackPrice: 100 },
 ];

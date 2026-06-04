@@ -1,5 +1,6 @@
 {
   "buildCommand": "npm run build:web",
+  "installCommand": "npm install",
   "outputDirectory": "dist-web-test",
   "rewrites": [
     { "source": "/((?!.*\\.).*)", "destination": "/index.html" }

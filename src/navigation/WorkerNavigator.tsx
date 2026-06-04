@@ -98,7 +98,7 @@ export const WorkerNavigator: React.FC = () => {
   // Show waiting screen only for workers who DID submit docs but aren't approved yet
   const isPendingApproval =
     !needsOnboarding &&
-    profile?.worker_status === 'pending_approval' &&
+    profile?.role === 'worker' &&
     !profile.is_approved;
 
   return (

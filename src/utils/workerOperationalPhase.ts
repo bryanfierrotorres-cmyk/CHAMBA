@@ -34,6 +34,19 @@ export const isActiveOperationalJob = (job?: Partial<Job> | null): boolean => {
   return !!phase && phase !== 'completed';
 };
 
+/** Asignación del trabajador aún en curso (Agenda → Activas). */
+export const isWorkerAssignmentActive = (job?: Partial<Job> | null): boolean => {
+  const status = job?.status;
+  if (!status) return true;
+  return status === 'taken' || status === 'in_progress';
+};
+
+/** Asignación cerrada (Agenda → Historial). */
+export const isWorkerAssignmentHistory = (job?: Partial<Job> | null): boolean => {
+  const status = job?.status;
+  return status === 'completed' || status === 'cancelled';
+};
+
 export const getNextOperationalPhase = (
   current: WorkerOperationalPhase,
 ): WorkerOperationalPhase | null => {

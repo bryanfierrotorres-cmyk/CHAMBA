@@ -27,6 +27,7 @@ import {
   mergeAssignments,
 } from '@utils/localAssignments';
 import { CONFIG } from '@constants/config';
+import { workerCoversJobCategory } from '@utils/workerCategoryAccess';
 import {
   ensureWorkerProfileInDb,
   resolveWorkerProfileForActions,
@@ -222,6 +223,46 @@ interface FetchJobsParams {
   page?: number;
 }
 
+const fetchJobsViaRpc = async ({
+  status = 'open',
+  categories,
+  page = 0,
+}: FetchJobsParams): Promise<PaginatedResponse<Job> | null> => {
+  const dbCategories =
+    categories && categories.length > 0
+      ? Array.from(new Set(categories.flatMap((c) => toDbJobCategoryQueryValues(c))))
+      : null;
+
+  const { data, error } = await supabase.rpc('get_open_jobs_feed', {
+    p_status: status,
+    p_categories: dbCategories,
+    p_limit: PAGE_SIZE,
+    p_offset: page * PAGE_SIZE,
+  });
+
+  if (error) {
+    console.warn('[fetchJobs] RPC get_open_jobs_feed:', error.message);
+    return null;
+  }
+
+  const body = data as { success?: boolean; jobs?: Job[]; count?: number; error?: string } | null;
+  if (!body?.success) {
+    if (body?.error) console.warn('[fetchJobs] RPC:', body.error);
+    return null;
+  }
+
+  const rows = (body.jobs ?? []) as Job[];
+  const total = body.count ?? rows.length;
+
+  return {
+    data: rows.map(normalizeJobRow),
+    count: total,
+    page,
+    pageSize: PAGE_SIZE,
+    hasMore: total > (page + 1) * PAGE_SIZE,
+  };
+};
+
 /** Fetch paginated jobs. */
 export const fetchJobs = async ({
   status = 'open',
@@ -229,6 +270,16 @@ export const fetchJobs = async ({
   categories,
   page = 0,
 }: FetchJobsParams = {}): Promise<PaginatedResponse<Job>> => {
+  if (categories !== undefined && categories.length === 0) {
+    return {
+      data: [],
+      count: 0,
+      page,
+      pageSize: PAGE_SIZE,
+      hasMore: false,
+    };
+  }
+
   let query = supabase
     .from('jobs')
     .select(
@@ -239,16 +290,6 @@ export const fetchJobs = async ({
     .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
   if (status) query = query.eq('status', status);
-
-  if (categories !== undefined && categories.length === 0) {
-    return {
-      data: [],
-      count: 0,
-      page,
-      pageSize: PAGE_SIZE,
-      hasMore: false,
-    };
-  }
 
   // Multi-category filter takes priority; single category is a fallback
   if (categories && categories.length > 0) {
@@ -262,10 +303,22 @@ export const fetchJobs = async ({
   }
 
   const { data, error, count } = await query;
-  if (error) throw new Error(error.message);
+
+  if (error) {
+    const rpcFallback = await fetchJobsViaRpc({ status, category, categories, page });
+    if (rpcFallback) return rpcFallback;
+    throw new Error(error.message);
+  }
+
+  const normalized = ((data ?? []) as Job[]).map(normalizeJobRow);
+
+  if (normalized.length === 0 && page === 0) {
+    const rpcFallback = await fetchJobsViaRpc({ status, category, categories, page });
+    if (rpcFallback && rpcFallback.data.length > 0) return rpcFallback;
+  }
 
   return {
-    data: ((data ?? []) as Job[]).map(normalizeJobRow),
+    data: normalized,
     count: count ?? 0,
     page,
     pageSize: PAGE_SIZE,
@@ -587,6 +640,13 @@ export const acceptJob = async (
       effectiveCtx = resolved;
       await persistPilotProfileIfChanged(workerCtx as UserProfile, resolved);
       await ensureWorkerProfileInDb(resolved);
+
+      const jobCat = jobSnapshot?.category;
+      if (jobCat && !workerCoversJobCategory(resolved, jobCat)) {
+        throw new Error(
+          'Este servicio no está en tus especialidades aprobadas. Pedí al admin que active la categoría o sus sub-servicios.',
+        );
+      }
     }
 
     let rpc = await tryRpcAccept(jobId, effectiveWorkerId);

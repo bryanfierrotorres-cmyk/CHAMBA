@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { ChambaPressable } from '@components/chamba/ChambaPressable';
 import { Ionicons } from '@expo/vector-icons';
 import { SwipeAcceptTrack } from '@components/worker/SwipeAcceptTrack';
@@ -11,6 +11,8 @@ import { CHAMBA } from '@constants/chambaUI';
 import { JobLocationLabel } from '@components/worker/JobLocationLabel';
 import { CategoryIconCircle } from '@utils/categoryVisual';
 import { formatCurrency } from '@utils/formatters';
+import { openJobLocationInMaps } from '@utils/openMaps';
+import { hasUsableJobCoordinates } from '@utils/shareJobLocation';
 import type { Job } from '@/types';
 import { jobHasRequestPhoto } from '@utils/jobRequestPhoto';
 
@@ -39,6 +41,18 @@ export const JobCard: React.FC<JobCardProps> = ({
 }) => {
   const isUrgent = job.required_workers > 1 && job.slots_taken >= job.required_workers - 1;
   const hasClientPhoto = jobHasRequestPhoto(job);
+  const canNavigate =
+    showSwipe &&
+    (!!job.location?.address?.trim() ||
+      hasUsableJobCoordinates(job.location?.lat, job.location?.lng));
+
+  const handleNavigate = () => {
+    void openJobLocationInMaps({
+      lat: job.location?.lat,
+      lng: job.location?.lng,
+      address: job.location?.address,
+    });
+  };
 
   return (
     <View style={styles.card}>
@@ -85,6 +99,19 @@ export const JobCard: React.FC<JobCardProps> = ({
 
       <View style={stitchLayout.divider} />
       </ChambaPressable>
+
+      {canNavigate && (
+        <TouchableOpacity
+          style={styles.navigateBtn}
+          onPress={handleNavigate}
+          activeOpacity={0.88}
+          accessibilityRole="button"
+          accessibilityLabel="Abrir ubicación del cliente en mapa"
+        >
+          <Ionicons name="navigate" size={18} color={M3.primary} />
+          <Text style={styles.navigateBtnText}>Ir al cliente (mapa)</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Swipe or tap hint */}
       {showSwipe && onAccept && (job.status === 'open' || isInProcess) ? (
@@ -182,5 +209,22 @@ const styles = StyleSheet.create({
     fontSize:   11,
     fontWeight: '600',
     color:      M3.onPrimaryContainer,
+  },
+  navigateBtn: {
+    flexDirection:     'row',
+    alignItems:        'center',
+    justifyContent:    'center',
+    gap:               6,
+    paddingVertical:   10,
+    paddingHorizontal: 12,
+    borderRadius:      12,
+    backgroundColor:   M3.primaryContainer,
+    borderWidth:       1,
+    borderColor:       M3.primary + '33',
+  },
+  navigateBtnText: {
+    fontSize:   13,
+    fontWeight: '700',
+    color:      M3.primary,
   },
 });

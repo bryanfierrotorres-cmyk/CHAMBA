@@ -27,6 +27,7 @@ import { useCatalog } from '@features/catalog/hooks/useCatalog';
 import type { ServiceType } from '@features/catalog/types';
 import { buildGroupedServiceTypes } from '@constants/servicesConfig';
 import type { JobCategory } from '@constants/chambaCategories';
+import { getWorkerCategoryFamily } from '@utils/workerCategoryAccess';
 
 // ─── Step indicator ───────────────────────────────────────────────────────────
 
@@ -156,10 +157,13 @@ export const WorkerOnboardingScreen: React.FC = () => {
     if (profile.category_2) setCat2(profile.category_2 as JobCategory);
   }, [profile?.id]);
 
+  const isInFamily = (slug: string, anchor: JobCategory | null) =>
+    !!anchor && getWorkerCategoryFamily(anchor).includes(slug);
+
   const renderSpecialtyGroups = (
     selected: JobCategory | null,
     onSelect: (slug: JobCategory | null) => void,
-    disabledSlug?: JobCategory | null,
+    blockFamilyOf?: JobCategory | null,
   ) => (
     <>
       {groupedSpecialties.map(({ group, types }) => (
@@ -172,7 +176,7 @@ export const WorkerOnboardingScreen: React.FC = () => {
                 emoji={st.icon}
                 label={st.name}
                 selected={selected === st.slug}
-                disabled={disabledSlug === st.slug}
+                disabled={!!blockFamilyOf && isInFamily(st.slug, blockFamilyOf)}
                 onPress={() => {
                   onSelect(selected === st.slug ? null : st.slug);
                 }}
@@ -390,21 +394,21 @@ export const WorkerOnboardingScreen: React.FC = () => {
           <View>
             <Text style={styles.stepTitle}>⭐ Especialidad Principal</Text>
             <Text style={styles.stepDesc}>
-              Elige el servicio que mejor dominas. Esta categoría se aprueba{' '}
-              <Text style={{ fontWeight: '800', color: COLORS.success }}>instantáneamente</Text>{' '}
-              una vez el admin apruebe tu perfil.
+              Elegí un servicio o categoría Express. Incluye automáticamente todas las
+              subcategorías del mismo grupo (por ejemplo Jardinería → corte de grama, poda, patio).
+              Se activa cuando el admin apruebe tu perfil.
             </Text>
 
             {renderSpecialtyGroups(cat1, (slug) => {
               setCat1(slug);
-              if (slug && cat2 === slug) setCat2(null);
+              if (slug && cat2 && isInFamily(cat2, slug)) setCat2(null);
             })}
 
             <Text style={[styles.stepTitle, { marginTop: SPACING.lg }]}>➕ Segunda Especialidad (Opcional)</Text>
             <Text style={styles.stepDesc}>
-              Puedes ganar más con una segunda categoría. Queda en estado{' '}
+              Debe ser de un grupo distinto al principal. Queda{' '}
               <Text style={{ fontWeight: '800', color: COLORS.warning }}>pendiente</Text>{' '}
-              hasta que el admin la autorice por separado.
+              hasta que el admin la autorice.
             </Text>
 
             {renderSpecialtyGroups(

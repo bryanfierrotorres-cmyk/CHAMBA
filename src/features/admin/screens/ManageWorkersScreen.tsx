@@ -27,6 +27,8 @@ import { WorkerReviewsPanel } from '@features/reviews/components/WorkerReviewsPa
 import { useAuthStore } from '@store/authStore';
 import { ChambaGradientTabs } from '@components/chamba/ChambaGradientTabs';
 import { CARD_STEP_SHADOW, CHAMBA, chambaStyles } from '@constants/chambaUI';
+import { getWorkerCategoryFamily } from '@utils/workerCategoryAccess';
+import { getConfiguredServiceLabel } from '@constants/servicesConfig';
 
 type FilterMode = 'all' | 'pending' | 'approved';
 type TeamMode = 'workers' | 'clients';
@@ -52,6 +54,15 @@ const WorkerDetailModal: React.FC<WorkerModalProps> = ({
   const { getLabel } = useCatalog();
   const cat1Label = worker.category_1 ? getLabel(worker.category_1) : null;
   const cat2Label = worker.category_2 ? getLabel(worker.category_2) : null;
+
+  const includedSubs = (slug: string | null, approved: boolean) => {
+    if (!slug || !approved) return null;
+    const family = getWorkerCategoryFamily(slug).filter((s) => s !== slug);
+    if (family.length === 0) return null;
+    return family
+      .map((s) => getConfiguredServiceLabel(s) ?? getLabel(s))
+      .join(' · ');
+  };
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
@@ -123,6 +134,11 @@ const WorkerDetailModal: React.FC<WorkerModalProps> = ({
                 <Text style={[modal.catStatus, { color: worker.category_1_approved ? '#15803D' : '#B45309' }]}>
                   {worker.category_1_approved ? 'Aprobada' : 'Pendiente'}
                 </Text>
+                {includedSubs(worker.category_1, worker.category_1_approved) ? (
+                  <Text style={modal.catIncluded}>
+                    Incluye: {includedSubs(worker.category_1, worker.category_1_approved)}
+                  </Text>
+                ) : null}
               </View>
               <Badge label="Principal" color={CHAMBA.blue} bgColor="#E0F2FE" size="sm" />
             </View>
@@ -137,6 +153,11 @@ const WorkerDetailModal: React.FC<WorkerModalProps> = ({
                 <Text style={[modal.catStatus, { color: worker.category_2_approved ? '#15803D' : '#B45309' }]}>
                   {worker.category_2_approved ? 'Aprobada' : 'Pendiente aprobación'}
                 </Text>
+                {includedSubs(worker.category_2, worker.category_2_approved) ? (
+                  <Text style={modal.catIncluded}>
+                    Incluye: {includedSubs(worker.category_2, worker.category_2_approved)}
+                  </Text>
+                ) : null}
               </View>
               <View style={{ alignItems: 'flex-end', gap: 6 }}>
                 <Badge label="Secundaria" color="#7C3AED" bgColor="#EDE9FE" size="sm" />
@@ -244,6 +265,7 @@ const modal = StyleSheet.create({
   },
   catLabel: { fontSize: 14, fontWeight: '600', color: CHAMBA.navy },
   catStatus: { fontSize: 12, marginTop: 2, fontWeight: '500' },
+  catIncluded: { fontSize: 11, color: CHAMBA.muted, marginTop: 4, lineHeight: 16 },
   emptyCat: { fontSize: 13, color: CHAMBA.muted, fontWeight: '400' },
 
   cat2Btn: {

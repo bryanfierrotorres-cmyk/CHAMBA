@@ -57,8 +57,14 @@ interface AuthState {
   signIn:          (email: string, password: string)               => Promise<void>;
   signUp:          (params: SignUpParams)                          => Promise<void>;
   pilotSignIn:     (role?: UserRole)                               => Promise<void>;
-  /** Experimental phone auth — no Supabase Auth session, profiles table only. */
+  /** @deprecated Solo piloto interno; no usar en login público. */
   phoneSignIn:     (fullName: string, phone: string, role: UserRole) => Promise<void>;
+  /** Verifica teléfono en BD y envía OTP (sin crear usuario). */
+  requestPhoneLoginOtp: (phone: string) => Promise<void>;
+  /** Valida código SMS y abre sesión Supabase + perfil. */
+  verifyPhoneLoginOtp: (phone: string, token: string, role: UserRole) => Promise<void>;
+  /** Crea perfil en BD sin iniciar sesión (registro → luego login OTP). */
+  registerPhoneProfile: (fullName: string, phone: string, role: UserRole) => Promise<void>;
   /** Hydrate store from AsyncStorage (phone-auth users). */
   loadFromStorage: ()                                              => Promise<boolean>;
   signOut:         ()                                              => Promise<void>;
@@ -346,9 +352,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             role,
             full_name: creds.fullName,
             phone:     creds.phone,
-            is_approved: true,
+            is_approved: role === 'admin' ? true : !!profile.is_approved,
           };
           profile = await syncProfileWithDatabase(profile);
+          if (profile.role === 'worker') {
+            profile = applyPilotProfile(profile);
+          }
           await finishPilotSession(profile, data.session);
           return;
         }
@@ -369,12 +378,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           role,
           full_name:   creds.fullName,
           phone:       creds.phone,
-          is_approved: true,
+          is_approved: role === 'admin' ? true : !!byPhone.is_approved,
         };
-        if (role === 'worker' && CONFIG.pilot.enabled) {
+        if (profile.role === 'worker') {
           profile = applyPilotProfile(profile);
         }
-      } else {
+      } else if (role === 'admin') {
         await ensureProfileInDb({
           id:          profile.id,
           full_name:   profile.full_name,
@@ -388,6 +397,149 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await finishPilotSession(profile, null);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'No se pudo iniciar sesión piloto';
+      set({ error: msg, isLoading: false });
+      throw new Error(msg);
+    }
+  },
+
+  // ── requestPhoneLoginOtp — usuario debe existir en profiles ─────
+  requestPhoneLoginOtp: async (phone) => {
+    set({ isLoading: true, error: null });
+    try {
+      const cleanPhone = normalizePhone(phone);
+      if (cleanPhone.length !== 8) {
+        throw new Error('Ingresá exactamente 8 dígitos de tu celular');
+      }
+
+      const existing = await fetchProfileByPhone(cleanPhone);
+      if (!existing) {
+        const msg = 'Número no registrado, por favor regístrate primero';
+        set({ error: msg, isLoading: false });
+        throw new Error(msg);
+      }
+
+      const phoneE164 = `+505${cleanPhone}`;
+      // Perfil ya validado en DB; crear usuario Auth si aún no existe (registro previo).
+      const { error } = await supabase.auth.signInWithOtp({
+        phone: phoneE164,
+        options: { shouldCreateUser: true },
+      });
+
+      if (error) {
+        const msg = translateAuthError(error.message);
+        set({ error: msg, isLoading: false });
+        throw new Error(msg);
+      }
+
+      set({ isLoading: false, error: null });
+    } catch (err: unknown) {
+      if (!(err instanceof Error) || !get().error) {
+        const msg = err instanceof Error ? err.message : 'No se pudo enviar el código';
+        set({ error: msg, isLoading: false });
+      }
+      throw err instanceof Error ? err : new Error('No se pudo enviar el código');
+    }
+  },
+
+  // ── verifyPhoneLoginOtp — sesión obligatoria para entrar a la app ──
+  verifyPhoneLoginOtp: async (phone, token, role) => {
+    set({ isLoading: true, error: null });
+    try {
+      const cleanPhone = normalizePhone(phone);
+      const code = token.replace(/\D/g, '');
+      if (code.length < 4) {
+        throw new Error('Ingresá el código que recibiste por SMS');
+      }
+
+      const phoneE164 = `+505${cleanPhone}`;
+      const { data, error } = await supabase.auth.verifyOtp({
+        phone: phoneE164,
+        token: code,
+        type: 'sms',
+      });
+
+      if (error) {
+        const msg = translateAuthError(error.message);
+        set({ error: msg, isLoading: false });
+        throw new Error(msg);
+      }
+      if (!data.session) {
+        throw new Error('Código inválido o expirado. Solicitá uno nuevo.');
+      }
+
+      let profile = await fetchProfileByPhone(cleanPhone);
+      if (!profile) {
+        const msg = 'Número no registrado, por favor regístrate primero';
+        set({ error: msg, isLoading: false });
+        throw new Error(msg);
+      }
+
+      if (data.session?.user?.id) {
+        profile = { ...profile, id: data.session.user.id };
+      }
+
+      profile = await syncProfileWithDatabase({ ...profile, role });
+      if (profile.role === 'worker') {
+        profile = applyPilotProfile(profile);
+      }
+
+      await ensureProfileInDb(profile);
+
+      await AsyncStorage.removeItem(PILOT_STORAGE_KEY);
+
+      set({
+        session: data.session,
+        profile,
+        isPhoneAuth: false,
+        isLoading: false,
+        error: null,
+      });
+    } catch (err: unknown) {
+      if (!(err instanceof Error) || !get().error) {
+        const msg = err instanceof Error ? err.message : 'No se pudo verificar el código';
+        set({ error: msg, isLoading: false });
+      }
+      throw err instanceof Error ? err : new Error('No se pudo verificar el código');
+    }
+  },
+
+  // ── registerPhoneProfile — alta sin sesión (luego login OTP) ────
+  registerPhoneProfile: async (fullName, phone, role) => {
+    set({ isLoading: true, error: null });
+    try {
+      const cleanName = fullName.trim();
+      const cleanPhone = normalizePhone(phone);
+      const dbRole = toDbRole(role);
+
+      if (cleanPhone.length !== 8) {
+        throw new Error('Ingresá exactamente 8 dígitos de tu celular');
+      }
+
+      const existing = await fetchProfileByPhone(cleanPhone);
+      if (existing) {
+        throw new Error('Este número ya está registrado. Iniciá sesión con tu celular.');
+      }
+
+      const newId = uuid4();
+      const { error: insertErr } = await supabase.from('profiles').insert({
+        id: newId,
+        full_name: cleanName,
+        phone: cleanPhone,
+        email: pilotPhoneEmail(cleanPhone),
+        role: dbRole,
+        is_approved: role === 'admin',
+        ...(role === 'worker'
+          ? { worker_status: 'incomplete' as const }
+          : {}),
+      });
+
+      if (insertErr) {
+        throw new Error(translateAuthError(insertErr.message));
+      }
+
+      set({ isLoading: false, error: null });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'No se pudo crear la cuenta';
       set({ error: msg, isLoading: false });
       throw new Error(msg);
     }
@@ -407,10 +559,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         phone:              cleanPhone,
         email:              pilotPhoneEmail(cleanPhone),
         role,
-        is_approved:        true,
-        worker_status:      role === 'worker' ? 'active' : null,
-        cedula_url:         role === 'worker' ? PILOT_DOCUMENT_BYPASS : null,
-        record_policia_url: role === 'worker' ? PILOT_DOCUMENT_BYPASS : null,
+        is_approved:        false,
+        worker_status:      role === 'worker' ? 'incomplete' : null,
+        cedula_url:         null,
+        record_policia_url: null,
         category_1:         null,
         category_2:         null,
         category_1_approved: false,
@@ -427,11 +579,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const remoteByPhone = await fetchProfileByPhone(cleanPhone).catch(() => null);
 
       if (remoteByPhone) {
+        if (role !== remoteByPhone.role && remoteByPhone.role !== 'admin') {
+          const msg =
+            role === 'worker'
+              ? 'Este celular está registrado como cliente. Para recibir chambas, registrate como técnico con otro número o pedí al admin que active tu perfil de trabajador.'
+              : 'Este celular está registrado como técnico. Elegí el rol Trabajador para ingresar.';
+          set({ error: msg, isLoading: false });
+          throw new Error(msg);
+        }
         profile = {
           ...remoteByPhone,
-          role,
+          role: remoteByPhone.role === 'admin' ? role : remoteByPhone.role,
           full_name: cleanName,
-          is_approved: true,
+          is_approved: !!remoteByPhone.is_approved,
         };
       } else {
         let safeMatches: UserProfile[] = [];
@@ -456,9 +616,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             ?? safeMatches.find((r) => phonesMatch(r.phone, cleanPhone));
 
           if (exact) {
-            profile = { ...exact, role, full_name: cleanName, is_approved: true };
+            if (role !== exact.role && exact.role !== 'admin') {
+              const msg =
+                role === 'worker'
+                  ? 'Este nombre y celular pertenecen a una cuenta de cliente. No podés ingresar como técnico con los mismos datos.'
+                  : 'Esta cuenta es de técnico. Elegí el rol Trabajador.';
+              set({ error: msg, isLoading: false });
+              throw new Error(msg);
+            }
+            profile = { ...exact, full_name: cleanName, is_approved: !!exact.is_approved };
           } else if (byPhone) {
-            profile = { ...byPhone, role, full_name: cleanName, is_approved: true };
+            if (role !== byPhone.role && byPhone.role !== 'admin') {
+              const msg =
+                role === 'worker'
+                  ? 'Este celular ya está registrado como cliente. Usá otro número para el perfil de técnico.'
+                  : 'Este celular está registrado como técnico. Elegí el rol Trabajador.';
+              set({ error: msg, isLoading: false });
+              throw new Error(msg);
+            }
+            profile = { ...byPhone, full_name: cleanName, is_approved: !!byPhone.is_approved };
           } else if (CONFIG.pilot.enabled) {
             profile = buildLocalProfile(uuid4());
           } else {
@@ -479,7 +655,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 phone:       cleanPhone,
                 email:       pilotPhoneEmail(cleanPhone),
                 role:        dbRole,
-                is_approved: true,
+                is_approved: false,
+                ...(role === 'worker'
+                  ? { worker_status: 'incomplete' as const }
+                  : {}),
               })
               .select()
               .single();
@@ -488,7 +667,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               console.warn('[phoneSignIn] DB insert blocked, using local-only profile:', insertErr.message);
               profile = localProfile;
             } else {
-              profile = { ...(inserted as UserProfile), role, is_approved: true };
+              profile = {
+                ...(inserted as UserProfile),
+                role,
+                is_approved: !!(inserted as UserProfile).is_approved,
+              };
             }
           } catch (insertErr) {
             console.warn('[phoneSignIn] insert offline, perfil local:', insertErr);
@@ -497,9 +680,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
       }
 
-      if (role === 'client') {
-        profile = { ...profile, role: 'client', is_approved: true };
-      } else if (CONFIG.pilot.enabled && profile.role === 'worker') {
+      if (profile.role === 'worker') {
         profile = applyPilotProfile(profile);
       }
 
@@ -509,8 +690,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         // Mantener perfil local si Supabase no responde
       }
 
-      if (role === 'client') {
-        profile = { ...profile, role: 'client', is_approved: true };
+      if (profile.role === 'worker') {
+        profile = applyPilotProfile(profile);
       }
 
       await AsyncStorage.setItem(PILOT_STORAGE_KEY, JSON.stringify(profile));
@@ -529,14 +710,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (!raw) return false;
       let profile = JSON.parse(raw) as UserProfile;
       profile = await syncProfileWithDatabase(profile);
-      if (CONFIG.pilot.enabled && profile.role === 'worker') {
-        profile = applyPilotProfile(profile);
-      }
       if (profile.role === 'admin') {
         profile = { ...profile, role: 'admin', is_approved: true };
-      }
-      if (profile.role === 'client') {
-        profile = { ...profile, role: 'client', is_approved: true };
+      } else if (profile.role === 'worker') {
+        profile = applyPilotProfile(profile);
       }
       await AsyncStorage.setItem(PILOT_STORAGE_KEY, JSON.stringify(profile));
       set({ profile, isPhoneAuth: true });
@@ -598,6 +775,12 @@ function translateAuthError(msg: string): string {
     return 'La contraseña debe tener al menos 6 caracteres';
   if (msg.includes('rate limit'))
     return 'Demasiados intentos. Espera un momento e intenta de nuevo';
+  if (msg.includes('Signups not allowed') || msg.includes('shouldCreateUser'))
+    return 'Número no registrado, por favor regístrate primero';
+  if (msg.includes('Token has expired') || msg.includes('otp_expired'))
+    return 'El código expiró. Solicitá uno nuevo.';
+  if (msg.includes('Invalid OTP') || msg.includes('invalid'))
+    return 'Código incorrecto. Revisá el SMS e intentá de nuevo';
   if (msg.includes('network'))
     return 'Sin conexión. Revisa tu internet';
   if (msg.includes('Database error saving new user'))

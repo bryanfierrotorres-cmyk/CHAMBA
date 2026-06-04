@@ -17,11 +17,12 @@
     "db:apply-catalog": "node scripts/apply-catalog-migration.mjs",
     "db:provision-catalog": "node scripts/provision-catalog.mjs",
     "test:chamba-flow": "node scripts/test-chamba-flow.mjs",
+    "test:client-worker": "node scripts/test-client-worker-connection.mjs",
     "db:fix-signup": "node scripts/apply-migration-018.mjs",
     "db:fix-client-jobs": "node scripts/apply-migration-019.mjs",
+    "db:apply-worker-feed": "node scripts/apply-migration-015-worker-feed.mjs",
+    "db:reset-two-users": "node scripts/reset-two-test-users.mjs",
     "diagnose:client-job": "node scripts/diagnose-client-job.mjs",
-    "health:client-jobs": "node scripts/health-client-jobs.mjs",
-    "prebuild:web": "node scripts/health-client-jobs.mjs",
     "diagnose:signup": "node scripts/diagnose-signup.mjs"
   },
   "dependencies": {

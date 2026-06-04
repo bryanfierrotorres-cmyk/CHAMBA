@@ -21,9 +21,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { ChambaSlidingToggle } from '@components/chamba/ChambaSlidingToggle';
 import { useAuthStore } from '@store/authStore';
 import { FONT_SIZE, SPACING } from '@constants/theme';
-import { CARD_STEP_SHADOW, CHAMBA } from '@constants/chambaUI';
+import { CARD_STEP_SHADOW, CHAMBA, TOUCH_TARGET_MIN } from '@constants/chambaUI';
 import { textInputWebFocusStyle } from '@constants/textInputFocus';
-import { formatNicaPhone, isValidNicaPhone, NICA_PHONE_PREFIX } from '@utils/phoneNicaragua';
+import { formatNicaPhone, isValidNicaPhone } from '@utils/phoneNicaragua';
 import type { AuthStackParamList, UserRole } from '@/types';
 
 type LoginNav = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
@@ -144,17 +144,28 @@ export const LoginScreen: React.FC = () => {
       Animated.timing(shakeX, { toValue: 0, duration: 60, useNativeDriver: true }),
     ]).start();
 
-  const validate = () => {
+  const getPhoneDigits = () => phone.replace(/\D/g, '');
+
+  const validatePhone = () => {
     let valid = true;
-    setNameErr('');
     setPhoneErr('');
 
-    if (!fullName.trim() || fullName.trim().split(' ').length < 2) {
-      setNameErr('Ingresá tu nombre completo (nombre y apellido)');
+    const telefono = getPhoneDigits();
+    if (telefono.length !== 8) {
+      setPhoneErr('Ingresá exactamente 8 dígitos de tu celular');
+      valid = false;
+    } else if (!isValidNicaPhone(telefono)) {
+      setPhoneErr('Número inválido — debe iniciar con 2, 5, 7 u 8');
       valid = false;
     }
-    if (!isValidNicaPhone(phone)) {
-      setPhoneErr('Celular inválido — 8 dígitos (ej. 8888-8888)');
+    return valid;
+  };
+
+  const validateLogin = () => {
+    let valid = validatePhone();
+    setNameErr('');
+    if (!fullName.trim() || fullName.trim().split(/\s+/).length < 2) {
+      setNameErr('Ingresá tu nombre completo (nombre y apellido)');
       valid = false;
     }
     return valid;
@@ -162,10 +173,11 @@ export const LoginScreen: React.FC = () => {
 
   const handleSubmit = async () => {
     setError(null);
-    if (!validate()) {
+    if (!validateLogin()) {
       shake();
       return;
     }
+
     setPendingAction('chamba');
     try {
       await phoneSignIn(fullName.trim(), phone, role);
@@ -259,22 +271,24 @@ export const LoginScreen: React.FC = () => {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardTitle}>Ingresá tus datos</Text>
-                <Text style={styles.cardSub}>Sin contraseña ni correo — solo tu celular</Text>
+                <Text style={styles.cardSub}>
+                  Sin contraseña ni correo — entrá con tu celular
+                </Text>
               </View>
             </View>
 
             <View style={styles.fields}>
               <PremiumField
-                label="Nombre completo"
-                icon="person-outline"
-                placeholder="Ej. Juan Pérez"
-                value={fullName}
-                onChangeText={setFullName}
-                onClearError={() => setNameErr('')}
-                error={nameErr}
-                autoCapitalize="words"
-                returnKeyType="next"
-              />
+                  label="Nombre completo"
+                  icon="person-outline"
+                  placeholder="Ej. Juan Pérez"
+                  value={fullName}
+                  onChangeText={setFullName}
+                  onClearError={() => setNameErr('')}
+                  error={nameErr}
+                  autoCapitalize="words"
+                  returnKeyType="next"
+                />
 
               <View style={fieldStyles.wrap}>
                 <Text style={fieldStyles.label}>Número de celular</Text>
@@ -282,21 +296,23 @@ export const LoginScreen: React.FC = () => {
                   <View style={[fieldStyles.iconCircle, fieldStyles.phoneIconCircle]}>
                     <Ionicons name="call-outline" size={18} color={CHAMBA.blue} />
                   </View>
-                  <View style={fieldStyles.prefixBadge}>
-                    <Text style={fieldStyles.prefix}>{NICA_PHONE_PREFIX}</Text>
-                  </View>
+                  <Text style={fieldStyles.prefix} accessibilityLabel="Prefijo Nicaragua">
+                    +505
+                  </Text>
                   <TextInput
                     value={phone}
                     onChangeText={(v) => {
-                      setPhone(formatNicaPhone(v));
+                      const digits = v.replace(/\D/g, '').slice(0, 8);
+                      setPhone(formatNicaPhone(digits));
                       setPhoneErr('');
                     }}
                     placeholder="8888-8888"
                     placeholderTextColor="#94A3B8"
-                    keyboardType="phone-pad"
+                    keyboardType="number-pad"
+                    maxLength={9}
                     returnKeyType="done"
                     onSubmitEditing={handleSubmit}
-                    style={[fieldStyles.input, textInputWebFocusStyle]}
+                    style={[fieldStyles.input, fieldStyles.phoneLocalInput, textInputWebFocusStyle]}
                   />
                 </View>
                 {!!phoneErr ? (
@@ -460,9 +476,15 @@ const fieldStyles = StyleSheet.create({
     borderColor: '#BAE6FD',
   },
   prefix: {
-    color: CHAMBA.blue,
-    fontSize: 14,
+    color: CHAMBA.navy,
+    fontSize: 16,
     fontWeight: '700',
+    paddingRight: 4,
+    letterSpacing: 0.2,
+  },
+  phoneLocalInput: {
+    flex: 1,
+    minWidth: 0,
   },
   hint: {
     color: CHAMBA.muted,
@@ -626,6 +648,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
+    minHeight: TOUCH_TARGET_MIN,
     height: 56,
     borderRadius: 16,
   },

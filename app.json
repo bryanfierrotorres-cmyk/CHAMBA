@@ -17,7 +17,7 @@
       "bundleIdentifier": "com.chamba.app",
       "buildNumber": "1",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "CHAMBA necesita tu ubicación para mostrarte trabajos cercanos.",
+        "NSLocationWhenInUseUsageDescription": "CHAMBA usa tu ubicación al publicar una solicitud y para que el técnico pueda guiarse hasta tu domicilio.",
         "NSCameraUsageDescription": "CHAMBA necesita la cámara para subir fotos de perfil y documentos.",
         "NSPhotoLibraryUsageDescription": "CHAMBA necesita acceso a tus fotos para tu perfil."
       }
@@ -52,7 +52,7 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "CHAMBA usa tu ubicación para mostrarte trabajos cercanos."
+          "locationAlwaysAndWhenInUsePermission": "CHAMBA usa tu ubicación para compartir dónde necesitás el servicio y para que el técnico pueda llegar."
         }
       ],
       [

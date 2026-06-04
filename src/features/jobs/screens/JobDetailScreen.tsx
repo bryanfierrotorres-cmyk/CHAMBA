@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, Image,
-  Alert, Linking, ActivityIndicator, StyleSheet, Platform, ViewStyle, StyleProp,
+  Alert, ActivityIndicator, StyleSheet, Platform, ViewStyle, StyleProp,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
@@ -21,6 +21,7 @@ import { CARD_STEP_SHADOW, CHAMBA } from '@constants/chambaUI';
 import { JobLocationLabel } from '@components/worker/JobLocationLabel';
 import { JobRequestPreviewModal } from '@components/jobs/JobRequestPreviewModal';
 import { getJobRequestPhotoUrl } from '@utils/jobRequestPhoto';
+import { openJobLocationInMaps } from '@utils/openMaps';
 import {
   formatCurrency, formatDate, formatTime,
   getCategoryEmoji, getCategoryLabel,
@@ -147,9 +148,18 @@ export const JobDetailScreen: React.FC = () => {
     );
   };
 
-  const openMaps = () => {
-    const { lat, lng } = job.location;
-    Linking.openURL(`https://maps.google.com/?q=${lat},${lng}`);
+  const location = job.location;
+  const hasMapCoords = !!(location && (location.lat !== 0 || location.lng !== 0));
+  const hasMapAddress = !!location?.address?.trim();
+  const showLocationSection = !!(location && (hasMapCoords || hasMapAddress));
+
+  const handleOpenMaps = () => {
+    if (!location) return;
+    void openJobLocationInMaps({
+      lat: location.lat,
+      lng: location.lng,
+      address: location.address,
+    });
   };
 
   return (
@@ -280,31 +290,47 @@ export const JobDetailScreen: React.FC = () => {
         )}
 
         {/* ── Mapa ─────────────────────────────────────────────── */}
-        {job.location && (job.location.lat !== 0 || job.location.lng !== 0) && (
+        {showLocationSection && (
         <SectionPanel admin={isAdmin} noPadding style={[styles.mapCard, isAdmin && adminStyles.mapCard]}>
-          <MapView
-            style={styles.map}
-            initialRegion={{
-              latitude:      job.location.lat,
-              longitude:     job.location.lng,
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            }}
-            scrollEnabled={false}
-          >
-            <Marker
-              coordinate={{ latitude: job.location.lat, longitude: job.location.lng }}
-              title={job.title}
-              pinColor={isAdmin ? CHAMBA.blue : COLORS.brand[500]}
-            />
-          </MapView>
-          <TouchableOpacity onPress={openMaps} style={[styles.mapFooter, isAdmin && adminStyles.mapFooter]}>
+          {hasMapCoords && (
+            <MapView
+              style={styles.map}
+              initialRegion={{
+                latitude:      location!.lat,
+                longitude:     location!.lng,
+                latitudeDelta: 0.01,
+                longitudeDelta: 0.01,
+              }}
+              scrollEnabled={false}
+            >
+              <Marker
+                coordinate={{ latitude: location!.lat, longitude: location!.lng }}
+                title={job.title}
+                pinColor={isAdmin ? CHAMBA.blue : COLORS.brand[500]}
+              />
+            </MapView>
+          )}
+          <View style={[styles.mapFooter, isAdmin && adminStyles.mapFooter]}>
             <JobLocationLabel
-              address={job.location?.address}
+              address={location?.address}
               showDistance
-              distanceKm={job.location?.distance_km}
+              distanceKm={location?.distance_km}
             />
-          </TouchableOpacity>
+            {profile?.role === 'worker' && (hasMapCoords || hasMapAddress) && (
+              <TouchableOpacity
+                onPress={handleOpenMaps}
+                style={[styles.openMapBtn, isAdmin && adminStyles.openMapBtn]}
+                activeOpacity={0.88}
+                accessibilityRole="button"
+                accessibilityLabel="Abrir en Mapa"
+              >
+                <Ionicons name="navigate-outline" size={18} color={isAdmin ? CHAMBA.blue : COLORS.brand[600]} />
+                <Text style={[styles.openMapBtnText, isAdmin && adminStyles.openMapBtnText]}>
+                  Abrir en Mapa
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </SectionPanel>
         )}
 
@@ -582,11 +608,28 @@ const styles = StyleSheet.create({
     height: 180,
   },
   mapFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
     padding: SPACING.md,
     backgroundColor: COLORS.bg.card,
+    gap: SPACING.sm,
+  },
+  openMapBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    alignSelf: 'stretch',
+    marginTop: SPACING.xs,
+    paddingVertical: 12,
+    paddingHorizontal: SPACING.md,
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: COLORS.brand[50],
+    borderWidth: 1,
+    borderColor: COLORS.brand[200],
+  },
+  openMapBtnText: {
+    color: COLORS.brand[600],
+    fontSize: FONT_SIZE.sm,
+    fontWeight: '700',
   },
   mapAddress: {
     color: COLORS.text.secondary,
@@ -746,5 +789,12 @@ const adminStyles = StyleSheet.create({
   mapFooter: {
     backgroundColor: CHAMBA.white,
     padding: 18,
+  },
+  openMapBtn: {
+    backgroundColor: '#E0F2FE',
+    borderColor: '#BAE6FD',
+  },
+  openMapBtnText: {
+    color: CHAMBA.blue,
   },
 });

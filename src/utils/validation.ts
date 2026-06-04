@@ -30,16 +30,16 @@ export const validateRegistration = (
   fullName: string,
   email: string,
   phone: string,
-  password: string,
 ): ValidationResult => {
-  if (!fullName.trim() || fullName.trim().length < 3)
-    return { valid: false, message: 'El nombre debe tener al menos 3 caracteres' };
+  if (!fullName.trim() || fullName.trim().split(' ').length < 2)
+    return { valid: false, message: 'Ingresá nombre y apellido' };
   if (!isValidEmail(email))
     return { valid: false, message: 'Correo electrónico inválido' };
-  if (!isValidPhone(phone))
-    return { valid: false, message: 'Teléfono inválido (10 dígitos)' };
-  if (!isValidPassword(password))
-    return { valid: false, message: 'La contraseña debe tener al menos 8 caracteres y un número' };
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length !== 8)
+    return { valid: false, message: 'Celular inválido — 8 dígitos (Nicaragua)' };
+  if (!/^[2578]/.test(digits))
+    return { valid: false, message: 'El celular debe iniciar con 2, 5, 7 u 8' };
   return { valid: true, message: '' };
 };
 
