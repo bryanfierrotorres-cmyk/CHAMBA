@@ -896,6 +896,7 @@ interface CreateJobParams {
   category: JobCategory;
   payAmount: number;
   address: string;
+  /** 0,0 = solo dirección escrita (sin GPS). */
   lat: number;
   lng: number;
   scheduledAt?: string;

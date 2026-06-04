@@ -21,7 +21,7 @@ interface ClientJobLocationSectionProps {
   onAddressChange: (value: string) => void;
   lat: number | null;
   lng: number | null;
-  onCoordsChange: (lat: number, lng: number) => void;
+  onCoordsChange: (lat: number | null, lng: number | null) => void;
   disabled?: boolean;
 }
 
@@ -51,19 +51,36 @@ export const ClientJobLocationSection: React.FC<ClientJobLocationSectionProps> =
       const msg =
         err instanceof Error
           ? err.message
-          : 'No se pudo obtener tu ubicación. Revisá permisos o intentá de nuevo.';
+          : 'No se pudo obtener tu ubicación. Podés seguir solo con la dirección escrita.';
       setError(msg);
     } finally {
       setLoading(false);
     }
   }, [address, onAddressChange, onCoordsChange]);
 
+  const handleClearGps = useCallback(() => {
+    onCoordsChange(null, null);
+    setError(null);
+  }, [onCoordsChange]);
+
   return (
     <View style={styles.wrap}>
-      <Text style={styles.sectionLabel}>Ubicación del servicio</Text>
+      <Text style={styles.sectionLabel}>Dónde se realizará el servicio</Text>
       <Text style={styles.sectionHint}>
-        Compartí tu ubicación para que el técnico pueda guiarse con mapas hasta tu casa o negocio.
+        Escribí la dirección o referencia del lugar (obligatorio). El GPS es opcional — útil si
+        estás en el sitio; si pedís el servicio para otra casa o negocio, solo la dirección alcanza.
       </Text>
+
+      <ChambaFormField
+        label="Dirección o referencia"
+        value={address}
+        onChangeText={onAddressChange}
+        placeholder="Ej. Colonia Los Robles, de la UCA 3c al sur, casa #12"
+        icon="location-outline"
+        editable={!disabled}
+      />
+
+      <Text style={styles.optionalLabel}>Ubicación GPS (opcional)</Text>
 
       <TouchableOpacity
         style={[
@@ -75,7 +92,7 @@ export const ClientJobLocationSection: React.FC<ClientJobLocationSectionProps> =
         disabled={disabled || loading}
         activeOpacity={0.88}
         accessibilityRole="button"
-        accessibilityLabel="Compartir mi ubicación actual"
+        accessibilityLabel="Compartir ubicación GPS actual"
       >
         {loading ? (
           <ActivityIndicator color={coordsReady ? '#15803D' : CHAMBA.blue} />
@@ -88,14 +105,14 @@ export const ClientJobLocationSection: React.FC<ClientJobLocationSectionProps> =
         )}
         <View style={styles.shareTextCol}>
           <Text style={[styles.shareTitle, coordsReady && styles.shareTitleDone]}>
-            {coordsReady ? 'Ubicación compartida' : 'Compartir mi ubicación actual'}
+            {coordsReady ? 'GPS compartido' : 'Compartir mi ubicación actual'}
           </Text>
           <Text style={styles.shareSub}>
             {coordsReady && lat != null && lng != null
-              ? `GPS: ${formatCoordsPreview(lat, lng)}`
+              ? `Punto en mapa: ${formatCoordsPreview(lat, lng)}`
               : Platform.OS === 'web'
-                ? 'El navegador pedirá permiso de ubicación'
-                : 'Usamos GPS para marcar el punto en el mapa del técnico'}
+                ? 'El navegador puede pedir permiso — no es obligatorio'
+                : 'Ayuda al técnico a abrir mapas si querés'}
           </Text>
         </View>
         {!loading && (
@@ -103,22 +120,19 @@ export const ClientJobLocationSection: React.FC<ClientJobLocationSectionProps> =
         )}
       </TouchableOpacity>
 
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-      {!coordsReady ? (
-        <Text style={styles.requiredHint}>
-          Tocá el botón de arriba antes de enviar — es necesario para que el técnico llegue.
-        </Text>
+      {coordsReady ? (
+        <TouchableOpacity
+          onPress={handleClearGps}
+          disabled={disabled}
+          style={styles.clearGps}
+          accessibilityRole="button"
+          accessibilityLabel="Quitar ubicación GPS"
+        >
+          <Text style={styles.clearGpsText}>Quitar GPS — solo usar dirección escrita</Text>
+        </TouchableOpacity>
       ) : null}
 
-      <ChambaFormField
-        label="Dirección o referencia"
-        value={address}
-        onChangeText={onAddressChange}
-        placeholder="Ej. Semáforos de Rubenia, 2c al norte, portón verde"
-        icon="location-outline"
-        editable={!disabled}
-      />
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
     </View>
   );
 };
@@ -137,6 +151,13 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginBottom: 12,
   },
+  optionalLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: CHAMBA.muted,
+    marginTop: 4,
+    marginBottom: 8,
+  },
   shareBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -146,7 +167,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#BAE6FD',
     backgroundColor: '#F0F9FF',
-    marginBottom: 10,
+    marginBottom: 6,
     ...CARD_STEP_SHADOW,
   },
   shareBtnDone: {
@@ -166,16 +187,20 @@ const styles = StyleSheet.create({
     color: CHAMBA.muted,
     lineHeight: 16,
   },
+  clearGps: {
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+    paddingVertical: 4,
+  },
+  clearGpsText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: CHAMBA.blue,
+  },
   errorText: {
     color: '#DC2626',
     fontSize: 12,
     fontWeight: '600',
-    marginBottom: 8,
-  },
-  requiredHint: {
-    fontSize: 12,
-    color: '#B45309',
-    fontWeight: '600',
-    marginBottom: 10,
+    marginTop: 4,
   },
 });

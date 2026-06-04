@@ -27,7 +27,7 @@ import { JOB_KEYS } from '@features/jobs/hooks/useJobs';
 import { uploadJobRequestPhoto } from '@features/jobs/services/jobRequestPhotoService';
 import { JobRequestPhotoPicker } from '@components/jobs/JobRequestPhotoPicker';
 import { ClientJobLocationSection } from '@components/client/ClientJobLocationSection';
-import { hasUsableJobCoordinates } from '@utils/shareJobLocation';
+import { jobCoordinatesForCreate } from '@utils/shareJobLocation';
 import { isExpressServiceSlug } from '@constants/servicesConfig';
 import { ScreenBackButton } from '@components/navigation/ScreenBackButton';
 import { ChambaPublishSuccess } from '@components/chamba/ChambaPublishSuccess';
@@ -98,13 +98,10 @@ export const CreateJobFormScreen: React.FC = () => {
     [serviceTypeSlug, budget, budgetAmount, catalog],
   );
 
-  const hasLocation = hasUsableJobCoordinates(serviceLat, serviceLng);
-
   const canSubmit =
     title.trim() &&
     description.trim() &&
     address.trim() &&
-    hasLocation &&
     priceValidation.valid;
 
   const handleBudgetChange = (value: string) => {
@@ -119,7 +116,7 @@ export const CreateJobFormScreen: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    if (!profile?.id || !canSubmit || serviceLat == null || serviceLng == null) return;
+    if (!profile?.id || !canSubmit) return;
 
     const priceCheck = validateClientPrice(serviceTypeSlug, budgetAmount, priceLookup);
     if (!priceCheck.valid) {
@@ -140,14 +137,16 @@ export const CreateJobFormScreen: React.FC = () => {
         mediaUrls = [photoUrl];
       }
 
+      const coords = jobCoordinatesForCreate(serviceLat, serviceLng);
+
       await createJob({
         title: title.trim(),
         description: description.trim(),
         category: serviceTypeSlug,
         payAmount: budgetAmount,
         address: address.trim(),
-        lat: serviceLat,
-        lng: serviceLng,
+        lat: coords.lat,
+        lng: coords.lng,
         durationHours: Number(durationHours) || 2,
         requiredWorkers: Number(requiredWorkers) || 1,
         createdBy: creatorId,
@@ -254,9 +253,9 @@ export const CreateJobFormScreen: React.FC = () => {
           onAddressChange={setAddress}
           lat={serviceLat}
           lng={serviceLng}
-          onCoordsChange={(lat, lng) => {
-            setServiceLat(lat);
-            setServiceLng(lng);
+          onCoordsChange={(nextLat, nextLng) => {
+            setServiceLat(nextLat);
+            setServiceLng(nextLng);
           }}
           disabled={isSubmitting}
         />
@@ -311,7 +310,8 @@ export const CreateJobFormScreen: React.FC = () => {
           </View>
           <Text style={styles.infoText}>
             Tu solicitud será visible para trabajadores verificados de la categoría
-            seleccionada. Recibirás notificación cuando alguien la acepte.
+            seleccionada. Indicá bien la dirección del servicio; el GPS es opcional si no
+            estás en ese lugar.
           </Text>
         </View>
       </ScrollView>

@@ -1,0 +1,18 @@
+---
+description: Ubicación GPS del cliente opcional; dirección escrita obligatoria para publicar solicitud
+alwaysApply: true
+---
+
+# Ubicación en solicitudes del cliente
+
+## Regla
+
+1. **Obligatorio:** dirección o referencia escrita (`address`).
+2. **Opcional:** GPS (`lat`/`lng`) — el cliente puede pedir el servicio para otro lugar sin estar ahí.
+3. Sin GPS válido: guardar `lat=0`, `lng=0` en BD; el técnico usa mapas por **dirección** si existe.
+4. No bloquear `Enviar solicitud` por falta de permiso o GPS.
+
+## UI
+
+- `ClientJobLocationSection`: dirección primero, botón "Compartir ubicación" opcional.
+- Técnico: botón mapa solo si hay GPS usable; si no, navegación por texto de dirección (`openJobLocationInMaps`).

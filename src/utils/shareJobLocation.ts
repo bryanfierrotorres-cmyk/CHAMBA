@@ -83,3 +83,14 @@ export const hasUsableJobCoordinates = (
 
 export const formatCoordsPreview = (lat: number, lng: number): string =>
   `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+
+/** Coordenadas para API/BD: GPS solo si el cliente compartió punto; si no, 0,0 (solo dirección). */
+export const jobCoordinatesForCreate = (
+  lat: number | null | undefined,
+  lng: number | null | undefined,
+): { lat: number; lng: number } => {
+  if (hasUsableJobCoordinates(lat, lng)) {
+    return { lat: lat as number, lng: lng as number };
+  }
+  return { lat: 0, lng: 0 };
+};

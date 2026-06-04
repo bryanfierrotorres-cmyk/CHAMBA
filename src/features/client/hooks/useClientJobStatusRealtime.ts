@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@services/supabase';
 import { useAuthStore } from '@store/authStore';
 import { getClientOrderStatusLabel } from '@utils/formatters';
+import { syncProfileWithDatabase } from '@utils/profileSync';
+import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
+import { JOB_KEYS } from '@features/jobs/hooks/useJobs';
 import type { JobStatus } from '@/types';
 
 export interface ClientStatusToast {
@@ -9,91 +13,154 @@ export interface ClientStatusToast {
   message: string;
 }
 
+type JobRow = {
+  id?: string;
+  status?: JobStatus;
+  operational_phase?: string | null;
+  title?: string;
+};
+
+const statusKey = (row: JobRow): string =>
+  `${row.status ?? ''}:${row.operational_phase ?? ''}`;
+
 /**
- * Escucha cambios en `jobs` del cliente y expone mensajes para banner superior.
+ * Realtime (supabase.channel) sobre `jobs` (= solicitudes del cliente).
+ * Cuando cambia `status` u `operational_phase`, dispara mensaje para el banner superior.
  */
 export function useClientJobStatusRealtime(): ClientStatusToast | null {
   const profile = useAuthStore((s) => s.profile);
+  const isPhoneAuth = useAuthStore((s) => s.isPhoneAuth);
   const session = useAuthStore((s) => s.session);
+  const queryClient = useQueryClient();
   const [toast, setToast] = useState<ClientStatusToast | null>(null);
   const lastStatusRef = useRef<Record<string, string>>({});
+  const clientIdRef = useRef<string | null>(null);
 
   const pushToast = useCallback((jobId: string, message: string) => {
     setToast({ id: `${jobId}-${Date.now()}`, message });
   }, []);
 
+  const notifyJobChange = useCallback(
+    (row: JobRow, options?: { skipIfUnchanged?: boolean }) => {
+      if (!row?.id || !row.status) return;
+
+      const key = statusKey(row);
+      if (options?.skipIfUnchanged && lastStatusRef.current[row.id] === key) return;
+      lastStatusRef.current[row.id] = key;
+
+      const label = getClientOrderStatusLabel(row.status, row.operational_phase);
+      const title = row.title?.trim() ? `"${row.title.trim()}"` : 'Tu solicitud';
+      pushToast(row.id, `${title}: ${label}`);
+
+      void queryClient.invalidateQueries({ queryKey: ['client-orders'] });
+      void queryClient.invalidateQueries({ queryKey: JOB_KEYS.detail(row.id) });
+    },
+    [pushToast, queryClient],
+  );
+
   useEffect(() => {
-    if (!profile?.id || profile.role !== 'client' || !session?.access_token) {
+    if (!profile?.id || profile.role !== 'client') {
       return undefined;
     }
 
-    const clientId = profile.id;
+    let cancelled = false;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
 
-    const channel = supabase
-      .channel(`client-jobs-status-${clientId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'jobs',
-          filter: `created_by=eq.${clientId}`,
-        },
-        (payload) => {
-          const row = payload.new as {
-            id?: string;
-            status?: JobStatus;
-            operational_phase?: string | null;
-            title?: string;
-          };
-          if (!row?.id || !row.status) return;
+    const setup = async () => {
+      const synced = await syncProfileWithDatabase(profile);
+      if (cancelled) return;
 
-          const statusKey = `${row.status}:${row.operational_phase ?? ''}`;
-          if (lastStatusRef.current[row.id] === statusKey) return;
-          lastStatusRef.current[row.id] = statusKey;
+      const clientId = synced.id;
+      clientIdRef.current = clientId;
 
-          const label = getClientOrderStatusLabel(row.status, row.operational_phase);
-          const title = row.title?.trim() ? `"${row.title.trim()}"` : 'Tu solicitud';
-          pushToast(row.id, `${title}: ${label}`);
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'job_assignments',
-        },
-        async (payload) => {
-          const row = payload.new as {
-            job_id?: string;
-            selection_status?: string;
-          };
-          if (row.selection_status !== 'pending' || !row.job_id) return;
+      if (synced.id !== profile.id || synced.is_approved !== profile.is_approved) {
+        useAuthStore.getState().setProfile(synced);
+      }
 
-          const { data: jobRow } = await supabase
-            .from('jobs')
-            .select('id, title, created_by')
-            .eq('id', row.job_id)
-            .maybeSingle();
+      void ensurePhoneAuthSession(synced);
 
-          if (jobRow?.created_by !== clientId) return;
+      const { data: existingJobs } = await supabase
+        .from('jobs')
+        .select('id, status, operational_phase, title')
+        .eq('created_by', clientId)
+        .order('updated_at', { ascending: false })
+        .limit(40);
 
-          const title = jobRow.title?.trim()
-            ? `"${jobRow.title.trim()}"`
-            : 'Tu solicitud';
-          pushToast(
-            row.job_id,
-            `${title}: un técnico postuló. Revisá su perfil en Mis Solicitudes.`,
-          );
-        },
-      )
-      .subscribe();
+      if (!cancelled && existingJobs) {
+        for (const row of existingJobs as JobRow[]) {
+          if (row.id) lastStatusRef.current[row.id] = statusKey(row);
+        }
+      }
+
+      channel = supabase
+        .channel(`client-solicitudes-${clientId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'jobs',
+            filter: `created_by=eq.${clientId}`,
+          },
+          (payload) => {
+            notifyJobChange(payload.new as JobRow);
+          },
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'job_assignments',
+          },
+          async (payload) => {
+            const row = payload.new as {
+              job_id?: string;
+              selection_status?: string;
+            };
+            if (row.selection_status !== 'pending' || !row.job_id) return;
+
+            const { data: jobRow } = await supabase
+              .from('jobs')
+              .select('id, title, created_by')
+              .eq('id', row.job_id)
+              .maybeSingle();
+
+            if (jobRow?.created_by !== clientId) return;
+
+            const title = jobRow.title?.trim()
+              ? `"${jobRow.title.trim()}"`
+              : 'Tu solicitud';
+            pushToast(
+              row.job_id,
+              `${title}: un técnico postuló. Revisá su perfil en Mis Solicitudes.`,
+            );
+            void queryClient.invalidateQueries({ queryKey: ['client-orders'] });
+          },
+        )
+        .subscribe((status) => {
+          if (status === 'CHANNEL_ERROR') {
+            console.warn('[ClientRealtime] canal solicitudes: error de suscripción');
+          }
+        });
+    };
+
+    void setup();
 
     return () => {
-      void supabase.removeChannel(channel);
+      cancelled = true;
+      if (channel) void supabase.removeChannel(channel);
     };
-  }, [profile?.id, profile?.role, session?.access_token, pushToast]);
+  }, [
+    profile?.id,
+    profile?.role,
+    profile?.phone,
+    isPhoneAuth,
+    session?.access_token,
+    notifyJobChange,
+    pushToast,
+    queryClient,
+  ]);
 
   return toast;
 }

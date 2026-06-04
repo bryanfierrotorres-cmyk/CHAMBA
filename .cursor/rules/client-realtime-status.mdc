@@ -1,0 +1,23 @@
+---
+description: Cliente recibe banner en tiempo real cuando cambia el estado de sus solicitudes (jobs)
+alwaysApply: true
+---
+
+# Realtime — estado de solicitudes (cliente)
+
+## Modelo
+
+- Tabla: `public.jobs` (= solicitudes del cliente).
+- Campo principal: `status`; progreso técnico: `operational_phase`.
+- Canal: `supabase.channel` + `postgres_changes` filtro `created_by=eq.{clientId}`.
+
+## App
+
+- Hook: `useClientJobStatusRealtime` — escucha `UPDATE` en `jobs` y postulaciones en `job_assignments`.
+- UI: `ClientJobStatusToast` — banner superior (toast) en `ClientNavigator`.
+- Login teléfono: sincronizar perfil por teléfono + `ensurePhoneAuthSession` (no depender solo de JWT).
+
+## Supabase
+
+- Publicación: `supabase_realtime` debe incluir `jobs` y `job_assignments` (migración `019_realtime_jobs_publication.sql`).
+- Aplicar: `npm run db:apply-realtime`.

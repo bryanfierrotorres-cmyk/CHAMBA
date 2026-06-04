@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,11 +13,22 @@ export const ClientJobStatusToast: React.FC = () => {
   const toast = useClientJobStatusRealtime();
   const translateY = useRef(new Animated.Value(-120)).current;
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [visible, setVisible] = useState(false);
+
+  const hideBanner = useCallback(() => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    Animated.timing(translateY, {
+      toValue: -120,
+      duration: 220,
+      useNativeDriver: true,
+    }).start(() => setVisible(false));
+  }, [translateY]);
 
   useEffect(() => {
     if (!toast) return undefined;
 
     if (hideTimer.current) clearTimeout(hideTimer.current);
+    setVisible(true);
     translateY.setValue(-120);
     Animated.spring(translateY, {
       toValue: 0,
@@ -26,20 +37,14 @@ export const ClientJobStatusToast: React.FC = () => {
       friction: 10,
     }).start();
 
-    hideTimer.current = setTimeout(() => {
-      Animated.timing(translateY, {
-        toValue: -120,
-        duration: 280,
-        useNativeDriver: true,
-      }).start();
-    }, 4500);
+    hideTimer.current = setTimeout(hideBanner, 5000);
 
     return () => {
       if (hideTimer.current) clearTimeout(hideTimer.current);
     };
-  }, [toast, translateY]);
+  }, [toast, translateY, hideBanner]);
 
-  if (!toast) return null;
+  if (!toast || !visible) return null;
 
   return (
     <Animated.View
@@ -49,11 +54,12 @@ export const ClientJobStatusToast: React.FC = () => {
         { top: insets.top + 8, transform: [{ translateY }] },
       ]}
     >
-      <TouchableOpacity activeOpacity={0.92} style={styles.banner}>
+      <TouchableOpacity activeOpacity={0.92} style={styles.banner} onPress={hideBanner}>
         <Ionicons name="notifications" size={20} color={CHAMBA.teal} />
-        <Text style={styles.text} numberOfLines={2}>
+        <Text style={styles.text} numberOfLines={3}>
           {toast.message}
         </Text>
+        <Ionicons name="close" size={18} color="#94A3B8" />
       </TouchableOpacity>
     </Animated.View>
   );
