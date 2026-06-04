@@ -19,6 +19,7 @@ import { WorkerReviewsPanel } from '@features/reviews/components/WorkerReviewsPa
 import { useWorkerReviews } from '@features/reviews/hooks/useWorkerReviews';
 import { formatCurrency, formatDate, getCategoryLabel, getClientOrderStatusLabel } from '@utils/formatters';
 import { getCategoryVisual } from '@utils/categoryVisual';
+import { ClientJobApplicantPanel } from '@components/client/ClientJobApplicantPanel';
 import type { ClientOrderJob, JobStatus, ClientOrdersStackParamList } from '@/types';
 
 type OrdersNav = NativeStackNavigationProp<ClientOrdersStackParamList, 'ClientOrdersList'>;
@@ -121,10 +122,11 @@ interface OrderCardProps {
   clientId: string;
   clientName: string;
   onOpenCompleted?: (jobId: string) => void;
+  onApplicantDecision?: () => void;
 }
 
 const OrderCard: React.FC<OrderCardProps> = ({
-  job, clientId, clientName, onOpenCompleted,
+  job, clientId, clientName, onOpenCompleted, onApplicantDecision,
 }) => {
   const badge = statusBadge(job);
   const visual = getCategoryVisual(job.category);
@@ -167,6 +169,15 @@ const OrderCard: React.FC<OrderCardProps> = ({
           )}
         </View>
       </TouchableOpacity>
+
+      {job.status === 'open' && (
+        <ClientJobApplicantPanel
+          jobId={job.id}
+          clientId={clientId}
+          jobStatus={job.status}
+          onDecision={onApplicantDecision}
+        />
+      )}
 
       <ClientOrderReview job={job} clientId={clientId} clientName={clientName} />
     </View>
@@ -267,6 +278,7 @@ export const ClientOrdersScreen: React.FC = () => {
                   onOpenCompleted={(jobId) =>
                     navigation.navigate('ClientCompletedJob', { jobId })
                   }
+                  onApplicantDecision={() => void refetch()}
                 />
               ) : null,
             )

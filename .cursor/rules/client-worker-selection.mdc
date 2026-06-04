@@ -1,0 +1,26 @@
+---
+description: Cliente elige técnico entre hasta 3 postulaciones antes de asignar el trabajo
+alwaysApply: true
+---
+
+# Selección de técnico por el cliente
+
+## Regla de negocio
+
+1. El cliente publica la solicitud (`jobs.status = open`).
+2. Hasta **3 técnicos** pueden **postular** (`accept_job` → `job_assignments.selection_status = pending`).
+3. El trabajo **permanece open** hasta que el cliente decida.
+4. El cliente ve el **perfil** de cada postulante (nombre, foto, teléfono, especialidades, rating) y **aprueba o rechaza**.
+5. Al **aprobar** uno: `jobs.status = taken`, `assigned_worker_id` = elegido; las demás postulaciones pasan a `rejected`.
+6. Solo el técnico **aprobado** avanza a agenda / fases operativas.
+
+## Implementación
+
+- RPC: `accept_job`, `get_job_worker_applications`, `client_approve_worker_application`, `client_reject_worker_application`.
+- Migración: `016_client_worker_selection.sql`.
+- App: UI en Mis Solicitudes (cliente); mensaje de postulación enviada (técnico).
+
+## Prohibido
+
+- Marcar el job como `taken` al primer `accept_job` sin decisión del cliente.
+- Permitir más de 3 postulaciones `pending` por job.

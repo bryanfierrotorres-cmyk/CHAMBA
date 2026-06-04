@@ -22,6 +22,7 @@ import {
 } from '@utils/profileSync';
 import { useAssignmentsStore } from '@store/assignmentsStore';
 import { withTimeout } from '@utils/withTimeout';
+import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
 
 const PILOT_STORAGE_KEY = 'CHAMBA_PILOT_PROFILE';
 
@@ -694,8 +695,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         profile = applyPilotProfile(profile);
       }
 
+      const session = await ensurePhoneAuthSession(profile);
+
       await AsyncStorage.setItem(PILOT_STORAGE_KEY, JSON.stringify(profile));
-      set({ profile, isPhoneAuth: true, isLoading: false, error: null });
+      set({
+        profile,
+        session,
+        isPhoneAuth: !session,
+        isLoading: false,
+        error: null,
+      });
     } catch (err: any) {
       const msg = err.message ?? 'Error al iniciar sesión';
       set({ error: msg, isLoading: false });
@@ -715,8 +724,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       } else if (profile.role === 'worker') {
         profile = applyPilotProfile(profile);
       }
+      const session = await ensurePhoneAuthSession(profile);
       await AsyncStorage.setItem(PILOT_STORAGE_KEY, JSON.stringify(profile));
-      set({ profile, isPhoneAuth: true });
+      set({ profile, session, isPhoneAuth: !session });
       return true;
     } catch {
       return false;

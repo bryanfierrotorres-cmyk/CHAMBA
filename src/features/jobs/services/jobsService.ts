@@ -221,17 +221,60 @@ interface FetchJobsParams {
   /** Filter by multiple categories at once (OR). Overrides `category` if both provided. */
   categories?: JobCategory[];
   page?: number;
+  /** Login nombre+teléfono: feed vía RPC sin JWT (auth.uid). */
+  workerId?: string;
 }
+
+const categoriesToDbFilter = (categories?: JobCategory[]): string[] | null =>
+  categories && categories.length > 0
+    ? Array.from(new Set(categories.flatMap((c) => toDbJobCategoryQueryValues(c))))
+    : null;
+
+const fetchJobsViaWorkerRpc = async ({
+  workerId,
+  status = 'open',
+  categories,
+  page = 0,
+}: FetchJobsParams & { workerId: string }): Promise<PaginatedResponse<Job> | null> => {
+  const dbCategories = categoriesToDbFilter(categories);
+
+  const { data, error } = await supabase.rpc('get_worker_open_jobs_feed', {
+    p_worker_id: workerId,
+    p_status: status,
+    p_categories: dbCategories,
+    p_limit: PAGE_SIZE,
+    p_offset: page * PAGE_SIZE,
+  });
+
+  if (error) {
+    console.warn('[fetchJobs] RPC get_worker_open_jobs_feed:', error.message);
+    return null;
+  }
+
+  const body = data as { success?: boolean; jobs?: Job[]; count?: number; error?: string } | null;
+  if (!body?.success) {
+    if (body?.error) console.warn('[fetchJobs] worker RPC:', body.error);
+    return null;
+  }
+
+  const rows = (body.jobs ?? []) as Job[];
+  const total = body.count ?? rows.length;
+
+  return {
+    data: rows.map(normalizeJobRow),
+    count: total,
+    page,
+    pageSize: PAGE_SIZE,
+    hasMore: total > (page + 1) * PAGE_SIZE,
+  };
+};
 
 const fetchJobsViaRpc = async ({
   status = 'open',
   categories,
   page = 0,
 }: FetchJobsParams): Promise<PaginatedResponse<Job> | null> => {
-  const dbCategories =
-    categories && categories.length > 0
-      ? Array.from(new Set(categories.flatMap((c) => toDbJobCategoryQueryValues(c))))
-      : null;
+  const dbCategories = categoriesToDbFilter(categories);
 
   const { data, error } = await supabase.rpc('get_open_jobs_feed', {
     p_status: status,
@@ -269,6 +312,7 @@ export const fetchJobs = async ({
   category,
   categories,
   page = 0,
+  workerId,
 }: FetchJobsParams = {}): Promise<PaginatedResponse<Job>> => {
   if (categories !== undefined && categories.length === 0) {
     return {
@@ -278,6 +322,20 @@ export const fetchJobs = async ({
       pageSize: PAGE_SIZE,
       hasMore: false,
     };
+  }
+
+  const { data: sessionWrap } = await supabase.auth.getSession();
+  const hasJwt = !!sessionWrap.session?.access_token;
+
+  if (workerId && !hasJwt) {
+    const workerFeed = await fetchJobsViaWorkerRpc({
+      workerId,
+      status,
+      category,
+      categories,
+      page,
+    });
+    if (workerFeed) return workerFeed;
   }
 
   let query = supabase
@@ -305,6 +363,16 @@ export const fetchJobs = async ({
   const { data, error, count } = await query;
 
   if (error) {
+    if (workerId) {
+      const workerFeed = await fetchJobsViaWorkerRpc({
+        workerId,
+        status,
+        category,
+        categories,
+        page,
+      });
+      if (workerFeed) return workerFeed;
+    }
     const rpcFallback = await fetchJobsViaRpc({ status, category, categories, page });
     if (rpcFallback) return rpcFallback;
     throw new Error(error.message);
@@ -313,6 +381,16 @@ export const fetchJobs = async ({
   const normalized = ((data ?? []) as Job[]).map(normalizeJobRow);
 
   if (normalized.length === 0 && page === 0) {
+    if (workerId) {
+      const workerFeed = await fetchJobsViaWorkerRpc({
+        workerId,
+        status,
+        category,
+        categories,
+        page,
+      });
+      if (workerFeed && workerFeed.data.length > 0) return workerFeed;
+    }
     const rpcFallback = await fetchJobsViaRpc({ status, category, categories, page });
     if (rpcFallback && rpcFallback.data.length > 0) return rpcFallback;
   }
@@ -390,7 +468,12 @@ export const fetchWorkerAssignments = async (
 const tryRpcAccept = async (
   jobId: string,
   workerId: string,
-): Promise<{ ok: boolean; assignmentId?: string; error?: string }> => {
+): Promise<{
+  ok: boolean;
+  assignmentId?: string;
+  error?: string;
+  selectionStatus?: string;
+}> => {
   const { data, error } = await supabase.rpc('accept_job', {
     p_job_id: jobId,
     p_worker_id: workerId,
@@ -400,12 +483,21 @@ const tryRpcAccept = async (
     return { ok: false, error: error.message };
   }
 
-  const result = data as { success?: boolean; error?: string; assignment_id?: string } | null;
+  const result = data as {
+    success?: boolean;
+    error?: string;
+    assignment_id?: string;
+    selection_status?: string;
+  } | null;
   if (!result?.success) {
-    return { ok: false, error: result?.error ?? 'No se pudo tomar el trabajo' };
+    return { ok: false, error: result?.error ?? 'No se pudo postular al trabajo' };
   }
 
-  return { ok: true, assignmentId: result.assignment_id };
+  return {
+    ok: true,
+    assignmentId: result.assignment_id,
+    selectionStatus: result.selection_status,
+  };
 };
 
 const buildAssignment = (
@@ -413,8 +505,10 @@ const buildAssignment = (
   workerId: string,
   assignmentId: string | undefined,
   job: Job | null,
+  selectionStatus: 'pending' | 'approved' = 'approved',
 ): JobAssignment => {
   const now = new Date().toISOString();
+  const pendingClient = selectionStatus === 'pending';
   return {
     id: assignmentId ?? `${jobId}-${workerId}`,
     job_id: jobId,
@@ -426,8 +520,10 @@ const buildAssignment = (
     job: job
       ? {
           ...normalizeJobRow(job),
-          status: 'taken' as JobStatus,
-          operational_phase: 'accepted' as WorkerOperationalPhase,
+          status: (pendingClient ? 'open' : 'taken') as JobStatus,
+          operational_phase: pendingClient
+            ? null
+            : ('accepted' as WorkerOperationalPhase),
           updated_at: now,
         }
       : undefined,
@@ -437,40 +533,22 @@ const buildAssignment = (
 const acceptJobPilotFallback = async (
   jobId: string,
   workerId: string,
-): Promise<{ assignmentId?: string }> => {
-  const now = new Date().toISOString();
-  const patch = {
-    status: 'taken' as JobStatus,
-    operational_phase: 'accepted' as WorkerOperationalPhase,
-    updated_at: now,
-    assigned_worker_id: workerId,
-  };
+): Promise<{ assignmentId?: string; selectionStatus: 'pending' | 'approved' }> => {
+  const assignmentId = `${jobId}-${workerId}`;
 
-  let { error } = await supabase
-    .from('jobs')
-    .update(patch)
-    .eq('id', jobId)
-    .in('status', ['open', 'taken']);
+  const { error: insertErr } = await supabase.from('job_assignments').insert({
+    job_id: jobId,
+    worker_id: workerId,
+    selection_status: 'pending',
+  });
 
-  if (error) {
-    const retry = await supabase
-      .from('jobs')
-      .update({ status: 'taken', updated_at: now, assigned_worker_id: workerId })
-      .eq('id', jobId)
-      .eq('status', 'open');
-    error = retry.error;
+  if (insertErr && CONFIG.pilot.enabled) {
+    console.warn('[acceptJobPilotFallback] insert assignment:', insertErr.message);
+  } else if (insertErr) {
+    throw new Error(insertErr.message);
   }
 
-  if (error && CONFIG.pilot.enabled) {
-    console.warn('[acceptJobPilotFallback]', error.message);
-    return { assignmentId: `${jobId}-${workerId}` };
-  }
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return { assignmentId: `${jobId}-${workerId}` };
+  return { assignmentId, selectionStatus: 'pending' };
 };
 
 /** Notifica al cliente sobre avance operativo (viaje / llegada). */
@@ -629,9 +707,15 @@ export const acceptJob = async (
   workerId: string,
   workerCtx?: AcceptWorkerContext,
   jobSnapshot?: Job | null,
-): Promise<{ success: boolean; assignmentId?: string; assignment: JobAssignment }> => {
+): Promise<{
+  success: boolean;
+  assignmentId?: string;
+  assignment: JobAssignment;
+  pendingClientSelection?: boolean;
+}> => {
   let effectiveWorkerId = workerId;
   let effectiveCtx = workerCtx;
+  let selectionStatus: 'pending' | 'approved' = 'pending';
 
   try {
     if (workerCtx) {
@@ -669,6 +753,11 @@ export const acceptJob = async (
 
     let assignmentId = rpc.assignmentId;
 
+    if (rpc.ok) {
+      selectionStatus =
+        rpc.selectionStatus === 'approved' ? 'approved' : 'pending';
+    }
+
     if (!rpc.ok) {
       const localExisting = (await getLocalAssignments(effectiveWorkerId)).find(
         (a) => a.job_id === jobId,
@@ -682,6 +771,7 @@ export const acceptJob = async (
       }
 
       const alreadyMine =
+        rpc.error?.includes('Ya postulaste') ||
         rpc.error?.includes('Ya tomaste') ||
         rpc.error?.includes('anteriormente');
       if (alreadyMine) {
@@ -690,6 +780,7 @@ export const acceptJob = async (
           effectiveWorkerId,
           `${jobId}-${effectiveWorkerId}`,
           jobSnapshot ?? null,
+          'pending',
         );
         await upsertLocalAssignment(assignment, assignment.job ?? null);
         return { success: true, assignmentId: assignment.id, assignment };
@@ -728,6 +819,7 @@ export const acceptJob = async (
 
       const fallback = await acceptJobPilotFallback(jobId, effectiveWorkerId);
       assignmentId = fallback.assignmentId;
+      selectionStatus = fallback.selectionStatus;
     }
 
     let job: Job | null = jobSnapshot ?? null;
@@ -739,12 +831,29 @@ export const acceptJob = async (
       }
     }
 
-    const assignment = buildAssignment(jobId, effectiveWorkerId, assignmentId, job);
+    if (job?.status === 'taken' && job.assigned_worker_id === effectiveWorkerId) {
+      selectionStatus = 'approved';
+    }
+
+    const assignment = buildAssignment(
+      jobId,
+      effectiveWorkerId,
+      assignmentId,
+      job,
+      selectionStatus,
+    );
     await upsertLocalAssignment(assignment, assignment.job ?? null);
 
-    await patchLocalOperationalPhase(jobId, 'accepted', 'taken');
+    if (selectionStatus === 'approved') {
+      await patchLocalOperationalPhase(jobId, 'accepted', 'taken');
+    }
 
-    return { success: true, assignmentId, assignment };
+    return {
+      success: true,
+      assignmentId,
+      assignment,
+      pendingClientSelection: selectionStatus === 'pending',
+    };
   } catch (err) {
     if (CONFIG.pilot.enabled) {
       const fallbackJob = jobSnapshot ?? null;
@@ -753,9 +862,15 @@ export const acceptJob = async (
         effectiveWorkerId,
         `${jobId}-${effectiveWorkerId}`,
         fallbackJob,
+        'pending',
       );
       await upsertLocalAssignment(assignment, assignment.job ?? null);
-      return { success: true, assignmentId: assignment.id, assignment };
+      return {
+        success: true,
+        assignmentId: assignment.id,
+        assignment,
+        pendingClientSelection: true,
+      };
     }
     throw err;
   }

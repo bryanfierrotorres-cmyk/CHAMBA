@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, Image,
   Alert, ActivityIndicator, StyleSheet, Platform, ViewStyle, StyleProp,
@@ -16,6 +16,7 @@ import { Card } from '@components/Card';
 import { ScreenBackButton } from '@components/navigation/ScreenBackButton';
 import { useJobDetail, useAcceptJob } from '../hooks/useJobs';
 import { useAuthStore } from '@store/authStore';
+import { getLocalAssignments } from '@utils/localAssignments';
 import { WORKER_COLORS as COLORS, FONT_SIZE, SPACING, BORDER_RADIUS } from '@constants/workerTheme';
 import { CARD_STEP_SHADOW, CHAMBA } from '@constants/chambaUI';
 import { JobLocationLabel } from '@components/worker/JobLocationLabel';
@@ -87,8 +88,25 @@ export const JobDetailScreen: React.FC = () => {
   const { data: job, isLoading }         = useJobDetail(jobId);
   const { mutateAsync: accept, isPending } = useAcceptJob();
   const [accepted, setAccepted]          = useState(false);
+  const [awaitingClientChoice, setAwaitingClientChoice] = useState(false);
   const [previewOpen, setPreviewOpen]    = useState(false);
   const isAdmin = profile?.role === 'admin';
+
+  useEffect(() => {
+    if (!profile?.id || profile.role !== 'worker' || !job) return;
+    void (async () => {
+      const mine = job.assigned_worker_id === profile.id;
+      if (job.status === 'taken' && mine) {
+        setAccepted(true);
+        setAwaitingClientChoice(false);
+        return;
+      }
+      const local = (await getLocalAssignments(profile.id)).find((a) => a.job_id === job.id);
+      if (job.status === 'open' && local?.job?.status === 'open') {
+        setAwaitingClientChoice(true);
+      }
+    })();
+  }, [profile?.id, profile?.role, job?.id, job?.status, job?.assigned_worker_id]);
 
   if (isLoading || !job) {
     return (
@@ -98,54 +116,75 @@ export const JobDetailScreen: React.FC = () => {
     );
   }
 
-  const canAccept = job.status === 'open' && profile?.role === 'worker' && profile?.is_approved && !accepted;
+  const canAccept =
+    job.status === 'open' &&
+    profile?.role === 'worker' &&
+    profile?.is_approved &&
+    !accepted &&
+    !awaitingClientChoice;
   const requestPhotoUrl = getJobRequestPhotoUrl(job);
   const payoutLabel = isAdmin ? 'Pago al técnico' : 'Tu ganancia';
   const payoutColor = isAdmin ? CHAMBA.blue : COLORS.brand[600];
 
   const handleAccept = () => {
+    const confirmMsg =
+      `¿Postularte a "${job.title}"?\n\nEl cliente verá tu perfil y decidirá si te elige.\nGanancia estimada: ${formatCurrency(job.worker_payout)}`;
+
     if (Platform.OS === 'web') {
-      if (confirm(`¿Tomar "${job.title}"?\nRecibirás ${formatCurrency(job.worker_payout)}`)) {
-        accept({ jobId: job.id, job })
-          .then(() => {
-            setAccepted(true);
-            alert(`✅ ¡Chamba tomada! Recibirás ${formatCurrency(job.worker_payout)}`);
-            navigation.navigate('JobActive', { jobId: job.id });
-          })
-          .catch((err: any) => alert(`Error: ${err.message ?? 'Este trabajo ya fue tomado'}`));
-      }
+      if (!confirm(confirmMsg)) return;
+      accept({ jobId: job.id, job })
+        .then((result) => {
+          if (result.pendingClientSelection) {
+            setAwaitingClientChoice(true);
+            alert('📨 Postulación enviada. El cliente revisará tu perfil.');
+            return;
+          }
+          setAccepted(true);
+          alert(`✅ ¡Chamba asignada! Recibirás ${formatCurrency(job.worker_payout)}`);
+          navigation.navigate('JobActive', { jobId: job.id });
+        })
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : 'No se pudo postular';
+          alert(`Error: ${msg}`);
+        });
       return;
     }
-    Alert.alert(
-      '¿Confirmar Chamba?',
-      `Vas a tomar: "${job.title}"\n\nRecibirás: ${formatCurrency(job.worker_payout)}\n\n¿Estás seguro?`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: '¡Tomar Chamba!',
-          style: 'default',
-          onPress: async () => {
-            try {
-              await accept({ jobId: job.id });
-              setAccepted(true);
+
+    Alert.alert('¿Postularte?', confirmMsg, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Enviar postulación',
+        style: 'default',
+        onPress: async () => {
+          try {
+            const result = await accept({ jobId: job.id, job });
+            if (result.pendingClientSelection) {
+              setAwaitingClientChoice(true);
               Alert.alert(
-                '✅ ¡Chamba tomada!',
-                `El servicio quedó en proceso. Aparece en Mis Chambas.`,
-                [
-                  {
-                    text: 'Ver trabajo',
-                    onPress: () => navigation.navigate('JobActive', { jobId: job.id }),
-                  },
-                  { text: 'OK' },
-                ],
+                '📨 Postulación enviada',
+                'El cliente revisará tu perfil y te avisará si te elige.',
               );
-            } catch (err: any) {
-              Alert.alert('No disponible', err.message ?? 'Este trabajo ya fue tomado');
+              return;
             }
-          },
+            setAccepted(true);
+            Alert.alert(
+              '✅ ¡Chamba asignada!',
+              'El servicio quedó en proceso. Aparece en Mis Chambas.',
+              [
+                {
+                  text: 'Ver trabajo',
+                  onPress: () => navigation.navigate('JobActive', { jobId: job.id }),
+                },
+                { text: 'OK' },
+              ],
+            );
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : 'No se pudo postular';
+            Alert.alert('No disponible', msg);
+          }
         },
-      ],
-    );
+      },
+    ]);
   };
 
   const location = job.location;
@@ -345,14 +384,21 @@ export const JobDetailScreen: React.FC = () => {
               <Ionicons name="time-outline" size={18} color={COLORS.warning} />
               <Text style={styles.pendingText}>Tu cuenta está pendiente de aprobación</Text>
             </View>
+          ) : awaitingClientChoice ? (
+            <View style={styles.pendingBox}>
+              <Ionicons name="hourglass-outline" size={18} color={COLORS.brand[500]} />
+              <Text style={styles.pendingText}>
+                Postulaste — el cliente revisará tu perfil y te elegirá
+              </Text>
+            </View>
           ) : accepted ? (
             <View style={styles.takenBox}>
               <Ionicons name="checkmark-circle" size={22} color={COLORS.success} />
-              <Text style={styles.takenText}>¡Chamba tomada!</Text>
+              <Text style={styles.takenText}>¡Chamba asignada!</Text>
             </View>
           ) : (
             <Button
-              label={`Tomar Chamba  •  ${formatCurrency(job.worker_payout)}`}
+              label={`Postularme  •  ${formatCurrency(job.worker_payout)}`}
               onPress={handleAccept}
               isLoading={isPending}
               disabled={!canAccept}

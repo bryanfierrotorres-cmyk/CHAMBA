@@ -83,7 +83,7 @@ export const getClientOrderStatusLabel = (
 ): string => {
   if (status === 'completed') return 'Completado';
   if (status === 'cancelled') return 'Cancelado';
-  if (status === 'open') return 'Esperando técnico';
+  if (status === 'open') return 'Elegí tu técnico';
   if (operationalPhase === 'en_route') return 'Técnico en camino';
   if (operationalPhase === 'arrived' || status === 'in_progress') return 'Técnico en el lugar';
   if (operationalPhase === 'accepted' || status === 'taken') return 'Técnico asignado';

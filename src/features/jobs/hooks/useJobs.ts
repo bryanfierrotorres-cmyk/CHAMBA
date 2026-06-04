@@ -119,15 +119,23 @@ export const useJobFeed = (
 
   const { upsertJob } = useJobStore();
 
+  const profile = useAuthStore((s) => s.profile);
+
 
 
   const query = useInfiniteQuery({
 
-    queryKey: [...JOB_KEYS.feed(status, category), categories],
+    queryKey: [...JOB_KEYS.feed(status, category), categories, profile?.id],
 
     queryFn: ({ pageParam = 0 }) =>
 
-      fetchJobs({ status, category, categories, page: pageParam as number }),
+      fetchJobs({
+        status,
+        category,
+        categories,
+        page: pageParam as number,
+        workerId: profile?.role === 'worker' ? profile.id : undefined,
+      }),
 
     getNextPageParam: (last) => (last.hasMore ? last.page + 1 : undefined),
 

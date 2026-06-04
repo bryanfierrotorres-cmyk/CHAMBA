@@ -31,6 +31,7 @@ import {
   workerCoversJobCategory,
 } from '@utils/workerCategoryAccess';
 import { useAssignmentsStore } from '@store/assignmentsStore';
+import { getLocalAssignments } from '@utils/localAssignments';
 import type { Job, JobCategory, JobStackParamList, WorkerTabParamList } from '@/types';
 
 type StackNav = NativeStackNavigationProp<JobStackParamList, 'JobList'>;
@@ -82,18 +83,20 @@ interface FeedItemProps {
   acceptingJobId: string | null;
   acceptedJobIds: Set<string>;
   processJobIds: Set<string>;
+  awaitingClientChoice: boolean;
   onPressDetail: () => void;
   onAccept: (job: Job) => Promise<void>;
   onInProcess: (job: Job) => void;
 }
 const FeedItem: React.FC<FeedItemProps> = ({
-  job, isApproved, acceptingJobId, acceptedJobIds, processJobIds,
+  job, isApproved, acceptingJobId, acceptedJobIds, processJobIds, awaitingClientChoice,
   onPressDetail, onAccept, onInProcess,
 }) => (
   <JobCard
     job={job}
     onPress={onPressDetail}
-    showSwipe={isApproved}
+    showSwipe={isApproved && !awaitingClientChoice}
+    awaitingClientChoice={awaitingClientChoice}
     onAccept={() => onAccept(job)}
     onInProcess={() => onInProcess(job)}
     isAccepting={acceptingJobId === job.id}
@@ -142,8 +145,22 @@ export const HomeScreen: React.FC = () => {
   const [acceptedJobIds, setAcceptedJobIds]      = useState<Set<string>>(new Set());
   const [processJobIds, setProcessJobIds]        = useState<Set<string>>(new Set());
   const [removedFromFeedIds, setRemovedFromFeedIds] = useState<Set<string>>(new Set());
+  const [pendingApplicationIds, setPendingApplicationIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery]            = useState('');
   const acceptingRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!profile?.id || profile.role !== 'worker') return;
+    void (async () => {
+      const local = await getLocalAssignments(profile.id);
+      const pending = local
+        .filter((a) => a.job?.status === 'open')
+        .map((a) => a.job_id);
+      if (pending.length > 0) {
+        setPendingApplicationIds(new Set(pending));
+      }
+    })();
+  }, [profile?.id, profile?.role]);
 
   const catalog = useCatalog();
 
@@ -233,17 +250,32 @@ export const HomeScreen: React.FC = () => {
     acceptingRef.current.add(job.id);
     setAcceptingJobId(job.id);
     try {
-      await acceptMut({ jobId: job.id, job });
-      setAcceptedJobIds((prev) => new Set([...prev, job.id]));
-      toast.show({ type: 'success', message: '✅ ¡Chamba aceptada!' }, 2200);
+      const result = await acceptMut({ jobId: job.id, job });
+      if (result.pendingClientSelection) {
+        setPendingApplicationIds((prev) => new Set([...prev, job.id]));
+        toast.show({
+          type: 'success',
+          message: '📨 Postulación enviada. El cliente revisará tu perfil y te elegirá.',
+        }, 3200);
+      } else {
+        setAcceptedJobIds((prev) => new Set([...prev, job.id]));
+        toast.show({ type: 'success', message: '✅ ¡Chamba asignada!' }, 2200);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '';
       const isStorage = msg.includes('quota') || msg.includes('Quota') || msg.includes('Storage');
-      const isConcurrency = msg.includes('lock') || msg.includes('taken') || msg.includes('tomado') || msg.includes('NOWAIT');
+      const isConcurrency =
+        msg.includes('lock') ||
+        msg.includes('taken') ||
+        msg.includes('tomado') ||
+        msg.includes('NOWAIT') ||
+        msg.includes('3 técnicos');
       if (!isStorage) {
         toast.show({
           type: 'error',
-          message: isConcurrency ? '⚡ Este trabajo ya fue tomado' : msg || 'No se pudo tomar el trabajo',
+          message: isConcurrency
+            ? '⚡ Ya no hay cupo o el cliente ya eligió técnico'
+            : msg || 'No se pudo postular',
         }, 3500);
       }
     } finally {
@@ -322,6 +354,7 @@ export const HomeScreen: React.FC = () => {
             acceptingJobId={acceptingJobId}
             acceptedJobIds={acceptedJobIds}
             processJobIds={processJobIds}
+            awaitingClientChoice={pendingApplicationIds.has(item.id)}
             onPressDetail={() => navigation.navigate('JobDetail', { jobId: item.id })}
             onAccept={handleAccept}
             onInProcess={handleInProcess}

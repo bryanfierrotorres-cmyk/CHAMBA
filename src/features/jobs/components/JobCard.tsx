@@ -26,6 +26,8 @@ interface JobCardProps {
   isAccepted?:    boolean;
   isInProcess?:   boolean;
   showSwipe?:     boolean;
+  /** Postuló y espera que el cliente elija (máx. 3 técnicos). */
+  awaitingClientChoice?: boolean;
 }
 
 export const JobCard: React.FC<JobCardProps> = ({
@@ -38,6 +40,7 @@ export const JobCard: React.FC<JobCardProps> = ({
   isAccepted = false,
   isInProcess = false,
   showSwipe = false,
+  awaitingClientChoice = false,
 }) => {
   const isUrgent = job.required_workers > 1 && job.slots_taken >= job.required_workers - 1;
   const hasClientPhoto = jobHasRequestPhoto(job);
@@ -114,7 +117,12 @@ export const JobCard: React.FC<JobCardProps> = ({
       )}
 
       {/* Swipe or tap hint */}
-      {showSwipe && onAccept && (job.status === 'open' || isInProcess) ? (
+      {awaitingClientChoice ? (
+        <View style={styles.awaitingBox}>
+          <Ionicons name="hourglass-outline" size={18} color={M3.primary} />
+          <Text style={styles.awaitingText}>Postulaste — el cliente te elegirá</Text>
+        </View>
+      ) : showSwipe && onAccept && (job.status === 'open' || isInProcess) ? (
         <SwipeAcceptTrack
           resetKey={job.id}
           onAccept={onAccept}
@@ -226,5 +234,20 @@ const styles = StyleSheet.create({
     fontSize:   13,
     fontWeight: '700',
     color:      M3.primary,
+  },
+  awaitingBox: {
+    flexDirection:     'row',
+    alignItems:        'center',
+    justifyContent:    'center',
+    gap:               8,
+    paddingVertical:   12,
+    paddingHorizontal: 12,
+    borderRadius:      12,
+    backgroundColor:   M3.secondaryContainer,
+  },
+  awaitingText: {
+    fontSize:   13,
+    fontWeight: '700',
+    color:      M3.onSecondaryContainer,
   },
 });

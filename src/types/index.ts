@@ -82,6 +82,26 @@ export interface AssignedWorkerSummary {
 export interface ClientOrderJob extends Job {
   assigned_worker_id?: string | null;
   assigned_worker?: AssignedWorkerSummary | null;
+  /** Postulaciones pendientes de decisión (máx. 3). */
+  pending_applications_count?: number;
+}
+
+/** Postulación de técnico a una solicitud del cliente. */
+export type JobApplicationSelectionStatus = 'pending' | 'approved' | 'rejected';
+
+export interface JobWorkerApplication {
+  assignment_id: string;
+  job_id: string;
+  worker_id: string;
+  assigned_at: string;
+  selection_status: JobApplicationSelectionStatus;
+  full_name: string;
+  avatar_url: string | null;
+  phone: string | null;
+  category_1: string | null;
+  category_2: string | null;
+  rating_avg: number | string | null;
+  total_reviews: number | null;
 }
 
 // ─── Jobs ─────────────────────────────────────────────────────────────────────
@@ -127,6 +147,7 @@ export interface Job {
   before_photo_url?: string | null;
   after_photo_url?: string | null;
   created_by: string;
+  assigned_worker_id?: string | null;
   created_at: string;
   updated_at: string;
   creator?: Partial<UserProfile>;

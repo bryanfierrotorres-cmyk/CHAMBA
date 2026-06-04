@@ -136,14 +136,19 @@ export const fromDbJobCategory = (dbCategory: string | null | undefined): JobCat
   return LEGACY_DB_TO_APP[dbCategory] ?? dbCategory;
 };
 
-/** Valores DB a consultar (incluye alias legados usados en filas antiguas). */
+/** Valores DB a consultar (incluye alias legados y sub-servicios Express). */
 export const toDbJobCategoryQueryValues = (category: JobCategory | string): string[] => {
   const primary = toDbJobCategory(category);
   const legacyAliases: Record<string, string[]> = {
     limpieza_sofas:         ['sofas'],
     limpieza_alfombra:      ['alfombra', 'limpieza'],
     vehiculo_profundo:      ['vehiculos'],
+    jardineria:             ['jardineria_corte', 'jardineria_poda', 'jardineria_patio'],
   };
   const extras = legacyAliases[category as JobCategory] ?? [];
-  return Array.from(new Set([primary, ...extras]));
+  const out = new Set<string>([primary, ...extras]);
+  if (String(category).startsWith('jardineria_')) {
+    out.add('jardineria');
+  }
+  return [...out];
 };

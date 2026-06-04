@@ -57,6 +57,37 @@ export function useClientJobStatusRealtime(): ClientStatusToast | null {
           pushToast(row.id, `${title}: ${label}`);
         },
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'job_assignments',
+        },
+        async (payload) => {
+          const row = payload.new as {
+            job_id?: string;
+            selection_status?: string;
+          };
+          if (row.selection_status !== 'pending' || !row.job_id) return;
+
+          const { data: jobRow } = await supabase
+            .from('jobs')
+            .select('id, title, created_by')
+            .eq('id', row.job_id)
+            .maybeSingle();
+
+          if (jobRow?.created_by !== clientId) return;
+
+          const title = jobRow.title?.trim()
+            ? `"${jobRow.title.trim()}"`
+            : 'Tu solicitud';
+          pushToast(
+            row.job_id,
+            `${title}: un técnico postuló. Revisá su perfil en Mis Solicitudes.`,
+          );
+        },
+      )
       .subscribe();
 
     return () => {

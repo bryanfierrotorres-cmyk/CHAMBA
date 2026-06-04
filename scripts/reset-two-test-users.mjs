@@ -45,6 +45,145 @@ const ACCOUNTS = [
 
 const emailFor = (phone) => `${phone}@phone.chamba.local`;
 
+const PHONE_AUTH_PASSWORD =
+  process.env.EXPO_PUBLIC_PILOT_PHONE_PASSWORD?.trim() || 'ChambaTest123!';
+
+/** Crea usuarios Auth por SQL (mismo id que profiles) — funciona solo con SUPABASE_DB_URL. */
+async function ensureAuthUsersSql(db, accounts) {
+  await db.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`);
+
+  for (const acc of accounts) {
+    const email = emailFor(acc.phone);
+    const userId = acc.id;
+
+    await db.query(
+      `DELETE FROM auth.identities WHERE user_id = $1::uuid`,
+      [userId],
+    );
+    await db.query(`DELETE FROM auth.users WHERE id = $1::uuid`, [userId]);
+
+    await db.query(
+      `
+      INSERT INTO auth.users (
+        instance_id, id, aud, role, email, encrypted_password,
+        email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+        created_at, updated_at
+      ) VALUES (
+        '00000000-0000-0000-0000-000000000000',
+        $1::uuid,
+        'authenticated',
+        'authenticated',
+        $2,
+        crypt($3, gen_salt('bf')),
+        NOW(),
+        '{"provider":"email","providers":["email"]}'::jsonb,
+        $4::jsonb,
+        NOW(),
+        NOW()
+      )
+      `,
+      [
+        userId,
+        email,
+        PHONE_AUTH_PASSWORD,
+        JSON.stringify({ full_name: acc.full_name, role: acc.role }),
+      ],
+    );
+
+    const { rows: idRows } = await db.query(`SELECT gen_random_uuid() AS identity_id`);
+    const identityId = idRows[0].identity_id;
+
+    await db.query(
+      `
+      INSERT INTO auth.identities (
+        id, user_id, identity_data, provider, provider_id,
+        last_sign_in_at, created_at, updated_at
+      ) VALUES (
+        $1::uuid,
+        $2::uuid,
+        $3::jsonb,
+        'email',
+        $4,
+        NOW(),
+        NOW(),
+        NOW()
+      )
+      `,
+      [
+        identityId,
+        userId,
+        JSON.stringify({ sub: userId, email }),
+        email,
+      ],
+    );
+
+    console.log(`Auth SQL: ${email} (id=${userId})`);
+  }
+
+  await db.query(
+    `
+    UPDATE profiles
+    SET is_approved = TRUE,
+        category_1_approved = CASE WHEN role::text = 'worker' THEN TRUE ELSE category_1_approved END,
+        category_2_approved = CASE WHEN role::text = 'worker' THEN TRUE ELSE category_2_approved END
+    WHERE id = ANY($1::uuid[])
+    `,
+    [accounts.map((a) => a.id)],
+  );
+}
+
+async function ensureAuthUsers(accounts, db) {
+  const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (serviceKey && url) {
+    const { createClient } = await import('@supabase/supabase-js');
+    const admin = createClient(url, serviceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    for (const acc of accounts) {
+      const email = emailFor(acc.phone);
+      const { data: created, error: createErr } = await admin.auth.admin.createUser({
+        id: acc.id,
+        email,
+        password: PHONE_AUTH_PASSWORD,
+        email_confirm: true,
+        user_metadata: { full_name: acc.full_name, role: acc.role },
+      });
+
+      if (createErr) {
+        const exists =
+          createErr.message?.includes('already') ||
+          createErr.message?.includes('registered');
+        if (exists) {
+          const { error: updErr } = await admin.auth.admin.updateUserById(acc.id, {
+            email,
+            password: PHONE_AUTH_PASSWORD,
+            email_confirm: true,
+          });
+          if (updErr) console.warn(`Auth update ${acc.full_name}:`, updErr.message);
+          else console.log(`Auth actualizado: ${email}`);
+        } else {
+          console.warn(`Auth create ${acc.full_name}:`, createErr.message);
+        }
+      } else {
+        console.log(`Auth creado: ${email} (id=${created.user?.id ?? acc.id})`);
+      }
+    }
+    return;
+  }
+
+  if (db) {
+    await ensureAuthUsersSql(db, accounts);
+    return;
+  }
+
+  console.warn(
+    '⚠️  Sin Auth users: necesitás SUPABASE_DB_URL o SUPABASE_SERVICE_ROLE_KEY.',
+  );
+}
+
 async function tableExists(db, name) {
   const { rows } = await db.query(
     `SELECT 1 FROM information_schema.tables
@@ -150,6 +289,17 @@ async function main() {
     }
   }
 
+  await ensureAuthUsers(ACCOUNTS, db);
+
+  // Tras crear auth.users, el trigger de Supabase puede dejar is_approved en false
+  await db.query(
+    `
+    UPDATE profiles SET is_approved = TRUE
+    WHERE id = ANY($1::uuid[])
+    `,
+    [ACCOUNTS.map((a) => a.id)],
+  );
+
   const { rows: left } = await db.query(
     `SELECT full_name, phone, role::text, is_approved FROM profiles ORDER BY role, full_name`,
   );
@@ -161,7 +311,9 @@ async function main() {
   console.log('\n── Cómo probar ──');
   console.log('Cliente:  mama papa  | +505 8888-8888 | rol Cliente');
   console.log('Técnico:  pepe pepe  | +505 8488-8888 | rol Trabajador');
-  console.log('\nEn la app: cerrá sesión, borrá caché del navegador si hace falta, y volvé a entrar.\n');
+  console.log(`\nContraseña Auth (teléfono): ${PHONE_AUTH_PASSWORD}`);
+  console.log('Opcional: node scripts/seed-mama-open-job.mjs — solicitud open de prueba');
+  console.log('En la app: cerrá sesión, borrá caché del navegador si hace falta, y volvé a entrar.\n');
 }
 
 main().catch((e) => {
