@@ -1,6 +1,6 @@
 -- ============================================================
 -- CHAMBA — Development Seed Data
--- Run AFTER schema.sql and after creating auth users manually
+-- Run AFTER migrations 001–011 (see supabase/README.md) and after creating auth users
 -- ============================================================
 
 -- ⚠️  Replace UUIDs below with real UUIDs from auth.users

@@ -7,7 +7,7 @@
  *   3. Select 1 primary specialty (auto-approved) + optional 2nd specialty (pending)
  *   4. Submit → status = 'pending_approval' in Supabase
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Alert, Platform, Image,
@@ -20,10 +20,12 @@ import { useNavigation } from '@react-navigation/native';
 import { supabase } from '@services/supabase';
 import { uploadWorkerDocument } from '../services/documentUploadService';
 import { showMessage } from '@utils/confirmAction';
+import { isPilotDocumentBypass } from '@constants/pilot';
 import { useAuthStore } from '@store/authStore';
 import { WORKER_COLORS as COLORS, M3, FONT_SIZE, SPACING, BORDER_RADIUS } from '@constants/workerTheme';
 import { useCatalog } from '@features/catalog/hooks/useCatalog';
 import type { ServiceType } from '@features/catalog/types';
+import { buildGroupedServiceTypes } from '@constants/servicesConfig';
 import type { JobCategory } from '@constants/chambaCategories';
 
 // ─── Step indicator ───────────────────────────────────────────────────────────
@@ -118,6 +120,10 @@ export const WorkerOnboardingScreen: React.FC = () => {
   const profile    = useAuthStore((s) => s.profile);
   const setProfile = useAuthStore((s) => s.setProfile);
   const { serviceTypes, getLabel, getEmoji } = useCatalog();
+  const groupedSpecialties = useMemo(
+    () => buildGroupedServiceTypes(serviceTypes),
+    [serviceTypes],
+  );
   // True when accessed via navigation (has back stack), false when gating entry
   const canGoBack  = navigation.canGoBack();
 
@@ -138,17 +144,45 @@ export const WorkerOnboardingScreen: React.FC = () => {
 
   useEffect(() => {
     if (!profile) return;
-    if (profile.cedula_url && profile.cedula_url !== 'pilot-bypass') {
+    if (profile.cedula_url && !isPilotDocumentBypass(profile.cedula_url)) {
       setCedulaUrl(profile.cedula_url);
       setCedulaUri(profile.cedula_url);
     }
-    if (profile.record_policia_url && profile.record_policia_url !== 'pilot-bypass') {
+    if (profile.record_policia_url && !isPilotDocumentBypass(profile.record_policia_url)) {
       setRecordUrl(profile.record_policia_url);
       setRecordUri(profile.record_policia_url);
     }
     if (profile.category_1) setCat1(profile.category_1 as JobCategory);
     if (profile.category_2) setCat2(profile.category_2 as JobCategory);
   }, [profile?.id]);
+
+  const renderSpecialtyGroups = (
+    selected: JobCategory | null,
+    onSelect: (slug: JobCategory | null) => void,
+    disabledSlug?: JobCategory | null,
+  ) => (
+    <>
+      {groupedSpecialties.map(({ group, types }) => (
+        <View key={group.id} style={styles.specialtyGroup}>
+          <Text style={styles.specialtyGroupLabel}>{group.icon} {group.label}</Text>
+          <View style={styles.chipWrap}>
+            {types.map((st: ServiceType) => (
+              <CatChip
+                key={st.slug}
+                emoji={st.icon}
+                label={st.name}
+                selected={selected === st.slug}
+                disabled={disabledSlug === st.slug}
+                onPress={() => {
+                  onSelect(selected === st.slug ? null : st.slug);
+                }}
+              />
+            ))}
+          </View>
+        </View>
+      ))}
+    </>
+  );
 
   // ── Pickers ───────────────────────────────────────────────────
 
@@ -361,20 +395,10 @@ export const WorkerOnboardingScreen: React.FC = () => {
               una vez el admin apruebe tu perfil.
             </Text>
 
-            <View style={styles.chipWrap}>
-              {serviceTypes.map((st: ServiceType) => (
-                <CatChip
-                  key={st.slug}
-                  emoji={st.icon}
-                  label={st.name}
-                  selected={cat1 === st.slug}
-                  onPress={() => {
-                    setCat1((prev) => prev === st.slug ? null : st.slug);
-                    if (cat2 === st.slug) setCat2(null);
-                  }}
-                />
-              ))}
-            </View>
+            {renderSpecialtyGroups(cat1, (slug) => {
+              setCat1(slug);
+              if (slug && cat2 === slug) setCat2(null);
+            })}
 
             <Text style={[styles.stepTitle, { marginTop: SPACING.lg }]}>➕ Segunda Especialidad (Opcional)</Text>
             <Text style={styles.stepDesc}>
@@ -383,18 +407,11 @@ export const WorkerOnboardingScreen: React.FC = () => {
               hasta que el admin la autorice por separado.
             </Text>
 
-            <View style={styles.chipWrap}>
-              {serviceTypes.map((st: ServiceType) => (
-                <CatChip
-                  key={st.slug}
-                  emoji={st.icon}
-                  label={st.name}
-                  selected={cat2 === st.slug}
-                  disabled={cat1 === st.slug}
-                  onPress={() => setCat2((prev) => prev === st.slug ? null : st.slug)}
-                />
-              ))}
-            </View>
+            {renderSpecialtyGroups(
+              cat2,
+              (slug) => setCat2(slug),
+              cat1,
+            )}
 
             <View style={styles.navRow}>
               <TouchableOpacity onPress={() => setStep(1)} style={styles.navBackBtn}>
@@ -516,6 +533,14 @@ const styles = StyleSheet.create({
   infoText: { color: COLORS.text.secondary, fontSize: FONT_SIZE.xs, flex: 1, lineHeight: 18 },
 
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: SPACING.sm },
+  specialtyGroup: { marginBottom: SPACING.md },
+  specialtyGroupLabel: {
+    color: COLORS.text.muted,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: '700',
+    marginBottom: SPACING.sm,
+    letterSpacing: 0.3,
+  },
 
   navRow:  { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md },
   navBackBtn: {

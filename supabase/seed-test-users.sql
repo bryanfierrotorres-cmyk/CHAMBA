@@ -5,9 +5,7 @@
 --   Dashboard → Authentication → Users → Add user → Create new user
 --
 -- Usuarios a crear manualmente (marca "Auto Confirm User"):
---   admin@chamba.com     / Admin123!
---   worker1@chamba.com / Worker123!
---   worker2@chamba.com   / Worker123!
+--   Credenciales piloto: ver EXPO_PUBLIC_PILOT_* en .env (no commitear contraseñas)
 --
 -- Luego ejecuta este SQL:
 -- ================================================================

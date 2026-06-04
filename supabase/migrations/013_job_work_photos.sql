@@ -1,0 +1,39 @@
+-- Fotos antes/después del trabajo (subidas por el técnico)
+ALTER TABLE jobs
+  ADD COLUMN IF NOT EXISTS before_photo_url TEXT,
+  ADD COLUMN IF NOT EXISTS after_photo_url TEXT;
+
+CREATE OR REPLACE FUNCTION worker_update_job_photos(
+  p_job_id UUID,
+  p_worker_id UUID,
+  p_before_url TEXT DEFAULT NULL,
+  p_after_url TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM job_assignments
+     WHERE job_id = p_job_id AND worker_id = p_worker_id
+  ) AND NOT EXISTS (
+    SELECT 1 FROM jobs
+     WHERE id = p_job_id AND assigned_worker_id = p_worker_id
+  ) THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Sin asignación');
+  END IF;
+
+  UPDATE jobs
+     SET before_photo_url = COALESCE(p_before_url, before_photo_url),
+         after_photo_url  = COALESCE(p_after_url, after_photo_url),
+         updated_at       = NOW()
+   WHERE id = p_job_id;
+
+  RETURN jsonb_build_object('success', true);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION worker_update_job_photos(UUID, UUID, TEXT, TEXT)
+  TO anon, authenticated;

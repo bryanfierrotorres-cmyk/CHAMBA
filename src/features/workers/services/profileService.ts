@@ -1,6 +1,35 @@
 import { supabase } from '@services/supabase';
 
 import type { WorkerProfile, AvailabilityStatus } from '@/types';
+import { coerceNumber } from '@utils/formatters';
+
+const AVAILABILITY_VALUES: AvailabilityStatus[] = ['available', 'busy', 'offline'];
+
+/** Normaliza filas de Supabase (NUMERIC → string, enums faltantes). */
+export const normalizeWorkerProfile = (row: WorkerProfile | Record<string, unknown>): WorkerProfile => {
+  const raw = row as Record<string, unknown>;
+  const status = raw.availability_status;
+  const availability_status: AvailabilityStatus = AVAILABILITY_VALUES.includes(
+    status as AvailabilityStatus,
+  )
+    ? (status as AvailabilityStatus)
+    : 'offline';
+
+  const ratingRaw = raw.rating_avg;
+  const rating_avg =
+    ratingRaw == null || ratingRaw === ''
+      ? null
+      : coerceNumber(ratingRaw, NaN);
+
+  return {
+    ...(row as WorkerProfile),
+    availability_status,
+    rating_avg: Number.isFinite(rating_avg) ? rating_avg : null,
+    total_reviews: coerceNumber(raw.total_reviews, 0),
+    total_jobs_done: coerceNumber(raw.total_jobs_done, 0),
+    skills: Array.isArray(raw.skills) ? (raw.skills as string[]) : [],
+  };
+};
 
 import { getLocalAssignments } from '@utils/localAssignments';
 
@@ -39,14 +68,10 @@ export const fetchWorkerProfile = async (workerId: string): Promise<WorkerProfil
 
 
     if (!error && data) {
-
-      await patchLocalWorkerProfile(workerId, data as WorkerProfile);
-
-      return data as WorkerProfile;
-
+      const profile = normalizeWorkerProfile(data as WorkerProfile);
+      await patchLocalWorkerProfile(workerId, profile);
+      return profile;
     }
-
-
 
     if (!error && !data) {
 
@@ -81,11 +106,9 @@ export const fetchWorkerProfile = async (workerId: string): Promise<WorkerProfil
 
 
       if (!createErr && created) {
-
-        await patchLocalWorkerProfile(workerId, created as WorkerProfile);
-
-        return created as WorkerProfile;
-
+        const profile = normalizeWorkerProfile(created as WorkerProfile);
+        await patchLocalWorkerProfile(workerId, profile);
+        return profile;
       }
 
     }
@@ -100,7 +123,7 @@ export const fetchWorkerProfile = async (workerId: string): Promise<WorkerProfil
 
   const cached = await getLocalWorkerProfile(workerId);
 
-  if (cached) return cached;
+  if (cached) return normalizeWorkerProfile(cached);
 
 
 
@@ -159,11 +182,9 @@ export const setAvailabilityStatus = async (
 
 
     if (!error && data) {
-
-      await patchLocalWorkerProfile(workerId, data as WorkerProfile);
-
-      return data as WorkerProfile;
-
+      const profile = normalizeWorkerProfile(data as WorkerProfile);
+      await patchLocalWorkerProfile(workerId, profile);
+      return profile;
     }
 
   } catch {
@@ -215,11 +236,9 @@ export const updateWorkerProfile = async (
 
 
     if (!error && data) {
-
-      await patchLocalWorkerProfile(workerId, data as WorkerProfile);
-
-      return data as WorkerProfile;
-
+      const profile = normalizeWorkerProfile(data as WorkerProfile);
+      await patchLocalWorkerProfile(workerId, profile);
+      return profile;
     }
 
   } catch {
@@ -278,7 +297,7 @@ export const subscribeToWorkerProfile = (
 
       (payload) => {
 
-        if (payload.new) onUpdate(payload.new as WorkerProfile);
+        if (payload.new) onUpdate(normalizeWorkerProfile(payload.new as WorkerProfile));
 
       },
 

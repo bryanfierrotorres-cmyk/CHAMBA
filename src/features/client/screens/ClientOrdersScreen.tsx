@@ -1,283 +1,418 @@
-import React from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
-  View, Text, FlatList, TouchableOpacity,
-  StyleSheet, RefreshControl, ActivityIndicator,
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ChambaSlidingToggle } from '@components/chamba/ChambaSlidingToggle';
 import { useAuthStore } from '@store/authStore';
-import { fetchClientOrders } from '@features/jobs/services/jobsService';
+import { useClientOrders } from '@features/client/hooks/useClientOrders';
 import { WorkerReviewsPanel } from '@features/reviews/components/WorkerReviewsPanel';
-import { Avatar } from '@components/Avatar';
-import { COLORS, FONT_SIZE, SPACING, BORDER_RADIUS } from '@constants/theme';
-import { getCategoryLabel, getCategoryEmoji, formatDate, formatCurrency } from '@utils/formatters';
-import type { ClientOrderJob, JobStatus } from '@/types';
+import { useWorkerReviews } from '@features/reviews/hooks/useWorkerReviews';
+import { formatCurrency, formatDate, getCategoryLabel, getClientOrderStatusLabel } from '@utils/formatters';
+import { getCategoryVisual } from '@utils/categoryVisual';
+import type { ClientOrderJob, JobStatus, ClientOrdersStackParamList } from '@/types';
 
-// ─── Status config ────────────────────────────────────────────────────────────
+type OrdersNav = NativeStackNavigationProp<ClientOrdersStackParamList, 'ClientOrdersList'>;
 
-const STATUS_CONFIG: Record<JobStatus, { label: string; color: string; bg: string; icon: keyof typeof Ionicons.glyphMap }> = {
-  open:        { label: 'Publicada',    color: '#166534', bg: '#DCFCE7', icon: 'radio-button-on' },
-  taken:       { label: 'En proceso',   color: '#92400E', bg: '#FEF3C7', icon: 'time'            },
-  in_progress: { label: 'En proceso',   color: '#92400E', bg: '#FEF3C7', icon: 'time'            },
-  completed:   { label: 'Finalizado',   color: '#4B5563', bg: '#F3F4F6', icon: 'checkmark-circle' },
-  cancelled:   { label: 'Cancelada',    color: '#991B1B', bg: '#FEE2E2', icon: 'close-circle'    },
+type OrderFilter = 'activas' | 'historial';
+
+const ORDER_FILTER_TABS = [
+  { id: 'activas' as const, label: 'Activas' },
+  { id: 'historial' as const, label: 'Historial' },
+];
+
+const ACTIVE_STATUSES = new Set<JobStatus>(['open', 'taken', 'in_progress']);
+const CARD_STEP_SHADOW = {
+  shadowColor: '#0F172A',
+  shadowOffset: { width: 0, height: 6 },
+  shadowOpacity: 0.06,
+  shadowRadius: 12,
+  elevation: 4,
+} as const;
+
+interface StatusBadge {
+  label: string;
+  container: object;
+  text: object;
+}
+
+const statusBadge = (job: ClientOrderJob): StatusBadge => {
+  const label = getClientOrderStatusLabel(job.status, job.operational_phase).toUpperCase();
+
+  switch (job.status) {
+    case 'taken':
+    case 'in_progress':
+      return {
+        label,
+        container: styles.badgeEnCurso,
+        text: styles.badgeTextEnCurso,
+      };
+    case 'open':
+      return {
+        label: label || 'EN PENDIENTE',
+        container: styles.badgePendiente,
+        text: styles.badgeTextPendiente,
+      };
+    case 'completed':
+      return {
+        label: 'COMPLETADO',
+        container: styles.badgeCompletado,
+        text: styles.badgeTextCompletado,
+      };
+    case 'cancelled':
+      return {
+        label: 'CANCELADO',
+        container: styles.badgeCancelado,
+        text: styles.badgeTextCancelado,
+      };
+    default:
+      return {
+        label: 'EN PROCESO',
+        container: styles.badgeEnCurso,
+        text: styles.badgeTextEnCurso,
+      };
+  }
 };
 
 const canRateWorker = (job: ClientOrderJob): boolean =>
   !!job.assigned_worker &&
   ['taken', 'in_progress', 'completed'].includes(job.status);
 
-// ─── Job Order Card ───────────────────────────────────────────────────────────
-
-interface OrderCardProps {
-  job:          ClientOrderJob;
-  clientId:     string;
-  clientName:   string;
-}
-
-const OrderCard: React.FC<OrderCardProps> = ({ job, clientId, clientName }) => {
-  const status = STATUS_CONFIG[job.status] ?? STATUS_CONFIG.open;
+/** Reseña del cliente: solo si aún no calificó (una vez por técnico). */
+const ClientOrderReview: React.FC<{
+  job: ClientOrderJob;
+  clientId: string;
+  clientName: string;
+}> = ({ job, clientId, clientName }) => {
   const worker = job.assigned_worker;
-  const showReview = canRateWorker(job);
+  const { reviews, isLoading } = useWorkerReviews(worker?.id);
+  const alreadyReviewed = reviews.some((r) => r.reviewer_id === clientId);
+
+  if (!worker || !canRateWorker(job) || isLoading || alreadyReviewed) {
+    return null;
+  }
 
   return (
-    <View style={styles.card}>
-      {/* Top row */}
-      <View style={styles.cardTop}>
-        <View style={styles.categoryBadge}>
-          <Text>{getCategoryEmoji(job.category)}</Text>
-          <Text style={styles.categoryText}>{getCategoryLabel(job.category)}</Text>
-        </View>
-        <View style={[styles.statusChip, { backgroundColor: status.bg }]}>
-          <Ionicons name={status.icon} size={12} color={status.color} />
-          <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
-        </View>
-      </View>
-
-      {/* Title & description */}
-      <Text style={styles.jobTitle} numberOfLines={2}>{job.title}</Text>
-      <Text style={styles.jobDesc}  numberOfLines={2}>{job.description}</Text>
-
-      {/* Assigned worker */}
-      {worker && (
-        <View style={styles.workerRow}>
-          <Avatar uri={worker.avatar_url} name={worker.full_name} size={36} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.workerLabel}>Técnico asignado</Text>
-            <Text style={styles.workerName}>{worker.full_name}</Text>
-          </View>
-        </View>
-      )}
-
-      {/* Bottom info row */}
-      <View style={styles.cardBottom}>
-        <View style={styles.infoItem}>
-          <Ionicons name="location-outline" size={13} color={COLORS.text.muted} />
-          <Text style={styles.infoText} numberOfLines={1}>{job.location?.address ?? '—'}</Text>
-        </View>
-        <View style={styles.infoItem}>
-          <Ionicons name="calendar-outline" size={13} color={COLORS.text.muted} />
-          <Text style={styles.infoText}>{formatDate(job.created_at)}</Text>
-        </View>
-      </View>
-
-      {/* Pay */}
-      <View style={styles.cardFooter}>
-        <Text style={styles.payLabel}>Presupuesto</Text>
-        <Text style={styles.payAmount}>{formatCurrency(job.pay_amount)}</Text>
-      </View>
-
-      {/* Rate worker */}
-      {showReview && worker && (
-        <View style={styles.reviewSection}>
-          <View style={styles.reviewHeader}>
-            <Ionicons name="star" size={16} color="#FBBF24" />
-            <Text style={styles.reviewTitle}>Califica a tu técnico</Text>
-          </View>
-          <WorkerReviewsPanel
-            workerId={worker.id}
-            workerName={worker.full_name}
-            reviewerId={clientId}
-            reviewerRole="client"
-            reviewerName={clientName}
-            allowReview
-            compact
-          />
-        </View>
-      )}
-
-      {!worker && job.status !== 'open' && job.status !== 'cancelled' && (
-        <View style={styles.pendingWorker}>
-          <Ionicons name="person-outline" size={14} color={COLORS.text.muted} />
-          <Text style={styles.pendingWorkerText}>Esperando asignación de técnico</Text>
-        </View>
-      )}
+    <View style={styles.reviewBox}>
+      <WorkerReviewsPanel
+        workerId={worker.id}
+        workerName={worker.full_name}
+        reviewerId={clientId}
+        reviewerRole="client"
+        reviewerName={clientName}
+        allowReview
+        compact
+      />
     </View>
   );
 };
 
-// ─── Main Screen ──────────────────────────────────────────────────────────────
+interface OrderCardProps {
+  job: ClientOrderJob;
+  clientId: string;
+  clientName: string;
+  onOpenCompleted?: (jobId: string) => void;
+}
 
-export const ClientOrdersScreen: React.FC = () => {
-  const insets  = useSafeAreaInsets();
-  const profile = useAuthStore((s) => s.profile);
+const OrderCard: React.FC<OrderCardProps> = ({
+  job, clientId, clientName, onOpenCompleted,
+}) => {
+  const badge = statusBadge(job);
+  const visual = getCategoryVisual(job.category);
+  const title = job.title?.trim() || getCategoryLabel(job.category);
+  const isVariablePrice = job.status === 'open' && !job.pay_amount;
+  const isCompleted = job.status === 'completed';
 
-  const { data: jobs = [], isLoading, refetch } = useQuery({
-    queryKey: ['client-orders', profile?.id],
-    queryFn:  () => fetchClientOrders(profile!.id),
-    enabled:  !!profile?.id,
-  });
+  const handleCardPress = () => {
+    if (isCompleted && onOpenCompleted) {
+      onOpenCompleted(job.id);
+    }
+  };
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
-
-      {/* ── Header ────────────────────────────────────────────────── */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>Mis Solicitudes</Text>
-          <Text style={styles.headerSub}>
-            {jobs.length} {jobs.length === 1 ? 'solicitud' : 'solicitudes'} enviadas
+    <View style={styles.orderWrap}>
+      <TouchableOpacity
+        style={styles.requestCard}
+        activeOpacity={0.88}
+        onPress={handleCardPress}
+        disabled={!isCompleted}
+      >
+        <View style={styles.cardContent}>
+          <View style={badge.container}>
+            <Text style={badge.text}>{badge.label}</Text>
+          </View>
+          <Text style={styles.cardTitle} numberOfLines={2}>{title}</Text>
+          <Text style={styles.cardSubtitle}>
+            {isCompleted ? 'Toca para ver resumen · ' : ''}{formatDate(job.created_at)}
+          </Text>
+          <Text style={isVariablePrice ? styles.cardPriceVariable : styles.cardPrice}>
+            {isVariablePrice ? 'Bajo cotización' : formatCurrency(job.pay_amount)}
           </Text>
         </View>
-        <TouchableOpacity onPress={() => refetch()} style={styles.refreshBtn}>
-          <Ionicons name="refresh-outline" size={20} color={COLORS.brand[600]} />
+        <View style={styles.cardTrailing}>
+          <View style={[styles.iconCircleRight, { backgroundColor: visual.color }]}>
+            {visual.icon}
+          </View>
+          {isCompleted && (
+            <Ionicons name="chevron-forward" size={20} color="#94A3B8" style={{ marginTop: 8 }} />
+          )}
+        </View>
+      </TouchableOpacity>
+
+      <ClientOrderReview job={job} clientId={clientId} clientName={clientName} />
+    </View>
+  );
+};
+
+export const ClientOrdersScreen: React.FC = () => {
+  const navigation = useNavigation<OrdersNav>();
+  const insets = useSafeAreaInsets();
+  const profile = useAuthStore((s) => s.profile);
+  const [activeFilter, setActiveFilter] = useState<OrderFilter>('activas');
+
+  const {
+    data: jobs = [],
+    isLoading,
+    refetch,
+    isRefetching,
+    error: ordersError,
+  } = useClientOrders();
+
+  useFocusEffect(
+    useCallback(() => {
+      if (profile?.id) refetch();
+    }, [profile?.id, refetch]),
+  );
+
+  const filteredJobs = useMemo((): ClientOrderJob[] => {
+    if (activeFilter === 'activas') {
+      return jobs.filter((j: ClientOrderJob) => ACTIVE_STATUSES.has(j.status));
+    }
+    return jobs.filter((j: ClientOrderJob) => j.status === 'completed' || j.status === 'cancelled');
+  }, [jobs, activeFilter]);
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.header}>
+        <View style={styles.headerTextWrap}>
+          <Text style={styles.headerTitle}>Mis Solicitudes</Text>
+          <Text style={styles.headerSubtitle}>Monitoreá tus servicios en tiempo real</Text>
+        </View>
+        <TouchableOpacity onPress={() => refetch()} style={styles.refreshBtn} activeOpacity={0.85}>
+          <Ionicons name="refresh-outline" size={20} color="#0284C7" />
         </TouchableOpacity>
       </View>
 
-      {/* ── List ──────────────────────────────────────────────────── */}
-      {isLoading ? (
+      <ChambaSlidingToggle
+        options={ORDER_FILTER_TABS}
+        active={activeFilter}
+        onChange={setActiveFilter}
+        style={styles.orderFilterToggle}
+      />
+
+      {ordersError ? (
+        <View style={styles.errorCard}>
+          <Ionicons name="alert-circle-outline" size={28} color="#DC2626" />
+          <Text style={styles.errorTitle}>No se pudieron cargar tus solicitudes</Text>
+          <Text style={styles.errorSub}>
+            {ordersError instanceof Error ? ordersError.message : 'Error de conexión'}
+          </Text>
+          <TouchableOpacity onPress={() => refetch()} style={styles.errorRetry}>
+            <Text style={styles.errorRetryText}>Reintentar</Text>
+          </TouchableOpacity>
+        </View>
+      ) : isLoading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={COLORS.brand[500]} />
+          <ActivityIndicator size="large" color="#0284C7" />
         </View>
       ) : (
-        <FlatList
-          data={jobs}
-          keyExtractor={(j) => j.id}
-          contentContainerStyle={styles.listContent}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.scrollContainer, { paddingBottom: insets.bottom + 100 }]}
           refreshControl={
-            <RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={COLORS.brand[500]} />
+            <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor="#0284C7" />
           }
-          renderItem={({ item }) => (
-            profile ? (
-              <OrderCard
-                job={item}
-                clientId={profile.id}
-                clientName={profile.full_name}
-              />
-            ) : null
-          )}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <View style={styles.emptyIcon}>
-                <Text style={{ fontSize: 40 }}>📋</Text>
+        >
+          {filteredJobs.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <View style={[styles.iconCircleRight, { backgroundColor: '#007AFF' }]}>
+                <Ionicons name="document-text-outline" size={22} color="#FFF" />
               </View>
-              <Text style={styles.emptyTitle}>Sin solicitudes aún</Text>
+              <Text style={styles.emptyTitle}>
+                {activeFilter === 'activas' ? 'Sin solicitudes activas' : 'Sin historial aún'}
+              </Text>
               <Text style={styles.emptySub}>
-                Ve a la pestaña de servicios y solicita tu primera chamba.
+                {activeFilter === 'activas'
+                  ? 'Ve a Servicios y solicitá tu primera chamba.'
+                  : 'Tus servicios completados aparecerán aquí.'}
               </Text>
             </View>
-          }
-        />
+          ) : (
+            filteredJobs.map((job) =>
+              profile ? (
+                <OrderCard
+                  key={job.id}
+                  job={job}
+                  clientId={profile.id}
+                  clientName={profile.full_name}
+                  onOpenCompleted={(jobId) =>
+                    navigation.navigate('ClientCompletedJob', { jobId })
+                  }
+                />
+              ) : null,
+            )
+          )}
+        </ScrollView>
       )}
-    </View>
+    </SafeAreaView>
   );
 };
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F3F4F6' },
+  container: { flex: 1, backgroundColor: '#F2F4F7' },
 
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm,
-    backgroundColor: 'rgba(247,249,251,0.95)',
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.06)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: '#F2F4F7',
   },
-  headerTitle: { color: COLORS.text.primary, fontSize: FONT_SIZE.xl, fontWeight: '900', letterSpacing: -0.3 },
-  headerSub:   { color: COLORS.text.muted, fontSize: FONT_SIZE.xs, marginTop: 2 },
+  headerTextWrap: { flex: 1 },
+  headerTitle: { fontSize: 26, fontWeight: '600', color: '#0F172A', letterSpacing: -0.5 },
+  headerSubtitle: { fontSize: 14, color: '#8A94A6', marginTop: 2, fontWeight: '400' },
   refreshBtn: {
-    width: 38, height: 38, borderRadius: 19,
-    backgroundColor: COLORS.brand[50], alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: COLORS.brand[100],
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: '#FFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...CARD_STEP_SHADOW,
   },
 
-  listContent: { padding: SPACING.lg, paddingBottom: 40, flexGrow: 1 },
-
-  // ── Order card
-  card: {
-    backgroundColor: '#FFF', borderRadius: 20, padding: SPACING.md,
-    marginBottom: SPACING.md,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08, shadowRadius: 12, elevation: 4,
-    borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)',
-  },
-  cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm },
-  categoryBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: '#F3F4F6', borderRadius: BORDER_RADIUS.full,
-    paddingHorizontal: 10, paddingVertical: 4,
-  },
-  categoryText: { color: COLORS.text.secondary, fontSize: FONT_SIZE.xs, fontWeight: '600' },
-  statusChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    borderRadius: BORDER_RADIUS.full, paddingHorizontal: 10, paddingVertical: 4,
-  },
-  statusText: { fontSize: FONT_SIZE.xs, fontWeight: '700' },
-
-  jobTitle: { color: COLORS.text.primary, fontSize: FONT_SIZE.md, fontWeight: '800', marginBottom: 4 },
-  jobDesc:  { color: COLORS.text.secondary, fontSize: FONT_SIZE.sm, lineHeight: 20, marginBottom: SPACING.sm },
-
-  workerRow: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
-    backgroundColor: '#F9FAFB', borderRadius: 12, padding: SPACING.sm,
-    marginBottom: SPACING.sm, borderWidth: 1, borderColor: '#E5E7EB',
-  },
-  workerLabel: { color: COLORS.text.muted, fontSize: FONT_SIZE.xs },
-  workerName:  { color: COLORS.text.primary, fontSize: FONT_SIZE.sm, fontWeight: '700' },
-
-  cardBottom: { gap: 5, marginBottom: SPACING.sm },
-  infoItem:   { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  infoText:   { color: COLORS.text.muted, fontSize: FONT_SIZE.xs, flex: 1 },
-
-  cardFooter: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingTop: SPACING.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E5E7EB',
-  },
-  payLabel:  { color: COLORS.text.muted, fontSize: FONT_SIZE.xs, fontWeight: '500' },
-  payAmount: { color: COLORS.brand[600], fontSize: FONT_SIZE.lg, fontWeight: '900' },
-
-  reviewSection: {
-    marginTop: SPACING.md,
-    paddingTop: SPACING.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#E5E7EB',
-    gap: SPACING.sm,
-  },
-  reviewHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-  },
-  reviewTitle: {
-    color: COLORS.text.primary, fontSize: FONT_SIZE.sm, fontWeight: '800',
+  orderFilterToggle: {
+    marginHorizontal: 20,
+    marginBottom: 16,
   },
 
-  pendingWorker: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    marginTop: SPACING.sm, paddingTop: SPACING.sm,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E5E7EB',
-  },
-  pendingWorkerText: {
-    color: COLORS.text.muted, fontSize: FONT_SIZE.xs,
-  },
-
-  // ── Empty & Loading
+  scrollContainer: { paddingHorizontal: 20, paddingBottom: 100 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  empty:  { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, paddingHorizontal: SPACING.xl },
-  emptyIcon: {
-    width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.brand[50],
-    alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md,
+
+  orderWrap: { marginBottom: 14 },
+  requestCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 18,
+    padding: 18,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    ...CARD_STEP_SHADOW,
   },
-  emptyTitle: { color: COLORS.text.primary, fontSize: FONT_SIZE.lg, fontWeight: '800', marginBottom: 8 },
-  emptySub:   { color: COLORS.text.muted, fontSize: FONT_SIZE.sm, textAlign: 'center', lineHeight: 22 },
+  cardContent: { flex: 1, paddingRight: 8, minWidth: 0 },
+  cardTitle: { fontSize: 16, fontWeight: '600', color: '#0F172A', marginBottom: 2 },
+  cardSubtitle: { fontSize: 12, color: '#8A94A6', marginBottom: 8, fontWeight: '400' },
+  cardPrice: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
+  cardPriceVariable: { fontSize: 13, fontWeight: '500', color: '#8A94A6' },
+
+  cardTrailing: {
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  iconCircleRight: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  badgeEnCurso: {
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginBottom: 6,
+  },
+  badgeTextEnCurso: { fontSize: 9, fontWeight: '700', color: '#0369A1' },
+  badgePendiente: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginBottom: 6,
+  },
+  badgeTextPendiente: { fontSize: 9, fontWeight: '700', color: '#B45309' },
+  badgeCompletado: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginBottom: 6,
+  },
+  badgeTextCompletado: { fontSize: 9, fontWeight: '700', color: '#15803D' },
+  badgeCancelado: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginBottom: 6,
+  },
+  badgeTextCancelado: { fontSize: 9, fontWeight: '700', color: '#B91C1C' },
+
+  reviewBox: {
+    backgroundColor: '#FFF',
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
+    paddingHorizontal: 18,
+    paddingBottom: 16,
+    marginTop: -4,
+    ...CARD_STEP_SHADOW,
+  },
+
+  emptyCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 18,
+    padding: 28,
+    alignItems: 'center',
+    gap: 12,
+    ...CARD_STEP_SHADOW,
+  },
+  emptyTitle: { fontSize: 16, fontWeight: '600', color: '#0F172A', textAlign: 'center' },
+  emptySub: { fontSize: 13, color: '#8A94A6', textAlign: 'center', fontWeight: '400', lineHeight: 20 },
+  errorCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 18,
+    padding: 24,
+    marginHorizontal: 20,
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    ...CARD_STEP_SHADOW,
+  },
+  errorTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A', textAlign: 'center' },
+  errorSub: { fontSize: 13, color: '#8A94A6', textAlign: 'center', lineHeight: 20 },
+  errorRetry: {
+    marginTop: 8,
+    backgroundColor: '#0284C7',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  errorRetryText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
 });

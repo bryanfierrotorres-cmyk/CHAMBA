@@ -1,5 +1,21 @@
 import { supabase } from '@services/supabase';
-import type { Job, JobAssignment, JobCategory, JobStatus, PaginatedResponse, ClientOrderJob, AssignedWorkerSummary } from '@/types';
+import type {
+  Job,
+  JobAssignment,
+  JobCategory,
+  JobStatus,
+  PaginatedResponse,
+  ClientOrderJob,
+  ClientJobSummary,
+  AssignedWorkerSummary,
+  WorkerOperationalPhase,
+  WorkerReview,
+} from '@/types';
+import { fetchWorkerReviews, fetchWorkerRatingSummary } from '@features/reviews/services/reviewsService';
+import {
+  getClientPhaseMessage,
+  phaseToJobStatus,
+} from '@utils/workerOperationalPhase';
 import { validateClientPrice } from '@constants/servicePricing';
 import { fromDbJobCategory, toDbJobCategory, toDbJobCategoryQueryValues } from '@constants/chambaCategories';
 import {
@@ -7,11 +23,83 @@ import {
   getAllLocalAssignments,
   upsertLocalAssignment,
   patchLocalJobStatus,
+  patchLocalOperationalPhase,
   mergeAssignments,
 } from '@utils/localAssignments';
 import { CONFIG } from '@constants/config';
-import { ensureWorkerProfileInDb, resolveWorkerProfileForActions, persistPilotProfileIfChanged } from '@utils/profileSync';
+import {
+  ensureWorkerProfileInDb,
+  resolveWorkerProfileForActions,
+  persistPilotProfileIfChanged,
+  normalizePhone,
+  pilotPhoneEmail,
+} from '@utils/profileSync';
 import type { UserProfile } from '@/types';
+import { assertClientJobPlatformReady } from '@services/clientJobPlatform';
+
+type ClientProfileRef = Pick<
+  UserProfile,
+  'id' | 'full_name' | 'phone' | 'email' | 'role' | 'is_approved'
+>;
+
+/** ID canónico del cliente (sesión Supabase = RLS) y perfil en BD antes de crear/listar. */
+export const resolveClientIdForJobs = async (profile: ClientProfileRef): Promise<string> => {
+  const { data: { session } } = await supabase.auth.getSession();
+  const targetId = session?.user?.id ?? profile.id;
+  const phone = normalizePhone(profile.phone);
+
+  const { error } = await supabase.from('profiles').upsert(
+    {
+      id:          targetId,
+      full_name:   profile.full_name.trim(),
+      phone:       phone || null,
+      email:       profile.email ?? pilotPhoneEmail(phone || targetId.replace(/-/g, '').slice(0, 12)),
+      role:        'client',
+      is_approved: profile.is_approved ?? true,
+    },
+    { onConflict: 'id' },
+  );
+
+  if (error) {
+    console.warn('[resolveClientIdForJobs] profile upsert:', error.message);
+  }
+
+  if (session?.user?.id && session.user.id !== profile.id) {
+    console.warn(
+      '[resolveClientIdForJobs] profile.id ≠ auth.uid; usando sesión',
+      profile.id,
+      '→',
+      session.user.id,
+    );
+  }
+
+  return targetId;
+};
+
+const parseRpcJobPayload = (raw: unknown): Job | null => {
+  if (!raw) return null;
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw) as Job;
+    } catch {
+      return null;
+    }
+  }
+  return raw as Job;
+};
+
+const parseCreateJobRpc = (
+  data: unknown,
+): { success: boolean; job?: Job; error?: string } | null => {
+  if (!data || typeof data !== 'object') return null;
+  const body = data as { success?: boolean; job?: unknown; error?: string };
+  const job = parseRpcJobPayload(body.job);
+  return {
+    success: !!body.success,
+    job: job ?? undefined,
+    error: body.error,
+  };
+};
 
 type AcceptWorkerContext = Pick<
   UserProfile,
@@ -28,7 +116,9 @@ const normalizeJobRow = (row: Job & { address?: string; lat?: number; lng?: numb
 
   return {
     ...row,
+    status: (row.status ?? 'open') as JobStatus,
     category: (fromDbJobCategory(row.category as string) ?? row.category) as JobCategory,
+    media_urls: Array.isArray(row.media_urls) ? row.media_urls : [],
     location: {
       address,
       lat,
@@ -281,7 +371,12 @@ const buildAssignment = (
     payment_status: 'pending',
     payment_intent_id: null,
     job: job
-      ? { ...job, status: 'in_progress' as JobStatus, updated_at: now }
+      ? {
+          ...normalizeJobRow(job),
+          status: 'taken' as JobStatus,
+          operational_phase: 'accepted' as WorkerOperationalPhase,
+          updated_at: now,
+        }
       : undefined,
   };
 };
@@ -292,7 +387,8 @@ const acceptJobPilotFallback = async (
 ): Promise<{ assignmentId?: string }> => {
   const now = new Date().toISOString();
   const patch = {
-    status: 'in_progress' as JobStatus,
+    status: 'taken' as JobStatus,
+    operational_phase: 'accepted' as WorkerOperationalPhase,
     updated_at: now,
     assigned_worker_id: workerId,
   };
@@ -322,6 +418,72 @@ const acceptJobPilotFallback = async (
   }
 
   return { assignmentId: `${jobId}-${workerId}` };
+};
+
+/** Notifica al cliente sobre avance operativo (viaje / llegada). */
+const notifyClientOperationalUpdate = async (
+  job: Pick<Job, 'id' | 'created_by' | 'title'>,
+  phase: WorkerOperationalPhase,
+): Promise<void> => {
+  const clientId = job.created_by;
+  if (!clientId) return;
+
+  const { title, body } = getClientPhaseMessage(phase);
+  try {
+    await supabase.functions.invoke('send-push-notification', {
+      body: {
+        user_ids: [clientId],
+        title,
+        body,
+        type: 'job_update',
+        data: { job_id: job.id, phase, job_title: job.title ?? '' },
+      },
+    });
+  } catch (err) {
+    console.warn('[notifyClientOperationalUpdate]', err);
+  }
+};
+
+/** Avanza la fase operativa del técnico y notifica al cliente. */
+export const advanceOperationalPhase = async (
+  jobId: string,
+  workerId: string,
+  nextPhase: WorkerOperationalPhase,
+  jobSnapshot?: Job | null,
+): Promise<void> => {
+  const status = phaseToJobStatus(nextPhase);
+
+  await patchLocalOperationalPhase(jobId, nextPhase, status);
+
+  let job = jobSnapshot ?? null;
+  if (!job) {
+    try {
+      job = await fetchJobById(jobId);
+    } catch {
+      job = null;
+    }
+  }
+
+  const { data, error } = await supabase.rpc('worker_advance_operational_phase', {
+    p_job_id: jobId,
+    p_worker_id: workerId,
+    p_phase: nextPhase,
+  });
+
+  if (error || !(data as { success?: boolean })?.success) {
+    await supabase
+      .from('jobs')
+      .update({
+        operational_phase: nextPhase,
+        status,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', jobId);
+  }
+
+  if (job && (nextPhase === 'en_route' || nextPhase === 'arrived')) {
+    void notifyClientOperationalUpdate(job, nextPhase);
+  }
 };
 
 /** Worker: Mark a job as in_progress (En proceso). */
@@ -357,7 +519,7 @@ export const completeJob = async (
   workerId?: string,
 ): Promise<void> => {
   const now = new Date().toISOString();
-  await patchLocalJobStatus(jobId, 'completed', now);
+  await patchLocalJobStatus(jobId, 'completed', now, 'completed');
 
   if (CONFIG.pilot.enabled) {
     void (async () => {
@@ -520,12 +682,7 @@ export const acceptJob = async (
     const assignment = buildAssignment(jobId, effectiveWorkerId, assignmentId, job);
     await upsertLocalAssignment(assignment, assignment.job ?? null);
 
-    try {
-      await startJob(jobId, effectiveWorkerId);
-    } catch (startErr) {
-      console.warn('[acceptJob] start after accept:', startErr);
-      await patchLocalJobStatus(jobId, 'in_progress');
-    }
+    await patchLocalOperationalPhase(jobId, 'accepted', 'taken');
 
     return { success: true, assignmentId, assignment };
   } catch (err) {
@@ -580,6 +737,7 @@ interface CreateJobParams {
 /** Admin: Create a new job. */
 export const createJob = async (params: CreateJobParams): Promise<Job> => {
   if (!params.relaxedPricing) {
+    await assertClientJobPlatformReady();
     const priceCheck = validateClientPrice(params.category, params.payAmount);
     if (!priceCheck.valid) {
       throw new Error(priceCheck.message);
@@ -588,15 +746,16 @@ export const createJob = async (params: CreateJobParams): Promise<Job> => {
     throw new Error('Ingresa un monto válido mayor a cero');
   }
 
+  const slugCategory = params.category.trim();
   const dbCategory = toDbJobCategory(params.category);
+  const categoryAttempts = Array.from(new Set([slugCategory, dbCategory]));
   const platformFee   = parseFloat((params.payAmount * 0.05).toFixed(2));
   const workerPayout  = parseFloat((params.payAmount * 0.95).toFixed(2));
 
-  const rpcPayload = {
+  const rpcBase = {
     p_created_by:       params.createdBy,
     p_title:            params.title,
     p_description:      params.description,
-    p_category:         dbCategory,
     p_pay_amount:       params.payAmount,
     p_address:          params.address,
     p_lat:              params.lat,
@@ -607,47 +766,67 @@ export const createJob = async (params: CreateJobParams): Promise<Job> => {
     p_media_urls:       params.mediaUrls ?? [],
   };
 
-  const { data: rpcData, error: rpcErr } = await supabase.rpc('create_client_job', rpcPayload);
+  let job: Job | null = null;
+  let rpcFailedMsg = '';
 
-  let job: Job;
+  for (const cat of categoryAttempts) {
+    const { data: rpcData, error: rpcErr } = await supabase.rpc('create_client_job', {
+      ...rpcBase,
+      p_category: cat,
+    });
+    const rpcBody = parseCreateJobRpc(rpcData);
+    rpcFailedMsg = rpcBody?.error ?? rpcErr?.message ?? rpcFailedMsg;
 
-  if (!rpcErr && rpcData && (rpcData as { success?: boolean }).success) {
-    job = normalizeJobRow((rpcData as { job: Job }).job);
-  } else {
-    const { data, error } = await supabase
-      .from('jobs')
-      .insert({
-        title:            params.title,
-        description:      params.description,
-        category:         dbCategory,
-        pay_amount:       params.payAmount,
-        platform_fee:     platformFee,
-        worker_payout:    workerPayout,
-        address:          params.address,
-        lat:              params.lat,
-        lng:              params.lng,
-        scheduled_at:     params.scheduledAt ?? null,
-        duration_hours:   params.durationHours,
-        required_workers: params.requiredWorkers,
-        media_urls:       params.mediaUrls ?? [],
-        created_by:       params.createdBy,
-        status:           'open',
-      })
-      .select()
-      .single();
+    if (!rpcErr && rpcBody?.success && rpcBody.job) {
+      job = normalizeJobRow(rpcBody.job);
+      break;
+    }
+  }
 
-    if (error) {
-      const hint = rpcErr?.message ?? (rpcData as { error?: string })?.error;
-      let message = hint ? `${error.message} (${hint})` : error.message;
-      if (message.includes('jobs_created_by_fkey')) {
-        message = 'Tu sesión de administrador no está registrada. Cierra sesión e ingresa de nuevo.';
+  if (!job) {
+    let insertError: string | null = null;
+
+    for (const cat of categoryAttempts) {
+      const { data, error } = await supabase
+        .from('jobs')
+        .insert({
+          title:            params.title,
+          description:      params.description,
+          category:         cat,
+          pay_amount:       params.payAmount,
+          platform_fee:     platformFee,
+          worker_payout:    workerPayout,
+          address:          params.address,
+          lat:              params.lat,
+          lng:              params.lng,
+          scheduled_at:     params.scheduledAt ?? null,
+          duration_hours:   params.durationHours,
+          required_workers: params.requiredWorkers,
+          media_urls:       params.mediaUrls ?? [],
+          created_by:       params.createdBy,
+          status:           'open',
+        })
+        .select()
+        .single();
+
+      if (!error && data) {
+        job = normalizeJobRow(data as Job);
+        break;
+      }
+      insertError = error?.message ?? insertError;
+    }
+
+    if (!job) {
+      let message = insertError ?? rpcFailedMsg ?? 'No se pudo crear la solicitud';
+      if (message.includes('jobs_created_by_fkey') || message.includes('Perfil de cliente no encontrado')) {
+        message =
+          'Tu perfil de cliente no está sincronizado. Cierra sesión, vuelve a entrar e intenta de nuevo.';
       }
       if (message.includes('job_category')) {
-        message = `Categoría no válida en el servidor (${dbCategory}). Contacta soporte.`;
+        message = `Categoría no válida en el servidor (${slugCategory}). Contacta soporte.`;
       }
       throw new Error(message);
     }
-    job = normalizeJobRow(data as Job);
   }
 
   try {
@@ -720,27 +899,42 @@ export const fetchJobActive = async (
 
   if (jobRes.error) throw new Error(jobRes.error.message);
 
+  const normalizedJob = normalizeJobRow(jobRes.data as Job);
+
   if (assignRes.error) {
     const local = await getLocalAssignments(workerId);
     const found = local.find((a) => a.job_id === jobId);
     if (found) {
-      return {
-        job: (found.job ?? jobRes.data) as Job,
-        assignment: found,
-      };
+      const job = found.job
+        ? normalizeJobRow(found.job as Job)
+        : normalizedJob;
+      return { job, assignment: found };
     }
     throw new Error(assignRes.error.message);
   }
 
-  const job = jobRes.data as Job;
   const assignment = assignRes.data as JobAssignment;
   const local = await getLocalAssignments(workerId);
   const cached = local.find((a) => a.job_id === jobId);
-  if (cached?.job && cached.job.status !== job.status) {
-    return { job: { ...job, status: cached.job.status ?? job.status }, assignment };
+  if (cached?.job) {
+    const cachedJob = normalizeJobRow(cached.job as Job);
+    if (
+      cachedJob.status !== normalizedJob.status
+      || cachedJob.operational_phase !== normalizedJob.operational_phase
+    ) {
+      return {
+        job: {
+          ...normalizedJob,
+          status: cachedJob.status ?? normalizedJob.status,
+          operational_phase:
+            cachedJob.operational_phase ?? normalizedJob.operational_phase,
+        },
+        assignment,
+      };
+    }
   }
 
-  return { job, assignment };
+  return { job: normalizedJob, assignment };
 };
 
 const attachWorkersToClientJobs = async (jobs: ClientOrderJob[]): Promise<ClientOrderJob[]> => {
@@ -782,40 +976,128 @@ const attachWorkersToClientJobs = async (jobs: ClientOrderJob[]): Promise<Client
   });
 };
 
-/** Pedidos del cliente con técnico asignado (para calificar). */
-export const fetchClientOrders = async (clientId: string): Promise<ClientOrderJob[]> => {
+const fetchClientOrdersForId = async (clientId: string): Promise<ClientOrderJob[]> => {
   const { data: rpcData, error: rpcErr } = await supabase.rpc('get_client_jobs', {
     p_client_id: clientId,
   });
 
-  let jobs: ClientOrderJob[] = [];
-
   if (!rpcErr && Array.isArray(rpcData)) {
-    jobs = (rpcData as ClientOrderJob[]).map((row) => normalizeJobRow(row));
-  } else {
-    const { data, error } = await supabase
-      .from('jobs')
-      .select(`
-        *,
-        assigned_worker:profiles!assigned_worker_id(id, full_name, avatar_url, phone)
-      `)
-      .eq('created_by', clientId)
-      .order('created_at', { ascending: false });
-
-    if (error) throw new Error(error.message);
-
-    jobs = (data ?? []).map((row) => {
-      const { assigned_worker, ...rest } = row as ClientOrderJob & {
-        assigned_worker?: AssignedWorkerSummary | null;
-      };
-      const job = normalizeJobRow(rest as Job);
-      return {
-        ...job,
-        assigned_worker_id: (row as ClientOrderJob).assigned_worker_id ?? assigned_worker?.id ?? null,
-        assigned_worker: assigned_worker ?? null,
-      };
-    });
+    return (rpcData as ClientOrderJob[]).map((row) => normalizeJobRow(row));
   }
 
+  if (rpcErr) {
+    console.warn('[fetchClientOrders] RPC get_client_jobs:', rpcErr.message);
+  }
+
+  const { data, error } = await supabase
+    .from('jobs')
+    .select(`
+      *,
+      assigned_worker:profiles!assigned_worker_id(id, full_name, avatar_url, phone)
+    `)
+    .eq('created_by', clientId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.warn('[fetchClientOrders] SELECT jobs:', error.message);
+    return [];
+  }
+
+  return (data ?? []).map((row) => {
+    const { assigned_worker, ...rest } = row as ClientOrderJob & {
+      assigned_worker?: AssignedWorkerSummary | null;
+    };
+    const job = normalizeJobRow(rest as Job);
+    return {
+      ...job,
+      assigned_worker_id: (row as ClientOrderJob).assigned_worker_id ?? assigned_worker?.id ?? null,
+      assigned_worker: assigned_worker ?? null,
+    };
+  });
+};
+
+/** Pedidos del cliente con técnico asignado (para calificar). */
+export const fetchClientOrders = async (clientId: string): Promise<ClientOrderJob[]> => {
+  if (!clientId) return [];
+
+  await assertClientJobPlatformReady();
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const ids = Array.from(
+    new Set([clientId, session?.user?.id].filter((id): id is string => !!id)),
+  );
+
+  const byId = new Map<string, ClientOrderJob>();
+  for (const id of ids) {
+    const rows = await fetchClientOrdersForId(id);
+    for (const row of rows) {
+      byId.set(row.id, row);
+    }
+  }
+
+  const jobs = Array.from(byId.values()).sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+
   return attachWorkersToClientJobs(jobs);
+};
+
+/** Resumen de chamba completada para el cliente (historial). */
+export const fetchClientJobSummary = async (
+  jobId: string,
+  clientId: string,
+): Promise<ClientJobSummary> => {
+  const { data: jobRow, error: jobErr } = await supabase
+    .from('jobs')
+    .select(`
+      *,
+      assigned_worker:profiles!assigned_worker_id(id, full_name, avatar_url, phone)
+    `)
+    .eq('id', jobId)
+    .eq('created_by', clientId)
+    .single();
+
+  if (jobErr || !jobRow) {
+    throw new Error(jobErr?.message ?? 'Solicitud no encontrada');
+  }
+
+  const { assigned_worker, ...rest } = jobRow as ClientOrderJob & {
+    assigned_worker?: AssignedWorkerSummary | null;
+  };
+  const job = normalizeJobRow(rest as Job) as ClientOrderJob;
+  job.assigned_worker = assigned_worker ?? null;
+  job.assigned_worker_id = job.assigned_worker_id ?? assigned_worker?.id ?? null;
+
+  let completed_at: string | null =
+    job.status === 'completed' ? (job.updated_at ?? null) : null;
+
+  const { data: assignRow } = await supabase
+    .from('job_assignments')
+    .select('completed_at, worker_id')
+    .eq('job_id', jobId)
+    .maybeSingle();
+
+  if (assignRow?.completed_at) {
+    completed_at = assignRow.completed_at;
+  }
+
+  const workerId = job.assigned_worker?.id ?? assignRow?.worker_id;
+  let client_review: WorkerReview | null = null;
+  let worker_rating_avg: number | null = null;
+
+  if (workerId) {
+    const [reviews, summary] = await Promise.all([
+      fetchWorkerReviews(workerId),
+      fetchWorkerRatingSummary(workerId),
+    ]);
+    client_review = reviews.find((r) => r.reviewer_id === clientId) ?? null;
+    worker_rating_avg = summary.rating_avg;
+  }
+
+  return {
+    job,
+    completed_at,
+    client_review,
+    worker_rating_avg,
+  };
 };

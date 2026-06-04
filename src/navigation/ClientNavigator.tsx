@@ -1,22 +1,35 @@
 import React from 'react';
-import { View, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ClientHomeScreen }    from '@features/client/screens/ClientHomeScreen';
 import { CreateJobFormScreen } from '@features/client/screens/CreateJobFormScreen';
 import { ClientOrdersScreen }  from '@features/client/screens/ClientOrdersScreen';
-import { ProfileScreen }       from '@features/workers/screens/ProfileScreen';
+import { ClientCompletedJobScreen } from '@features/client/screens/ClientCompletedJobScreen';
+import { ClientProfileScreen } from '@features/client/screens/ClientProfileScreen';
 import { WhatsAppBubble }      from '@components/WhatsAppBubble';
-import { COLORS, FONT_SIZE }   from '@constants/theme';
+import { PendingAccountScreen } from '@components/auth/PendingAccountScreen';
+import { ClientJobPlatformGate } from '@components/client/ClientJobPlatformGate';
+import { useAuthStore } from '@store/authStore';
 import { webAppShellStyle, webFixedTabBarStyle, webTabScenePadding } from '@constants/webMobileLayout';
-import type { ClientTabParamList, ClientStackParamList } from '@/types';
+import type { ClientTabParamList, ClientStackParamList, ClientOrdersStackParamList } from '@/types';
 
-const Tab   = createBottomTabNavigator<ClientTabParamList>();
-const Stack = createNativeStackNavigator<ClientStackParamList>();
+const CYAN = '#00F2FE';
+const SLATE_MUTED = '#94A3B8';
 
-// ─── Home stack: CategoryGrid → CreateJobForm ─────────────────────────────────
+const Tab        = createBottomTabNavigator<ClientTabParamList>();
+const Stack      = createNativeStackNavigator<ClientStackParamList>();
+const OrdersStack = createNativeStackNavigator<ClientOrdersStackParamList>();
+
+const ClientOrdersNavigator: React.FC = () => (
+  <OrdersStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+    <OrdersStack.Screen name="ClientOrdersList" component={ClientOrdersScreen} />
+    <OrdersStack.Screen name="ClientCompletedJob" component={ClientCompletedJobScreen} />
+  </OrdersStack.Navigator>
+);
 
 const HomeStack: React.FC = () => (
   <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
@@ -25,67 +38,125 @@ const HomeStack: React.FC = () => (
   </Stack.Navigator>
 );
 
-// ─── Tab icon helper ──────────────────────────────────────────────────────────
+type TabRoute = keyof ClientTabParamList;
 
-type TabName = 'ClientHome' | 'ClientOrders' | 'Profile';
-
-const TAB_ICONS: Record<TabName, keyof typeof Ionicons.glyphMap> = {
-  ClientHome:   'grid',
-  ClientOrders: 'receipt',
-  Profile:      'person-circle',
+const TAB_CONFIG: Record<TabRoute, { label: string; iconOutline: keyof typeof Ionicons.glyphMap }> = {
+  ClientHome:   { label: 'Home',     iconOutline: 'home-outline' },
+  ClientOrders: { label: 'Requests', iconOutline: 'receipt-outline' },
+  Profile:      { label: 'Profile',  iconOutline: 'person-outline' },
 };
 
-// ─── Client Tab Navigator ─────────────────────────────────────────────────────
-
-export const ClientNavigator: React.FC = () => {
+const ClientTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) => {
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={webAppShellStyle}>
-    <Tab.Navigator
-      sceneContainerStyle={Platform.OS === 'web' ? { paddingBottom: webTabScenePadding(insets.bottom) } : undefined}
-      screenOptions={({ route }) => ({
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: COLORS.bg.card,
-          borderTopColor:  COLORS.border.subtle,
-          borderTopWidth:  1,
-          height:          56 + insets.bottom,
-          paddingBottom:   insets.bottom + 6,
-          paddingTop:      8,
-          ...webFixedTabBarStyle,
-        },
-        tabBarActiveTintColor:   COLORS.brand[500],
-        tabBarInactiveTintColor: COLORS.text.muted,
-        tabBarLabelStyle: {
-          fontSize:   FONT_SIZE.xs,
-          fontWeight: '600',
-          marginTop:  2,
-        },
-        tabBarIcon: ({ color, focused, size }) => {
-          const base = TAB_ICONS[route.name as TabName] ?? 'grid';
-          const name = focused ? base : (`${base}-outline` as keyof typeof Ionicons.glyphMap);
-          return <Ionicons name={name} size={size} color={color} />;
-        },
+    <View style={[tabStyles.wrap, webFixedTabBarStyle, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+      {state.routes.map((route, index) => {
+        const focused = state.index === index;
+        const cfg = TAB_CONFIG[route.name as TabRoute];
+        const isHome = route.name === 'ClientHome';
+
+        return (
+          <TouchableOpacity
+            key={route.key}
+            onPress={() => navigation.navigate(route.name)}
+            activeOpacity={0.85}
+            style={tabStyles.tabItem}
+          >
+            {focused && isHome ? (
+              <>
+                <View style={tabStyles.homeActiveOrb}>
+                  <Ionicons name="home" size={22} color="#FFFFFF" />
+                </View>
+                <Text style={tabStyles.homeLabel}>{cfg.label}</Text>
+              </>
+            ) : (
+              <>
+                <Ionicons name={cfg.iconOutline} size={22} color={SLATE_MUTED} />
+                <Text style={tabStyles.tabLabel}>{cfg.label}</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        );
       })}
-    >
-      <Tab.Screen
-        name="ClientHome"
-        component={HomeStack}
-        options={{ tabBarLabel: 'Servicios' }}
-      />
-      <Tab.Screen
-        name="ClientOrders"
-        component={ClientOrdersScreen}
-        options={{ tabBarLabel: 'Mis Pedidos' }}
-      />
-      <Tab.Screen
-        name="Profile"
-        component={ProfileScreen}
-        options={{ tabBarLabel: 'Perfil' }}
-      />
-    </Tab.Navigator>
-    <WhatsAppBubble bottom={insets.bottom + 72} />
     </View>
+  );
+};
+
+const tabStyles = StyleSheet.create({
+  wrap: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'flex-end',
+    height: 72,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E2E8F0',
+    paddingTop: 6,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: -2 },
+    elevation: 8,
+  },
+  tabItem: {
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    minWidth: 64,
+    flex: 1,
+    paddingBottom: 4,
+  },
+  homeActiveOrb: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: CYAN,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -20,
+    shadowColor: CYAN,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+  },
+  homeLabel: {
+    fontSize: 10,
+    color: CYAN,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  tabLabel: {
+    fontSize: 10,
+    color: SLATE_MUTED,
+    fontWeight: '500',
+    marginTop: 4,
+  },
+});
+
+export const ClientNavigator: React.FC = () => {
+  const insets = useSafeAreaInsets();
+  const profile = useAuthStore((s) => s.profile);
+  const isPendingApproval = profile?.role === 'client' && !profile.is_approved;
+
+  if (isPendingApproval) {
+    return <PendingAccountScreen role="client" />;
+  }
+
+  return (
+    <ClientJobPlatformGate>
+      <View style={webAppShellStyle}>
+        <Tab.Navigator
+          tabBar={(props) => <ClientTabBar {...props} />}
+          sceneContainerStyle={Platform.OS === 'web' ? { paddingBottom: webTabScenePadding(insets.bottom) } : undefined}
+          screenOptions={{ headerShown: false }}
+        >
+          <Tab.Screen name="ClientHome"   component={HomeStack} />
+          <Tab.Screen name="ClientOrders" component={ClientOrdersNavigator} />
+          <Tab.Screen name="Profile"      component={ClientProfileScreen} />
+        </Tab.Navigator>
+        <WhatsAppBubble bottom={insets.bottom + 72} />
+      </View>
+    </ClientJobPlatformGate>
   );
 };

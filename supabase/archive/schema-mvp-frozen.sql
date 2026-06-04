@@ -1,6 +1,8 @@
+-- ⚠️ ARCHIVO CONGELADO — NO EJECUTAR
+-- Snapshot del MVP inicial. Esquema actual: supabase/migrations/001–011
+-- Ver supabase/README.md
 -- ================================================================
---  CHAMBA — Fase 1 · Schema PostgreSQL completo
---  Pegar en: Supabase Dashboard → SQL Editor → New Query
+--  CHAMBA — Fase 1 · Schema PostgreSQL completo (histórico)
 -- ================================================================
 
 

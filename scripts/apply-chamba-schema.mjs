@@ -13,11 +13,25 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 
+/** Orden documentado en supabase/README.md */
 const MIGRATIONS = [
   '001_add_availability_status.sql',
   '005_chamba_complete_fix.sql',
-  '009_pilot_worker_agenda.sql',
   '007_worker_reviews.sql',
+  '009_pilot_worker_agenda.sql',
+  '010_part1_tables.sql',
+  '010_part2_seed.sql',
+  '010_part3_rls.sql',
+  '010_part4_functions.sql',
+  '011_services_config_sync.sql',
+  '012_worker_operational_phase.sql',
+  '013_job_work_photos.sql',
+  '014_b2b_negocio_catalog.sql',
+  '015_pet_subcategories.sql',
+  '016_vehiculos_subcategories.sql',
+  '017_pet_grooming.sql',
+  '018_fix_signup_client_role.sql',
+  '019_fix_create_client_job_category.sql',
 ];
 
 function loadEnv() {

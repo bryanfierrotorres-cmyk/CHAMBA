@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CONFIG } from '@constants/config';
-import type { Job, JobAssignment, JobCategory, JobStatus } from '@/types';
+import type { Job, JobAssignment, JobCategory, JobStatus, WorkerOperationalPhase } from '@/types';
+import { preferOperationalPhase } from '@utils/workerOperationalPhase';
 
 const STORAGE_KEY = 'CHAMBA_WORKER_ASSIGNMENTS';
 const MAX_ENTRIES = 40;
@@ -17,11 +18,13 @@ type CompactJob = {
   title: string;
   category: JobCategory;
   status: JobStatus;
+  operational_phase?: WorkerOperationalPhase | null;
   pay_amount: number;
   worker_payout: number;
   duration_hours?: number;
   address?: string;
   updated_at?: string;
+  created_by?: string;
 };
 
 let memoryCache: StoredEntry[] | null = null;
@@ -33,11 +36,13 @@ const compactJob = (job: Job | Partial<Job> | null | undefined): CompactJob | nu
     title: job.title ?? 'Chamba',
     category: (job.category ?? 'limpieza_sofas') as JobCategory,
     status: (job.status ?? 'in_progress') as JobStatus,
+    operational_phase: job.operational_phase ?? null,
     pay_amount: job.pay_amount ?? 0,
     worker_payout: job.worker_payout ?? 0,
     duration_hours: job.duration_hours,
     address: job.location?.address ?? (job as Job & { address?: string }).address,
     updated_at: job.updated_at,
+    created_by: job.created_by,
   };
 };
 
@@ -48,6 +53,7 @@ const expandJob = (c: CompactJob | null): Job | undefined => {
     title: c.title,
     category: c.category,
     status: c.status,
+    operational_phase: c.operational_phase ?? undefined,
     pay_amount: c.pay_amount,
     worker_payout: c.worker_payout,
     duration_hours: c.duration_hours ?? 0,
@@ -58,7 +64,7 @@ const expandJob = (c: CompactJob | null): Job | undefined => {
     required_workers: 1,
     slots_taken: 1,
     media_urls: [],
-    created_by: '',
+    created_by: c.created_by ?? '',
     created_at: c.updated_at ?? new Date().toISOString(),
     updated_at: c.updated_at ?? new Date().toISOString(),
   } as Job;
@@ -195,6 +201,7 @@ export const patchLocalJobStatus = async (
   jobId: string,
   status: JobStatus,
   completedAt?: string,
+  operationalPhase?: WorkerOperationalPhase | null,
 ): Promise<void> => {
   try {
     const entries = await readAll();
@@ -203,7 +210,14 @@ export const patchLocalJobStatus = async (
       if (e.assignment.job_id !== jobId && e.job?.id !== jobId) return e;
       changed = true;
       const job = e.job
-        ? { ...e.job, status, updated_at: new Date().toISOString() }
+        ? {
+            ...e.job,
+            status,
+            ...(operationalPhase !== undefined
+              ? { operational_phase: operationalPhase }
+              : {}),
+            updated_at: new Date().toISOString(),
+          }
         : null;
       const assignment = {
         ...e.assignment,
@@ -218,16 +232,32 @@ export const patchLocalJobStatus = async (
 };
 
 /** Actualiza caché en memoria sin escribir AsyncStorage (instantáneo). */
+export const patchLocalOperationalPhase = async (
+  jobId: string,
+  phase: WorkerOperationalPhase,
+  status: JobStatus,
+): Promise<void> => {
+  await patchLocalJobStatus(jobId, status, undefined, phase);
+};
+
 export const patchLocalJobStatusMemory = (
   jobId: string,
   status: JobStatus,
   completedAt?: string,
+  operationalPhase?: WorkerOperationalPhase | null,
 ): void => {
   if (!memoryCache) return;
   memoryCache = memoryCache.map((e) => {
     if (e.assignment.job_id !== jobId && e.job?.id !== jobId) return e;
     const job = e.job
-      ? { ...e.job, status, updated_at: new Date().toISOString() }
+      ? {
+          ...e.job,
+          status,
+          ...(operationalPhase !== undefined
+            ? { operational_phase: operationalPhase }
+            : {}),
+          updated_at: new Date().toISOString(),
+        }
       : null;
     return {
       assignment: {
@@ -250,7 +280,16 @@ const mergeJob = (
     (a.status ?? 'open') as JobStatus,
     (b.status ?? 'open') as JobStatus,
   );
-  return { ...a, ...b, status } as Job;
+  const operational_phase = preferOperationalPhase(
+    a.operational_phase ?? null,
+    b.operational_phase ?? null,
+  );
+  return {
+    ...a,
+    ...b,
+    status,
+    ...(operational_phase ? { operational_phase } : {}),
+  } as Job;
 };
 
 export const mergeAssignments = (

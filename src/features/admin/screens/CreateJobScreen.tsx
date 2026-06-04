@@ -1,47 +1,97 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   KeyboardAvoidingView, Platform, Alert, StyleSheet,
 } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@components/Button';
 import { Input } from '@components/Input';
-import { MaterialSymbol } from '@components/admin/MaterialSymbol';
 import { createJob } from '@features/jobs/services/jobsService';
 import { useAuthStore } from '@store/authStore';
 import { JOB_KEYS } from '@features/jobs/hooks/useJobs';
 import { validateJobForm } from '@utils/validation';
-import { formatCurrency, getCategoryEmoji } from '@utils/formatters';
+import { formatCurrency } from '@utils/formatters';
 import { showMessage } from '@utils/confirmAction';
 import { ensureProfileInDb } from '@utils/profileSync';
 import { CONFIG } from '@constants/config';
 import { useCatalog } from '@features/catalog/hooks/useCatalog';
 import type { ServiceType } from '@features/catalog/types';
+import type { JobCategory } from '@/types';
 import { CHAMBA_DEPARTMENTS, DEPARTMENT_COORDS, type ChambaDepartment } from '@constants/departments';
 import { formatJobAddress } from '@utils/locationFormat';
+import { CARD_STEP_SHADOW, CHAMBA, chambaStyles } from '@constants/chambaUI';
 import {
-  M3, SPACING, BORDER_RADIUS, CARD_ELEVATION, stitchTypography,
-} from '@constants/stitchStyles';
-import type { JobCategory } from '@/types';
+  buildGroupedServiceTypes,
+  DEFAULT_SERVICE_SLUG,
+} from '@constants/servicesConfig';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const serviceTypeAccent = (slug: string, categorySlug: string): string => {
+  const s = slug.toLowerCase();
+  const c = categorySlug.toLowerCase();
+  if (s.includes('sofa') || s.includes('limpieza') || c.includes('limpieza')) return '#5856D6';
+  if (s.includes('vehiculo') || s.includes('car') || c.includes('vehiculo')) return '#007AFF';
+  if (s.includes('jardiner') || c.includes('jardiner')) return '#34C759';
+  if (s.includes('electric')) return '#FFCC00';
+  if (s.includes('plom')) return '#0EA5E9';
+  if (s.includes('pet')) return '#FF9500';
+  return '#FF9500';
+};
 
 // ─── Section (Consola No-Code) ────────────────────────────────────────────────
 
 const ConsoleSection: React.FC<{
-  icon: string;
   label: string;
   hint?: string;
   children: React.ReactNode;
-}> = ({ icon, label, hint, children }) => (
+  bare?: boolean;
+}> = ({ label, hint, children, bare }) => (
   <View style={styles.consoleSection}>
-    <View style={styles.sectionHeader}>
-      <MaterialSymbol name={icon} size={18} color={M3.primary} />
-      <Text style={styles.sectionLabel}>{label}</Text>
-    </View>
+    <Text style={chambaStyles.sectionTitle}>{label}</Text>
     {hint ? <Text style={styles.sectionHint}>{hint}</Text> : null}
-    <View style={styles.ambientCard}>{children}</View>
+    {bare ? children : <View style={styles.ambientCard}>{children}</View>}
   </View>
 );
+
+const ServiceTypeRow: React.FC<{
+  serviceType: ServiceType;
+  active: boolean;
+  onPress: () => void;
+}> = ({ serviceType, active, onPress }) => {
+  const accent = serviceTypeAccent(serviceType.slug, serviceType.category_slug);
+  const subtitle = serviceType.description?.trim() || 'Servicio disponible en el radar';
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.88}
+      style={[styles.typeRow, active && styles.typeRowActive]}
+    >
+      <View style={chambaStyles.stepCardContent}>
+        <Text style={[chambaStyles.cardTitle, active && styles.typeTitleActive]} numberOfLines={2}>
+          {serviceType.name}
+        </Text>
+        <Text style={[chambaStyles.cardSubtitle, active && styles.typeSubtitleActive]} numberOfLines={2}>
+          {subtitle}
+        </Text>
+        {serviceType.suggested_price > 0 && (
+          <Text style={[styles.typePrice, active && styles.typePriceActive]}>
+            {formatCurrency(serviceType.suggested_price)}
+          </Text>
+        )}
+      </View>
+      <View style={[chambaStyles.iconCircleRight, { backgroundColor: active ? CHAMBA.cyan : accent }]}>
+        {active
+          ? <Ionicons name="checkmark" size={22} color="#FFF" />
+          : <Text style={styles.typeEmoji}>{serviceType.icon}</Text>}
+      </View>
+    </TouchableOpacity>
+  );
+};
 
 const PayRow: React.FC<{
   label: string;
@@ -49,12 +99,12 @@ const PayRow: React.FC<{
   valueColor?: string;
   bold?: boolean;
   large?: boolean;
-}> = ({ label, value, valueColor = M3.onBackground, bold = false, large = false }) => (
+}> = ({ label, value, valueColor = CHAMBA.navy, bold = false, large = false }) => (
   <View style={styles.payRow}>
     <Text style={[styles.payLabel, large && { fontSize: 16 }]}>{label}</Text>
     <Text style={[
       styles.payValue,
-      { color: valueColor, fontWeight: bold ? '800' : '500', fontSize: large ? 20 : 15 },
+      { color: valueColor, fontWeight: bold ? '600' : '400', fontSize: large ? 20 : 15 },
     ]}>
       {value}
     </Text>
@@ -69,9 +119,21 @@ export const CreateJobScreen: React.FC = () => {
   const profile     = useAuthStore((s) => s.profile);
   const { serviceTypes, isLoading: catalogLoading } = useCatalog();
 
+  const groupedServiceTypes = useMemo(
+    () => buildGroupedServiceTypes(serviceTypes),
+    [serviceTypes],
+  );
+
+  const handleSelectServiceType = (st: ServiceType) => {
+    setCategory(st.slug);
+    if (st.suggested_price > 0) {
+      setPayAmount(String(st.suggested_price));
+    }
+  };
+
   const [title, setTitle]             = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory]       = useState<JobCategory>('limpieza_sofas');
+  const [category, setCategory]       = useState<JobCategory>(DEFAULT_SERVICE_SLUG);
   const [payAmount, setPayAmount]     = useState('');
   const [department, setDepartment]   = useState<ChambaDepartment>('Managua');
   const [addressDetail, setAddressDetail] = useState('');
@@ -99,7 +161,7 @@ export const CreateJobScreen: React.FC = () => {
   const resetForm = () => {
     setTitle('');
     setDescription('');
-    setCategory('limpieza_sofas');
+    setCategory(DEFAULT_SERVICE_SLUG);
     setPayAmount('');
     setDepartment('Managua');
     setAddressDetail('');
@@ -155,69 +217,66 @@ export const CreateJobScreen: React.FC = () => {
   };
 
   return (
+    <SafeAreaView style={styles.root} edges={['top']}>
     <KeyboardAvoidingView
-      style={styles.root}
+      style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
-          { paddingTop: insets.top + SPACING.md, paddingBottom: 100 + insets.bottom },
+          { paddingBottom: 100 + insets.bottom },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header ejecutivo */}
-        <View style={styles.header}>
-          <View style={styles.headerIcon}>
-            <MaterialSymbol name="tune" size={22} color={M3.onPrimaryContainer} filled />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.eyebrow}>Consola No-Code</Text>
-            <Text style={styles.title}>Publicar Subasta</Text>
-            <Text style={styles.subtitle}>
-              Configura opciones sin código — los cambios se reflejan en el radar al instante.
-            </Text>
-          </View>
+        <View style={chambaStyles.screenHeader}>
+          <Text style={chambaStyles.screenTitle}>Publicar Subasta</Text>
+          <Text style={chambaStyles.screenSubtitle}>
+            Configurá opciones sin código — los cambios se reflejan en el radar al instante.
+          </Text>
         </View>
 
-        {/* Categoría legacy BD */}
+        {/* Tipo de trabajo */}
         <ConsoleSection
-          icon="category"
           label="Tipo de trabajo"
-          hint={`${serviceTypes.length} servicios disponibles — gestiona más en Catálogo`}
+          hint={`${serviceTypes.length} servicios disponibles — gestioná más en Catálogo`}
+          bare
         >
           {catalogLoading ? (
-            <Text style={styles.sectionHint}>Cargando catálogo…</Text>
+            <View style={styles.typeEmptyCard}>
+              <Text style={styles.sectionHint}>Cargando catálogo…</Text>
+            </View>
           ) : serviceTypes.length === 0 ? (
-            <Text style={styles.sectionHint}>No hay tipos de trabajo en el catálogo.</Text>
+            <View style={styles.typeEmptyCard}>
+              <View style={[chambaStyles.iconCircleRight, { backgroundColor: '#FF9500' }]}>
+                <Ionicons name="construct-outline" size={22} color="#FFF" />
+              </View>
+              <Text style={styles.typeEmptyTitle}>Sin tipos de trabajo</Text>
+              <Text style={styles.typeEmptySub}>Agregá servicios en la pestaña Catálogo</Text>
+            </View>
           ) : (
-            <View style={styles.pillRow}>
-              {serviceTypes.map((st: ServiceType) => {
-                const active = category === st.slug;
-                return (
-                  <TouchableOpacity
-                    key={st.id}
-                    onPress={() => setCategory(st.slug)}
-                    activeOpacity={0.85}
-                    style={[styles.categoryPill, active && styles.categoryPillActive]}
-                  >
-                    <Text style={{ fontSize: 22 }}>{st.icon}</Text>
-                    <Text style={[styles.categoryDbLabel, active && styles.categoryDbLabelActive]}>
-                      {st.name}
-                    </Text>
-                    <Text style={[styles.categoryAppLabel, active && styles.categoryAppLabelActive]}>
-                      C${st.suggested_price}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+            <View style={styles.typeList}>
+              {groupedServiceTypes.map(({ group, types }) => (
+                <View key={group.id} style={styles.typeGroup}>
+                  <Text style={styles.typeGroupLabel}>
+                    {group.icon} {group.label}
+                  </Text>
+                  {types.map((st) => (
+                    <ServiceTypeRow
+                      key={st.id}
+                      serviceType={st}
+                      active={category === st.slug}
+                      onPress={() => handleSelectServiceType(st)}
+                    />
+                  ))}
+                </View>
+              ))}
             </View>
           )}
         </ConsoleSection>
 
         {/* Detalles */}
-        <ConsoleSection icon="inventory_2" label="Detalles del trabajo">
-          <View style={styles.formInner}>
+        <ConsoleSection label="Detalles del trabajo">          <View style={styles.formInner}>
             <Input
               label="Título"
               placeholder="Carga de materiales en bodega norte"
@@ -240,11 +299,9 @@ export const CreateJobScreen: React.FC = () => {
 
         {/* Departamento */}
         <ConsoleSection
-          icon="location_on"
           label="Departamento"
           hint="Managua · Masaya · Granada — visible en negrilla para técnicos"
-        >
-          <View style={styles.deptRow}>
+        >          <View style={styles.deptRow}>
             {CHAMBA_DEPARTMENTS.map((dept) => {
               const active = department === dept;
               return (
@@ -254,10 +311,10 @@ export const CreateJobScreen: React.FC = () => {
                   activeOpacity={0.85}
                   style={[styles.deptPill, active && styles.deptPillActive]}
                 >
-                  <MaterialSymbol
-                    name="map"
+                  <Ionicons
+                    name="map-outline"
                     size={20}
-                    color={active ? M3.onPrimaryContainer : M3.primary}
+                    color={active ? CHAMBA.blue : CHAMBA.muted}
                   />
                   <Text style={[styles.deptLabel, active && styles.deptLabelActive]}>
                     {dept}
@@ -278,7 +335,7 @@ export const CreateJobScreen: React.FC = () => {
         </ConsoleSection>
 
         {/* Pago */}
-        <ConsoleSection icon="attach_money" label="Pago y duración">
+        <ConsoleSection label="Pago y duración">
           <View style={styles.formInner}>
             <View style={styles.twoCol}>
               <View style={{ flex: 1 }}>
@@ -315,19 +372,19 @@ export const CreateJobScreen: React.FC = () => {
 
         {/* Desglose */}
         {pay > 0 && (
-          <ConsoleSection icon="payments" label="Desglose de pago">
+          <ConsoleSection label="Desglose de pago">
             <View style={styles.formInner}>
               <PayRow label="Monto total del cliente" value={formatCurrency(pay)} />
               <PayRow
                 label="Comisión plataforma (5%)"
                 value={`−${formatCurrency(fee)}`}
-                valueColor={M3.error}
+                valueColor="#B91C1C"
               />
               <View style={styles.payDivider} />
               <PayRow
                 label="Pago al trabajador (95%)"
                 value={formatCurrency(payout)}
-                valueColor={M3.primaryContainer}
+                valueColor="#34C759"
                 bold
                 large
               />
@@ -337,14 +394,14 @@ export const CreateJobScreen: React.FC = () => {
 
         {!!error && (
           <View style={styles.errorBox}>
-            <MaterialSymbol name="cancel" size={18} color={M3.error} />
+            <Ionicons name="close-circle" size={18} color="#B91C1C" />
             <Text style={styles.errorText}>{error}</Text>
           </View>
         )}
 
         {published ? (
           <View style={styles.successBox}>
-            <MaterialSymbol name="check_circle" size={40} color={M3.secondary} filled />
+            <Ionicons name="checkmark-circle" size={40} color="#34C759" />
             <Text style={styles.successTitle}>¡Subasta publicada!</Text>
             <Text style={styles.successSub}>
               Los técnicos ya pueden verla en el radar en tiempo real
@@ -357,199 +414,111 @@ export const CreateJobScreen: React.FC = () => {
             isLoading={isPending}
             fullWidth
             size="lg"
-            icon={<MaterialSymbol name="flash_on" size={18} color={M3.onPrimary} filled />}
+            icon={<Ionicons name="flash" size={18} color="#FFF" />}
           />
         )}
       </ScrollView>
     </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  root: {
-    flex:            1,
-    backgroundColor: M3.background,
-  },
-  scroll: {
-    paddingHorizontal: SPACING.md,
-    gap:               SPACING.md + 4,
-  },
-  header: {
-    flexDirection: 'row',
-    gap:           SPACING.sm + 4,
-    alignItems:    'flex-start',
-  },
-  headerIcon: {
-    width:           44,
-    height:          44,
-    borderRadius:    22,
-    backgroundColor: M3.primaryContainer,
-    alignItems:      'center',
-    justifyContent:  'center',
-  },
-  eyebrow: {
-    ...stitchTypography.labelBold,
-    color:         M3.primary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  title: {
-    ...stitchTypography.headlineLg,
-    marginTop: 2,
-  },
-  subtitle: {
-    ...stitchTypography.bodySm,
-    marginTop: 4,
-  },
-  consoleSection: {
-    gap: SPACING.xs + 2,
-  },
-  sectionHeader: {
-    flexDirection:     'row',
-    alignItems:        'center',
-    gap:               SPACING.xs + 2,
-    paddingHorizontal: 4,
-  },
-  sectionLabel: {
-    ...stitchTypography.headlineMdMobile,
-    fontSize: 16,
-  },
-  sectionHint: {
-    ...stitchTypography.labelBold,
-    color:             M3.outline,
-    paddingHorizontal: 4,
-    marginBottom:      2,
-  },
+  root: { flex: 1, backgroundColor: CHAMBA.bg },
+  scroll: { paddingHorizontal: 20, gap: 16, paddingTop: 8 },
+  consoleSection: { gap: 8 },
+  sectionHint: { fontSize: 13, color: CHAMBA.muted, fontWeight: '400', marginBottom: 4 },
   ambientCard: {
-    backgroundColor: M3.surfaceContainerLowest,
-    borderRadius:    12,
-    overflow:        'hidden',
-    ...CARD_ELEVATION,
+    backgroundColor: CHAMBA.white,
+    borderRadius: 18,
+    overflow: 'hidden',
+    ...CARD_STEP_SHADOW,
   },
-  formInner: {
-    padding: SPACING.md,
-    gap:     SPACING.md,
-  },
-  pillRow: {
-    flexDirection:     'row',
-    flexWrap:          'wrap',
-    gap:               SPACING.sm,
-    padding:           SPACING.md,
-    justifyContent:    'space-between',
-  },
-  categoryPill: {
-    width:             '48%',
-    minWidth:          140,
-    alignItems:        'center',
-    padding:           SPACING.md,
-    borderRadius:      BORDER_RADIUS.md,
-    borderWidth:       1.5,
-    borderColor:       M3.outlineVariant,
-    backgroundColor:   M3.surface,
-  },
-  categoryPillActive: {
-    borderColor:     M3.primary,
-    backgroundColor: M3.primaryContainer,
-  },
-  categoryDbLabel: {
-    ...stitchTypography.headlineMdMobile,
-    marginTop:     6,
-    textAlign:     'center',
-    fontSize:      13,
-  },
-  categoryDbLabelActive: {
-    color: M3.onPrimaryContainer,
-  },
-  categoryAppLabel: {
-    ...stitchTypography.labelBold,
-    marginTop: 4,
-    textAlign: 'center',
-    color:     M3.outline,
-  },
-  categoryAppLabelActive: {
-    color: M3.primaryFixedDim,
-  },
-  deptRow: {
-    flexDirection:     'row',
-    gap:               SPACING.sm,
-    padding:           SPACING.md,
-    paddingBottom:     0,
-  },
-  deptPill: {
-    flex:              1,
-    alignItems:        'center',
-    paddingVertical:   SPACING.md,
-    paddingHorizontal: SPACING.xs,
-    borderRadius:      BORDER_RADIUS.md,
-    borderWidth:       1.5,
-    borderColor:       M3.outlineVariant,
-    backgroundColor:   M3.surface,
-    gap:               6,
-  },
-  deptPillActive: {
-    borderColor:     M3.primary,
-    backgroundColor: M3.primaryContainer,
-  },
-  deptLabel: {
-    ...stitchTypography.labelBold,
+  formInner: { padding: 18, gap: 16 },
+  typeList: { gap: 4 },
+  typeGroup: { marginBottom: 8 },
+  typeGroupLabel: {
     fontSize: 13,
-    color:    M3.onBackground,
+    fontWeight: '600',
+    color: CHAMBA.muted,
+    marginBottom: 10,
+    letterSpacing: 0.3,
   },
-  deptLabelActive: {
-    color: M3.onPrimaryContainer,
-  },
-  twoCol: {
+  typeRow: {
+    backgroundColor: CHAMBA.white,
+    borderRadius: 18,
+    padding: 18,
     flexDirection: 'row',
-    gap:           SPACING.sm,
-  },
-  payRow: {
-    flexDirection:  'row',
     justifyContent: 'space-between',
-    alignItems:     'center',
+    alignItems: 'center',
+    marginBottom: 14,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    ...CARD_STEP_SHADOW,
   },
-  payLabel: {
-    ...stitchTypography.bodySm,
-    color: M3.onSurfaceVariant,
+  typeRowActive: {
+    borderColor: CHAMBA.cyan,
+    backgroundColor: '#E0F2FE',
   },
-  payValue: {
-    fontSize: 15,
+  typeTitleActive: { color: CHAMBA.blue },
+  typeSubtitleActive: { color: '#0369A1' },
+  typePrice: {
+    marginTop: 6,
+    fontSize: 14,
+    fontWeight: '700',
+    color: CHAMBA.navy,
   },
-  payDivider: {
-    height:          1,
-    backgroundColor: M3.surfaceVariant,
-    marginVertical:  4,
+  typePriceActive: { color: CHAMBA.blue },
+  typeEmoji: { fontSize: 20 },
+  typeEmptyCard: {
+    backgroundColor: CHAMBA.white,
+    borderRadius: 18,
+    padding: 28,
+    alignItems: 'center',
+    gap: 10,
+    ...CARD_STEP_SHADOW,
   },
+  typeEmptyTitle: { fontSize: 16, fontWeight: '600', color: CHAMBA.navy, textAlign: 'center' },
+  typeEmptySub: { fontSize: 13, color: CHAMBA.muted, textAlign: 'center', fontWeight: '400' },
+  deptRow: { flexDirection: 'row', gap: 12, padding: 18, paddingBottom: 0 },  deptPill: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    backgroundColor: CHAMBA.white,
+    gap: 6,
+  },
+  deptPillActive: { borderColor: CHAMBA.cyan, backgroundColor: '#E0F2FE' },
+  deptLabel: { fontSize: 13, fontWeight: '600', color: CHAMBA.navy },
+  deptLabelActive: { color: CHAMBA.blue },
+  twoCol: { flexDirection: 'row', gap: 12 },
+  payRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  payLabel: { fontSize: 14, color: CHAMBA.muted, fontWeight: '400' },
+  payValue: { fontSize: 15 },
+  payDivider: { height: 1, backgroundColor: '#E2E8F0', marginVertical: 4 },
   errorBox: {
-    flexDirection:     'row',
-    alignItems:        'center',
-    gap:               SPACING.sm,
-    backgroundColor:   M3.errorContainer,
-    borderRadius:      BORDER_RADIUS.md,
-    padding:           SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 18,
+    padding: 16,
   },
-  errorText: {
-    ...stitchTypography.bodySm,
-    color: M3.onErrorContainer,
-    flex:  1,
-  },
+  errorText: { fontSize: 14, color: '#B91C1C', flex: 1, fontWeight: '400' },
   successBox: {
-    backgroundColor: M3.secondaryFixed,
-    borderRadius:    BORDER_RADIUS.lg,
-    padding:         SPACING.xl,
-    alignItems:      'center',
-    gap:             SPACING.sm,
-    borderWidth:     1,
-    borderColor:     M3.secondaryContainer,
+    backgroundColor: '#DCFCE7',
+    borderRadius: 18,
+    padding: 24,
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
   },
-  successTitle: {
-    ...stitchTypography.headlineMdMobile,
-    color: M3.onSecondaryFixedVariant,
-  },
-  successSub: {
-    ...stitchTypography.bodySm,
-    textAlign: 'center',
-    color:     M3.onSecondaryFixedVariant,
-  },
+  successTitle: { fontSize: 16, fontWeight: '600', color: '#15803D' },
+  successSub: { fontSize: 14, textAlign: 'center', color: '#166534', fontWeight: '400' },
 });

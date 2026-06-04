@@ -1,131 +1,147 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet,
-  Animated, KeyboardAvoidingView,
-  Platform, ScrollView, TextInput, ActivityIndicator,
-  Image, useWindowDimensions,
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Animated,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  TextInput,
+  ActivityIndicator,
+  Image,
+  useWindowDimensions,
+  type TextInputProps,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { ChambaSlidingToggle } from '@components/chamba/ChambaSlidingToggle';
 import { useAuthStore } from '@store/authStore';
-import { COLORS, FONT_SIZE, SPACING, BORDER_RADIUS } from '@constants/theme';
-import type { UserRole } from '@/types';
+import { FONT_SIZE, SPACING } from '@constants/theme';
+import { CARD_STEP_SHADOW, CHAMBA } from '@constants/chambaUI';
+import { textInputWebFocusStyle } from '@constants/textInputFocus';
+import { formatNicaPhone, isValidNicaPhone, NICA_PHONE_PREFIX } from '@utils/phoneNicaragua';
+import type { AuthStackParamList, UserRole } from '@/types';
+
+type LoginNav = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
 
 const LOGIN_BG = require('../../../../assets/login-hero-bg.png');
 
-/** Por debajo de este ancho usamos contain para no recortar a los personajes. */
 const COMPACT_BREAKPOINT = 640;
 
-// ─── Nicaragua phone validation ───────────────────────────────────────────────
-// Valid prefixes: 2 (landline), 5, 7, 8 (mobile). Total: 8 digits.
-const isValidNicaPhone = (raw: string) => {
-  const digits = raw.replace(/\D/g, '');
-  return digits.length === 8 && /^[2578]/.test(digits);
-};
+const ROLE_TOGGLE_OPTIONS: { id: UserRole; label: string }[] = [
+  { id: 'client', label: 'Cliente' },
+  { id: 'worker', label: 'Trabajador' },
+];
 
-// Format as XXXX-XXXX while typing
-const formatPhone = (raw: string) => {
-  const digits = raw.replace(/\D/g, '').slice(0, 8);
-  if (digits.length <= 4) return digits;
-  return `${digits.slice(0, 4)}-${digits.slice(4)}`;
-};
+// ─── Premium field ─────────────────────────────────────────────────
 
-// ─── Role selector pill ───────────────────────────────────────────────────────
+interface PremiumFieldProps extends TextInputProps {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  error?: string;
+  onClearError?: () => void;
+}
 
-interface RolePillProps { role: UserRole; onChange: (r: UserRole) => void; }
+const PremiumField: React.FC<PremiumFieldProps> = ({
+  label,
+  icon,
+  error,
+  onClearError,
+  value,
+  onChangeText,
+  ...rest
+}) => {
+  const [focused, setFocused] = useState(false);
 
-const RolePill: React.FC<RolePillProps> = ({ role, onChange }) => {
-  const ROLES: { value: UserRole; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-    { value: 'client', label: 'Cliente',    icon: 'person-outline' },
-    { value: 'worker', label: 'Trabajador', icon: 'briefcase-outline' },
-  ];
   return (
-    <View style={rStyles.wrap}>
-      {ROLES.map((r) => {
-        const active = role === r.value;
-        return (
-          <TouchableOpacity
-            key={r.value}
-            onPress={() => onChange(r.value)}
-            style={[rStyles.pill, active && rStyles.pillActive]}
-            activeOpacity={0.8}
-          >
-            <Ionicons
-              name={r.icon}
-              size={15}
-              color={active ? '#FFF' : COLORS.text.secondary}
-            />
-            <Text style={[rStyles.label, active && rStyles.labelActive]}>
-              {r.label}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
+    <View style={fieldStyles.wrap}>
+      <Text style={fieldStyles.label}>{label}</Text>
+      <View
+        style={[
+          fieldStyles.row,
+          focused && fieldStyles.rowFocused,
+          !!error && fieldStyles.rowError,
+        ]}
+      >
+        <View style={[fieldStyles.iconCircle, focused && fieldStyles.iconCircleFocused]}>
+          <Ionicons name={icon} size={18} color={focused ? CHAMBA.blue : CHAMBA.muted} />
+        </View>
+        <TextInput
+          value={value}
+          onChangeText={(v) => {
+            onChangeText?.(v);
+            onClearError?.();
+          }}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholderTextColor="#94A3B8"
+          style={[fieldStyles.input, textInputWebFocusStyle]}
+          {...rest}
+        />
+      </View>
+      {!!error && <Text style={fieldStyles.errorText}>{error}</Text>}
     </View>
   );
 };
 
-const rStyles = StyleSheet.create({
-  wrap: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.bg.primary,
-    borderRadius: BORDER_RADIUS.full,
-    padding: 3,
-    borderWidth: 1,
-    borderColor: COLORS.border.subtle,
-  },
-  pill: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingVertical: 9, borderRadius: BORDER_RADIUS.full,
-  },
-  pillActive: { backgroundColor: COLORS.brand[500] },
-  label:      { color: COLORS.text.secondary, fontSize: FONT_SIZE.sm, fontWeight: '600' },
-  labelActive:{ color: '#FFF', fontWeight: '700' },
-});
-
-// ─── Main screen ──────────────────────────────────────────────────────────────
+// ─── Main screen ───────────────────────────────────────────────────
 
 export const LoginScreen: React.FC = () => {
+  const navigation = useNavigation<LoginNav>();
   const { width: screenWidth } = useWindowDimensions();
   const isCompactLayout = screenWidth < COMPACT_BREAKPOINT;
   const heroImageHeight = Math.min(screenWidth * 0.58, 300);
 
-  const { phoneSignIn, pilotSignIn, isLoading, error, setError } = useAuthStore();
+  const { phoneSignIn, pilotSignIn, error, setError } = useAuthStore();
+  const [adminAccessVisible, setAdminAccessVisible] = useState(false);
 
-  const [fullName,   setFullName]   = useState('');
-  const [phone,      setPhone]      = useState('');
-  const [role,       setRole]       = useState<UserRole>('client');
-  const [nameErr,    setNameErr]    = useState('');
-  const [phoneErr,   setPhoneErr]   = useState('');
+  const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [role, setRole] = useState<UserRole>('client');
+  const [nameErr, setNameErr] = useState('');
+  const [phoneErr, setPhoneErr] = useState('');
+  const [pendingAction, setPendingAction] = useState<'chamba' | 'admin' | null>(null);
 
-  // Entrance animations
-  const heroOp  = useRef(new Animated.Value(0)).current;
-  const heroY   = useRef(new Animated.Value(-24)).current;
-  const cardOp  = useRef(new Animated.Value(0)).current;
-  const cardY   = useRef(new Animated.Value(40)).current;
-  const shakeX  = useRef(new Animated.Value(0)).current;
+  const isBusy = pendingAction !== null;
+
+  const heroOp = useRef(new Animated.Value(0)).current;
+  const heroY = useRef(new Animated.Value(-24)).current;
+  const cardOp = useRef(new Animated.Value(0)).current;
+  const cardY = useRef(new Animated.Value(40)).current;
+  const shakeX = useRef(new Animated.Value(0)).current;
+  const roleHintOp = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     setError(null);
     Animated.parallel([
       Animated.timing(heroOp, { toValue: 1, duration: 600, useNativeDriver: true }),
-      Animated.timing(heroY,  { toValue: 0, duration: 600, useNativeDriver: true }),
+      Animated.timing(heroY, { toValue: 0, duration: 600, useNativeDriver: true }),
       Animated.sequence([
         Animated.delay(200),
         Animated.parallel([
           Animated.timing(cardOp, { toValue: 1, duration: 500, useNativeDriver: true }),
-          Animated.timing(cardY,  { toValue: 0, duration: 500, useNativeDriver: true }),
+          Animated.timing(cardY, { toValue: 0, duration: 500, useNativeDriver: true }),
         ]),
       ]),
     ]).start();
-  }, []);
+  }, [cardOp, cardY, heroOp, heroY, setError]);
+
+  useEffect(() => {
+    roleHintOp.setValue(0);
+    Animated.timing(roleHintOp, { toValue: 1, duration: 220, useNativeDriver: true }).start();
+  }, [role, roleHintOp]);
 
   const shake = () =>
     Animated.sequence([
-      Animated.timing(shakeX, { toValue: 10,  duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: 10, duration: 60, useNativeDriver: true }),
       Animated.timing(shakeX, { toValue: -10, duration: 60, useNativeDriver: true }),
-      Animated.timing(shakeX, { toValue: 8,   duration: 60, useNativeDriver: true }),
-      Animated.timing(shakeX, { toValue: -8,  duration: 60, useNativeDriver: true }),
-      Animated.timing(shakeX, { toValue: 0,   duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: 8, duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: -8, duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: 0, duration: 60, useNativeDriver: true }),
     ]).start();
 
   const validate = () => {
@@ -134,11 +150,11 @@ export const LoginScreen: React.FC = () => {
     setPhoneErr('');
 
     if (!fullName.trim() || fullName.trim().split(' ').length < 2) {
-      setNameErr('Ingresa tu nombre completo (nombre y apellido)');
+      setNameErr('Ingresá tu nombre completo (nombre y apellido)');
       valid = false;
     }
     if (!isValidNicaPhone(phone)) {
-      setPhoneErr('Celular inválido — ingresa 8 dígitos (ej. 8888-8888)');
+      setPhoneErr('Celular inválido — 8 dígitos (ej. 8888-8888)');
       valid = false;
     }
     return valid;
@@ -146,13 +162,24 @@ export const LoginScreen: React.FC = () => {
 
   const handleSubmit = async () => {
     setError(null);
-    if (!validate()) { shake(); return; }
+    if (!validate()) {
+      shake();
+      return;
+    }
+    setPendingAction('chamba');
     try {
       await phoneSignIn(fullName.trim(), phone, role);
     } catch {
       shake();
+    } finally {
+      setPendingAction(null);
     }
   };
+
+  const roleHint =
+    role === 'client'
+      ? 'Solicitá servicios para tu hogar o negocio'
+      : 'Aceptá chambas y cobrá el 95% de cada trabajo';
 
   return (
     <View style={styles.root}>
@@ -169,7 +196,7 @@ export const LoginScreen: React.FC = () => {
       <View
         style={[
           styles.bgOverlay,
-          isCompactLayout && { height: heroImageHeight },
+          isCompactLayout && { height: heroImageHeight, bottom: undefined },
         ]}
         pointerEvents="none"
       />
@@ -178,157 +205,284 @@ export const LoginScreen: React.FC = () => {
         style={styles.flexFill}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-      <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          isCompactLayout && { paddingTop: Math.min(heroImageHeight * 0.22, 56) },
-        ]}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        {/* ── Hero ──────────────────────────────────────────────── */}
-        <Animated.View style={[styles.hero, { opacity: heroOp, transform: [{ translateY: heroY }] }]}>
-          {/* Logo */}
-          <View style={styles.logoWrap}>
-            <View style={styles.logoBg}>
-              <Ionicons name="flash" size={36} color={COLORS.brand[300]} />
-            </View>
-          </View>
-          <Text style={styles.appName}>CHAMBA</Text>
-          <Text style={styles.tagline}>Conectamos tu necesidad{'\n'}con el mejor trabajador</Text>
-
-          {/* Pilot chip */}
-          <View style={styles.pilotChip}>
-            <View style={styles.pilotDot} />
-            <Text style={styles.pilotText}>Modo Piloto Activo · Acceso Express</Text>
-          </View>
-        </Animated.View>
-
-        {/* ── Form card ─────────────────────────────────────────── */}
-        <Animated.View
-          style={[
-            styles.card,
-            {
-              opacity:   cardOp,
-              transform: [{ translateY: cardY }, { translateX: shakeX }],
-            },
+        <ScrollView
+          contentContainerStyle={[
+            styles.scroll,
+            isCompactLayout && { paddingTop: Math.min(heroImageHeight * 0.22, 56) },
           ]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.cardTitle}>Ingresa tus datos</Text>
-          <Text style={styles.cardSub}>No necesitas contraseña ni correo.</Text>
+          <Animated.View style={[styles.hero, { opacity: heroOp, transform: [{ translateY: heroY }] }]}>
+            <TouchableOpacity
+              style={styles.logoWrap}
+              onPress={() => setAdminAccessVisible((v) => !v)}
+              activeOpacity={1}
+              accessibilityLabel="Logo CHAMBA"
+            >
+              <LinearGradient
+                colors={['rgba(13,148,136,0.35)', 'rgba(2,132,199,0.35)']}
+                style={styles.logoBg}
+              >
+                <Ionicons name="flash" size={36} color="#5EEAD4" />
+              </LinearGradient>
+            </TouchableOpacity>
+            <Text style={styles.appName}>CHAMBA</Text>
+            <Text style={styles.tagline}>Encuentra personal confiable en minutos</Text>
 
-          {/* Nombre completo */}
-          <View style={styles.fieldWrap}>
-            <Text style={styles.fieldLabel}>Nombre Completo</Text>
-            <View style={[styles.inputRow, !!nameErr && styles.inputRowError]}>
-              <Ionicons name="person-outline" size={18} color={COLORS.text.muted} />
-              <TextInput
-                value={fullName}
-                onChangeText={(v) => { setFullName(v); setNameErr(''); }}
+            <View style={styles.pilotChip}>
+              <View style={styles.pilotDot} />
+              <MaterialCommunityIcons name="rocket-launch-outline" size={14} color="#99F6E4" />
+              <Text style={styles.pilotText}>Modo Piloto · Acceso Express</Text>
+            </View>
+          </Animated.View>
+
+          <Animated.View
+            style={[
+              styles.card,
+              {
+                opacity: cardOp,
+                transform: [{ translateY: cardY }, { translateX: shakeX }],
+              },
+            ]}
+          >
+            <LinearGradient
+              colors={['#0D9488', '#0284C7']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.cardAccent}
+            />
+
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderIcon}>
+                <Ionicons name="log-in-outline" size={22} color={CHAMBA.teal} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cardTitle}>Ingresá tus datos</Text>
+                <Text style={styles.cardSub}>Sin contraseña ni correo — solo tu celular</Text>
+              </View>
+            </View>
+
+            <View style={styles.fields}>
+              <PremiumField
+                label="Nombre completo"
+                icon="person-outline"
                 placeholder="Ej. Juan Pérez"
-                placeholderTextColor={COLORS.text.muted}
+                value={fullName}
+                onChangeText={setFullName}
+                onClearError={() => setNameErr('')}
+                error={nameErr}
                 autoCapitalize="words"
                 returnKeyType="next"
-                style={styles.textInput}
               />
+
+              <View style={fieldStyles.wrap}>
+                <Text style={fieldStyles.label}>Número de celular</Text>
+                <View style={[fieldStyles.row, !!phoneErr && fieldStyles.rowError]}>
+                  <View style={[fieldStyles.iconCircle, fieldStyles.phoneIconCircle]}>
+                    <Ionicons name="call-outline" size={18} color={CHAMBA.blue} />
+                  </View>
+                  <View style={fieldStyles.prefixBadge}>
+                    <Text style={fieldStyles.prefix}>{NICA_PHONE_PREFIX}</Text>
+                  </View>
+                  <TextInput
+                    value={phone}
+                    onChangeText={(v) => {
+                      setPhone(formatNicaPhone(v));
+                      setPhoneErr('');
+                    }}
+                    placeholder="8888-8888"
+                    placeholderTextColor="#94A3B8"
+                    keyboardType="phone-pad"
+                    returnKeyType="done"
+                    onSubmitEditing={handleSubmit}
+                    style={[fieldStyles.input, textInputWebFocusStyle]}
+                  />
+                </View>
+                {!!phoneErr ? (
+                  <Text style={fieldStyles.errorText}>{phoneErr}</Text>
+                ) : (
+                  <Text style={fieldStyles.hint}>8 dígitos · Nicaragua</Text>
+                )}
+              </View>
+
+              <View style={fieldStyles.wrap}>
+                <Text style={fieldStyles.label}>¿Cómo usarás CHAMBA?</Text>
+                <ChambaSlidingToggle
+                  options={ROLE_TOGGLE_OPTIONS}
+                  active={role}
+                  onChange={setRole}
+                />
+                <Animated.Text style={[styles.roleHint, { opacity: roleHintOp }]}>
+                  {roleHint}
+                </Animated.Text>
+              </View>
             </View>
-            {!!nameErr && <Text style={styles.fieldError}>{nameErr}</Text>}
-          </View>
 
-          {/* Número de celular */}
-          <View style={styles.fieldWrap}>
-            <Text style={styles.fieldLabel}>Número de Celular</Text>
-            <View style={[styles.inputRow, !!phoneErr && styles.inputRowError]}>
-              <Ionicons name="call-outline" size={18} color={COLORS.text.muted} />
-              <Text style={styles.prefix}>+505</Text>
-              <TextInput
-                value={phone}
-                onChangeText={(v) => { setPhone(formatPhone(v)); setPhoneErr(''); }}
-                placeholder="8888-8888"
-                placeholderTextColor={COLORS.text.muted}
-                keyboardType="phone-pad"
-                returnKeyType="done"
-                onSubmitEditing={handleSubmit}
-                style={styles.textInput}
-              />
-            </View>
-            {!!phoneErr && <Text style={styles.fieldError}>{phoneErr}</Text>}
-          </View>
-
-          {/* Role selector */}
-          <View style={styles.fieldWrap}>
-            <Text style={styles.fieldLabel}>¿Cómo usarás CHAMBA?</Text>
-            <RolePill role={role} onChange={setRole} />
-          </View>
-
-          {/* Global error */}
-          {!!error && (
-            <View style={styles.errorBox}>
-              <Ionicons name="warning-outline" size={16} color="#991B1B" />
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          )}
-
-          {/* Submit button */}
-          <TouchableOpacity
-            onPress={handleSubmit}
-            disabled={isLoading}
-            activeOpacity={0.85}
-            style={[styles.submitBtn, isLoading && styles.submitBtnLoading]}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#FFF" />
-            ) : (
-              <>
-                <Ionicons name="flash" size={20} color="#FFF" />
-                <Text style={styles.submitBtnText}>Entrar a CHAMBA ⚡</Text>
-              </>
+            {!!error && (
+              <View style={styles.errorBanner}>
+                <Ionicons name="alert-circle" size={18} color="#DC2626" />
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
             )}
-          </TouchableOpacity>
 
-          {/* Legal note */}
-          <Text style={styles.legalNote}>
-            Al continuar aceptas los términos de uso de la plataforma.
-            Tus datos solo se usan para identificarte.
-          </Text>
+            <TouchableOpacity
+              onPress={handleSubmit}
+              disabled={isBusy}
+              activeOpacity={0.88}
+              style={[styles.submitWrap, isBusy && styles.submitDisabled]}
+            >
+              <LinearGradient
+                colors={['#0D9488', '#0284C7']}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={styles.submitBtn}
+              >
+                {pendingAction === 'chamba' ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <>
+                    <Ionicons name="flash" size={20} color="#FFF" />
+                    <Text style={styles.submitBtnText}>Entrar a CHAMBA</Text>
+                  </>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
 
-          {/* Acceso administrador (piloto) */}
-          <TouchableOpacity
-            onPress={async () => {
-              setError(null);
-              try {
-                await pilotSignIn('admin');
-              } catch (e: unknown) {
-                const msg = e instanceof Error ? e.message : 'No se pudo entrar como administrador';
-                setError(msg);
-              }
-            }}
-            disabled={isLoading}
-            style={styles.adminBtn}
-            activeOpacity={0.85}
-          >
-            {isLoading ? (
-              <ActivityIndicator color={COLORS.brand[500]} size="small" />
-            ) : (
-              <>
-                <Ionicons name="shield-checkmark" size={18} color={COLORS.brand[500]} />
-                <Text style={styles.adminBtnText}>Entrar como Administrador</Text>
-              </>
+            <TouchableOpacity
+              style={styles.registerRow}
+              onPress={() => navigation.navigate('Register')}
+              disabled={isBusy}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.registerText}>¿Primera vez en CHAMBA? </Text>
+              <Text style={styles.registerLink}>Crear cuenta</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.legalNote}>
+              Al continuar aceptás los términos de uso. Tus datos solo se usan para identificarte.
+            </Text>
+
+            {adminAccessVisible && (
+              <TouchableOpacity
+                onPress={async () => {
+                  setError(null);
+                  setPendingAction('admin');
+                  try {
+                    await pilotSignIn('admin');
+                  } catch (e: unknown) {
+                    const msg =
+                      e instanceof Error ? e.message : 'No se pudo entrar como administrador';
+                    setError(msg);
+                  } finally {
+                    setPendingAction(null);
+                  }
+                }}
+                disabled={isBusy}
+                style={styles.adminBtnDiscreet}
+                activeOpacity={0.6}
+              >
+                {pendingAction === 'admin' ? (
+                  <ActivityIndicator color={CHAMBA.muted} size="small" />
+                ) : (
+                  <Text style={styles.adminBtnDiscreetText}>Acceso administrador</Text>
+                )}
+              </TouchableOpacity>
             )}
-          </TouchableOpacity>
-        </Animated.View>
-      </ScrollView>
+          </Animated.View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </View>
   );
 };
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// ─── Field styles ──────────────────────────────────────────────────
+
+const fieldStyles = StyleSheet.create({
+  wrap: { gap: 8 },
+  label: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: CHAMBA.navy,
+    marginLeft: 2,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: CHAMBA.border,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    minHeight: 54,
+  },
+  rowFocused: {
+    borderColor: CHAMBA.blue,
+    backgroundColor: '#FFFFFF',
+    shadowColor: CHAMBA.blue,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  rowError: {
+    borderColor: '#EF4444',
+    backgroundColor: '#FEF2F2',
+  },
+  iconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#EFF2F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconCircleFocused: {
+    backgroundColor: '#E0F2FE',
+  },
+  phoneIconCircle: {
+    backgroundColor: '#E0F2FE',
+  },
+  input: {
+    flex: 1,
+    color: CHAMBA.navy,
+    fontSize: 16,
+    fontWeight: '500',
+    paddingVertical: 12,
+  },
+  prefixBadge: {
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+  },
+  prefix: {
+    color: CHAMBA.blue,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  hint: {
+    color: CHAMBA.muted,
+    fontSize: 11,
+    marginLeft: 4,
+    fontWeight: '500',
+  },
+  errorText: {
+    color: '#DC2626',
+    fontSize: 12,
+    marginLeft: 4,
+    fontWeight: '500',
+  },
+});
+
+// ─── Screen styles ─────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.bg.navy, overflow: 'hidden' },
+  root: { flex: 1, backgroundColor: CHAMBA.navy, overflow: 'hidden' },
   flexFill: { flex: 1 },
-  /** Escritorio / tablet ancha: foto a pantalla completa */
   bgImageCover: {
     ...StyleSheet.absoluteFillObject,
     width: '100%',
@@ -337,7 +491,6 @@ const styles = StyleSheet.create({
       ? { objectFit: 'cover' as const, objectPosition: 'center center' }
       : {}),
   },
-  /** Móvil: ancho 100 %, contain para mostrar ambas personas */
   bgImageCompact: {
     position: 'absolute',
     top: 0,
@@ -349,130 +502,159 @@ const styles = StyleSheet.create({
       ? { objectFit: 'contain' as const, objectPosition: 'top center' }
       : {}),
   },
-  /** Tinte oscuro sobre la foto para que el hero y el logo sigan leyéndose bien */
   bgOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(15, 23, 42, 0.58)',
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
   },
-
   scroll: {
     flexGrow: 1,
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: 20,
     paddingTop: Platform.OS === 'ios' ? 60 : 48,
     paddingBottom: SPACING['2xl'],
   },
-
-  // ── Hero
   hero: { alignItems: 'center', marginBottom: SPACING.xl },
   logoWrap: { marginBottom: SPACING.md },
   logoBg: {
-    width: 80, height: 80, borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.2)',
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.25)',
   },
   appName: {
-    color: '#FFFFFF', fontSize: FONT_SIZE['4xl'],
-    fontWeight: '900', letterSpacing: 4, marginBottom: 8,
+    color: '#FFFFFF',
+    fontSize: FONT_SIZE['4xl'],
+    fontWeight: '900',
+    letterSpacing: 4,
+    marginBottom: 8,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
   tagline: {
-    color: COLORS.brand[200], fontSize: FONT_SIZE.md,
-    textAlign: 'center', lineHeight: 24, marginBottom: SPACING.lg,
+    color: '#FFFFFF',
+    fontSize: FONT_SIZE.md,
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: SPACING.lg,
+    paddingHorizontal: SPACING.md,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
   pilotChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: BORDER_RADIUS.full,
-    paddingHorizontal: SPACING.md, paddingVertical: 6,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
   },
   pilotDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#22C55E' },
-  pilotText: { color: COLORS.brand[200], fontSize: FONT_SIZE.xs, fontWeight: '600' },
-
-  // ── Card
+  pilotText: { color: '#CCFBF1', fontSize: 12, fontWeight: '600' },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 28,
-    padding: SPACING.lg,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.25,
-    shadowRadius: 32,
-    elevation: 16,
+    backgroundColor: CHAMBA.white,
+    borderRadius: 22,
+    padding: 20,
+    paddingTop: 14,
+    overflow: 'hidden',
+    ...CARD_STEP_SHADOW,
+  },
+  cardAccent: {
+    height: 4,
+    borderRadius: 2,
+    marginBottom: 16,
+    marginHorizontal: -4,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: CHAMBA.border,
+  },
+  cardHeaderIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#F0FDFA',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cardTitle: {
-    color: COLORS.text.primary, fontSize: FONT_SIZE.xl,
-    fontWeight: '900', marginBottom: 4,
+    fontSize: 20,
+    fontWeight: '600',
+    color: CHAMBA.navy,
   },
   cardSub: {
-    color: COLORS.text.muted, fontSize: FONT_SIZE.sm,
-    marginBottom: SPACING.lg,
+    fontSize: 13,
+    color: CHAMBA.muted,
+    marginTop: 2,
+    lineHeight: 18,
   },
-
-  // ── Fields
-  fieldWrap: { marginBottom: SPACING.md },
-  fieldLabel: {
-    color: COLORS.text.primary, fontSize: FONT_SIZE.sm,
-    fontWeight: '700', marginBottom: 6,
+  fields: { gap: 16 },
+  roleHint: {
+    fontSize: 12,
+    color: CHAMBA.muted,
+    textAlign: 'center',
+    marginTop: 10,
+    fontWeight: '500',
   },
-  inputRow: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
-    backgroundColor: COLORS.bg.primary,
-    borderRadius: 14, height: 52,
-    paddingHorizontal: SPACING.md,
-    borderWidth: 1.5, borderColor: COLORS.border.subtle,
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: '#FECACA',
   },
-  inputRowError: { borderColor: '#EF4444', backgroundColor: '#FEF2F2' },
-  prefix: { color: COLORS.text.muted, fontSize: FONT_SIZE.md, fontWeight: '600' },
-  textInput: { flex: 1, color: COLORS.text.primary, fontSize: FONT_SIZE.md },
-  fieldError: { color: '#EF4444', fontSize: FONT_SIZE.xs, marginTop: 4, fontWeight: '500' },
-
-  // ── Error box
-  errorBox: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
-    backgroundColor: '#FEF2F2', borderRadius: 12,
-    padding: SPACING.md, marginBottom: SPACING.md,
-    borderWidth: 1, borderColor: '#FECACA',
-  },
-  errorText: { color: '#991B1B', fontSize: FONT_SIZE.sm, flex: 1, lineHeight: 20 },
-
-  // ── Submit button (pill, blue)
+  errorText: { flex: 1, color: '#991B1B', fontSize: FONT_SIZE.sm, lineHeight: 20 },
+  submitWrap: { borderRadius: 16, overflow: 'hidden', marginTop: SPACING.sm },
+  submitDisabled: { opacity: 0.75 },
   submitBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: SPACING.sm, backgroundColor: COLORS.brand[500],
-    borderRadius: BORDER_RADIUS.full, height: 56,
-    marginTop: SPACING.sm,
-    shadowColor: COLORS.brand[500],
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4, shadowRadius: 14, elevation: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    height: 56,
+    borderRadius: 16,
   },
-  submitBtnLoading: { backgroundColor: COLORS.brand[300], shadowOpacity: 0 },
-  submitBtnText: { color: '#FFF', fontSize: FONT_SIZE.md, fontWeight: '800' },
-
-  // ── Legal
+  submitBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  registerRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: SPACING.md,
+  },
+  registerText: { color: CHAMBA.muted, fontSize: FONT_SIZE.sm },
+  registerLink: { color: CHAMBA.blue, fontSize: FONT_SIZE.sm, fontWeight: '700' },
   legalNote: {
-    color: COLORS.text.muted, fontSize: 10,
-    textAlign: 'center', marginTop: SPACING.md, lineHeight: 16,
+    color: CHAMBA.muted,
+    fontSize: 10,
+    textAlign: 'center',
+    marginTop: SPACING.md,
+    lineHeight: 16,
   },
-  adminBtn: {
-    flexDirection:     'row',
-    alignItems:        'center',
-    justifyContent:    'center',
-    gap:               SPACING.sm,
-    marginTop:         SPACING.md,
-    paddingVertical:   SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    borderRadius:      BORDER_RADIUS.full,
-    borderWidth:       1.5,
-    borderColor:       COLORS.brand[300],
-    backgroundColor:   COLORS.brand[50],
+  adminBtnDiscreet: {
+    alignSelf: 'center',
+    marginTop: SPACING.sm,
+    paddingVertical: 4,
+    paddingHorizontal: SPACING.sm,
   },
-  adminBtnText: {
-    color:      COLORS.brand[600],
-    fontSize:   FONT_SIZE.sm,
-    fontWeight: '800',
+  adminBtnDiscreetText: {
+    color: CHAMBA.muted,
+    fontSize: 10,
+    fontWeight: '500',
+    opacity: 0.55,
   },
 });

@@ -1,0 +1,52 @@
+-- Fase operativa del técnico (viaje → llegada → finalizado)
+ALTER TABLE jobs
+  ADD COLUMN IF NOT EXISTS operational_phase TEXT
+    CHECK (operational_phase IS NULL OR operational_phase IN (
+      'accepted', 'en_route', 'arrived', 'completed'
+    ));
+
+CREATE OR REPLACE FUNCTION worker_advance_operational_phase(
+  p_job_id UUID,
+  p_worker_id UUID,
+  p_phase TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_status TEXT;
+BEGIN
+  IF p_phase NOT IN ('accepted', 'en_route', 'arrived', 'completed') THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Fase inválida');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM job_assignments
+     WHERE job_id = p_job_id AND worker_id = p_worker_id
+  ) AND NOT EXISTS (
+    SELECT 1 FROM jobs
+     WHERE id = p_job_id AND assigned_worker_id = p_worker_id
+  ) THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Sin asignación');
+  END IF;
+
+  v_status := CASE p_phase
+    WHEN 'completed' THEN 'completed'
+    WHEN 'arrived' THEN 'in_progress'
+    ELSE 'taken'
+  END;
+
+  UPDATE jobs
+     SET operational_phase = p_phase,
+         status = v_status,
+         updated_at = NOW()
+   WHERE id = p_job_id;
+
+  RETURN jsonb_build_object('success', true, 'phase', p_phase, 'status', v_status);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION worker_advance_operational_phase(UUID, UUID, TEXT)
+  TO anon, authenticated;

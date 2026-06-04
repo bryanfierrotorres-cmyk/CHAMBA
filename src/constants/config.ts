@@ -27,16 +27,16 @@ export const CONFIG = {
   pilot: {
     enabled: readPublicEnv('EXPO_PUBLIC_PILOT_MODE') !== 'false',
     worker: {
-      email:    'worker1@chamba.com',
-      password: 'Worker123!',
-      fullName: 'Juan Piloto',
-      phone:    '5512345679',
+      email:    readPublicEnv('EXPO_PUBLIC_PILOT_WORKER_EMAIL'),
+      password: readPublicEnv('EXPO_PUBLIC_PILOT_WORKER_PASSWORD'),
+      fullName: readPublicEnv('EXPO_PUBLIC_PILOT_WORKER_NAME') || 'Trabajador Piloto',
+      phone:    readPublicEnv('EXPO_PUBLIC_PILOT_WORKER_PHONE'),
     },
     admin: {
-      email:    'admin@chamba.com',
-      password: 'Admin123!',
-      fullName: 'Admin Piloto',
-      phone:    '5512345678',
+      email:    readPublicEnv('EXPO_PUBLIC_PILOT_ADMIN_EMAIL'),
+      password: readPublicEnv('EXPO_PUBLIC_PILOT_ADMIN_PASSWORD'),
+      fullName: readPublicEnv('EXPO_PUBLIC_PILOT_ADMIN_NAME') || 'Admin Piloto',
+      phone:    readPublicEnv('EXPO_PUBLIC_PILOT_ADMIN_PHONE'),
     },
   },
 } as const;

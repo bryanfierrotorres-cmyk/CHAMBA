@@ -1,0 +1,51 @@
+-- Sincronización catálogo con src/constants/servicesConfig.ts
+-- Ejecutar después de 010_part4_functions.sql
+
+INSERT INTO service_categories (slug, name, icon, sort_order) VALUES
+  ('especializados', 'Especializados', '🔧', 4)
+ON CONFLICT (slug) DO UPDATE SET
+  name = EXCLUDED.name,
+  icon = EXCLUDED.icon,
+  sort_order = EXCLUDED.sort_order,
+  is_active = TRUE;
+
+INSERT INTO service_types (category_id, slug, name, description, icon, suggested_price, sort_order)
+SELECT c.id, v.slug, v.name, v.description, v.icon, v.price, v.ord
+FROM (VALUES
+  ('limpieza',  'limpieza_sofas',    'Profunda de Sofás',           'Tapicería, cuero y tela',           '🛋️', 1400, 1),
+  ('limpieza',  'limpieza_banos',    'Limpieza de Baños',           'Baños, azulejos y sanitarios',      '🚿', 600,  2),
+  ('hogar',     'conserjeria_ocasional', 'Limpieza de Casa',        'Limpieza general del hogar',        '🏠', 850,  3),
+  ('limpieza',  'limpieza_alfombra', 'Limpieza de Alfombras',       'Alfombras residenciales profundas', '🧹', 500,  4),
+  ('vehiculos', 'vehiculo_exterior', 'Lavado exterior',             'Lavado exterior del vehículo',      '🚗', 120,  10),
+  ('vehiculos', 'vehiculo_interior', 'Lavado interior',             'Aspirado y limpieza interior',        '🪑', 150,  11),
+  ('vehiculos', 'vehiculo_profundo', 'Lavado completo',               'Interior y exterior completo',        '✨', 250,  12),
+  ('vehiculos', 'vehiculo_detallado','Detallado y encerado',          'Encerado y acabado premium',          '💎', 400,  13),
+  ('hogar',     'ac_limpieza_filtros','Limpieza de filtros',          'Limpieza de filtros y rejillas',      '❄️', 350,  14),
+  ('hogar',     'ac_mantenimiento',  'Mantenimiento preventivo',    'Mantenimiento preventivo del equipo', '🔧', 500,  15),
+  ('hogar',     'ac_revision',       'Revisión e instalación',      'Revisión, instalación y diagnóstico', '📋', 700,  16),
+  ('hogar',     'ac_recarga',        'Recarga de gas refrigerante', 'Recarga de gas refrigerante',         '💨', 900,  17),
+  ('hogar',     'jardineria_corte',  'Corte de grama',              'Corte y nivelación de césped',        '🌱', 300,  18),
+  ('hogar',     'jardineria_poda',   'Poda de arbustos',            'Poda de arbustos y setos',            '✂️', 450,  19),
+  ('hogar',     'jardineria_patio',  'Limpieza de patio y jardín',  'Limpieza de patio y áreas verdes',    '🏡', 550,  20),
+  ('hogar',     'jardineria',        'Riego y mantenimiento',       'Riego y mantenimiento del jardín',    '🌿', 400,  21),
+  ('hogar',     'pet_care',          'Servicio para mascota',       'Baño y cuidado de mascotas',          '🐕', 250,  22),
+  ('hogar',     'mandados_express',  'Mandados Express',            'Recados y entregas rápidas',          '🛵', 100,  23),
+  ('especializados', 'electricista', 'Electricista',                'Cortocircuitos, paneles y cableado','⚡', 500,  30),
+  ('especializados', 'plomeria',     'Plomería y Tuberías',         'Fugas, sanitarios y drenajes',      '🔧', 500,  31),
+  ('especializados', 'linea_blanca', 'Reparación de Línea Blanca',  'Refrigeradoras, lavadoras y cocinas','🧊', 500, 32),
+  ('limpieza',  'alfombra_institucional', 'Limpieza de Alfombra Institucional', 'Oficinas y centros comerciales', '🏢', 1800, 40),
+  ('limpieza',  'fumigacion',        'Fumigación',                  'Control de plagas certificado',     '🪲', 1200, 41),
+  ('hogar',     'conserjeria_contrato', 'Conserjería por Contrato',  'Servicio mensual fijo para empresas','📋', 2500, 42)
+) AS v(cat_slug, slug, name, description, icon, price, ord)
+JOIN service_categories c ON c.slug = v.cat_slug
+ON CONFLICT (category_id, slug) DO UPDATE SET
+  name = EXCLUDED.name,
+  description = EXCLUDED.description,
+  icon = EXCLUDED.icon,
+  suggested_price = EXCLUDED.suggested_price,
+  sort_order = EXCLUDED.sort_order,
+  is_active = TRUE;
+
+-- Desactivar slugs legacy reemplazados por sub-opciones
+UPDATE service_types SET is_active = FALSE
+WHERE slug IN ('mantenimiento_ac');

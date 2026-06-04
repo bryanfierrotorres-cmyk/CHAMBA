@@ -2,6 +2,7 @@ node_modules/
 .expo/
 dist/
 dist-web-test/
+dist-web-preview/
 web-build/
 
 # Artefactos de scripts locales

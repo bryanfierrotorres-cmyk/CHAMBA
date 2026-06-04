@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@services/supabase';
 import { CONFIG } from '@constants/config';
+import { pilotPhoneEmail } from '@constants/pilot';
 import { applyPilotProfile } from '@utils/pilotAccess';
 import { useAuthStore } from '@store/authStore';
 import { migrateLocalAssignmentsWorkerId } from '@utils/localAssignments';
@@ -16,6 +17,20 @@ type SyncableProfile = Pick<
 /** Normaliza teléfono a 8 dígitos. */
 export const normalizePhone = (phone: string | null | undefined): string =>
   (phone ?? '').replace(/\D/g, '');
+
+/** Compara teléfonos ignorando guiones y prefijos. */
+export const phonesMatch = (
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean => {
+  const da = normalizePhone(a);
+  const db = normalizePhone(b);
+  return da.length > 0 && da === db;
+};
+
+/** Rol persistido en Postgres (enum user_role incluye client). */
+export const toDbRole = (role: UserRole): UserRole =>
+  role === 'client' ? 'client' : role;
 
 /** Comparación de nombre insensible a mayúsculas. */
 export const namesMatch = (a: string, b: string): boolean =>
@@ -76,17 +91,33 @@ export const syncProfileWithDatabase = async (
   profile: UserProfile,
 ): Promise<UserProfile> => {
   const phone = normalizePhone(profile.phone);
-  if (!phone) return applyPilotProfile(profile);
-
-  const byPhone = await fetchProfileByPhone(phone);
-  if (byPhone) {
-    return applyPilotProfile({
-      ...byPhone,
-      role: profile.role,
-      full_name: profile.full_name || byPhone.full_name,
-    });
+  if (!phone) {
+    return profile.role === 'client'
+      ? { ...profile, role: 'client', is_approved: true }
+      : applyPilotProfile(profile);
   }
 
+  try {
+    const byPhone = await fetchProfileByPhone(phone);
+    if (byPhone) {
+      const merged: UserProfile = {
+        ...byPhone,
+        role: profile.role,
+        full_name: profile.full_name || byPhone.full_name,
+        is_approved: true,
+      };
+      if (profile.role === 'client') {
+        return { ...merged, role: 'client', is_approved: true };
+      }
+      return applyPilotProfile(merged);
+    }
+  } catch {
+    // Sin red: conservar perfil local
+  }
+
+  if (profile.role === 'client') {
+    return { ...profile, role: 'client', is_approved: true };
+  }
   return applyPilotProfile(profile);
 };
 
@@ -120,14 +151,16 @@ export const ensureProfileInDb = async (
     if (canonical?.id) return;
   }
 
-  const dbRole = profile.role === 'client' ? 'worker' : profile.role;
+  const dbRole = toDbRole(profile.role);
   const payload = {
     id:          profile.id,
     full_name:   profile.full_name.trim(),
     phone:       phone || null,
-    email:       profile.email ?? `${phone || profile.id}@chamba-pilot.app`,
+    email:       profile.email ?? pilotPhoneEmail(phone || profile.id.replace(/-/g, '')),
     role:        dbRole,
-    is_approved: profile.role === 'admin' ? true : (profile.is_approved ?? true),
+    is_approved: profile.role === 'admin' || profile.role === 'client'
+      ? true
+      : (profile.is_approved ?? true),
   };
 
   const { error: upsertErr } = await supabase
@@ -149,7 +182,7 @@ export const findExactProfileMatch = (
   phone: string,
 ): UserProfile | undefined =>
   matches.find(
-    (r) => namesMatch(r.full_name ?? '', fullName) && r.phone === phone,
+    (r) => namesMatch(r.full_name ?? '', fullName) && phonesMatch(r.phone, phone),
   );
 
 /** Si solo hay un perfil con ese teléfono, reutilizarlo (piloto). */
@@ -157,6 +190,6 @@ export const findProfileByPhone = (
   matches: UserProfile[],
   phone: string,
 ): UserProfile | undefined => {
-  const byPhone = matches.filter((r) => r.phone === phone);
+  const byPhone = matches.filter((r) => phonesMatch(r.phone, phone));
   return byPhone.length === 1 ? byPhone[0] : undefined;
 };

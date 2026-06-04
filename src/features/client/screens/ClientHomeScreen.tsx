@@ -1,417 +1,384 @@
-import React, { useRef, useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet,
-  Animated, ScrollView, Dimensions,
+  StyleSheet,
+  Text,
+  View,
+  ScrollView,
+  TextInput,
+  TouchableOpacity,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ChambaSlidingToggle } from '@components/chamba/ChambaSlidingToggle';
+import { ChambaServiceOptionRow } from '@components/chamba/ChambaServiceOptionRow';
+import { B2bHireModeCards, type B2bHireMode } from '@components/client/B2bHireModeCards';
+import {
+  ExpressServiceCompactGrid,
+  type ExpressCompactItem,
+} from '@components/client/ExpressServiceCompactGrid';
 import { useAuthStore } from '@store/authStore';
-import { FONT_SIZE, SPACING, BORDER_RADIUS } from '@constants/theme';
+import { Avatar } from '@components/Avatar';
+import { CARD_STEP_SHADOW, CHAMBA, chambaStyles } from '@constants/chambaUI';
+import {
+  getServiceIconBg,
+  renderEmpresaServiceIcon,
+  renderExpressTileIcon,
+  renderSpecializedIcon,
+} from '@constants/clientHomeServiceIcons';
 import { formatCurrency } from '@utils/formatters';
 import { useCatalog } from '@features/catalog/hooks/useCatalog';
-import type { ServiceCategory, ServiceType } from '@features/catalog/types';
+import type { ExpressSubmenu } from '@constants/servicesConfig';
 import {
-  M3, CARD_ELEVATION, stitchTypography,
-} from '@constants/stitchStyles';
+  EXPRESS_MAIN_TILES,
+  EXPRESS_SUB_TILES,
+  EXPRESS_SUBMENU_META,
+  EMPRESA_PREMIUM_ORDER,
+  type ExpressTileDef,
+} from '@constants/clientHomeExpress';
+import { ClientHomeHeroCarousel } from '@components/client/ClientHomeHeroCarousel';
+import {
+  CLIENT_EMPRESA_HERO_SLIDES,
+  CLIENT_HOGAR_HERO_SLIDES,
+} from '@constants/clientHomeHeroSlides';
+import type { ServiceType } from '@features/catalog/types';
 import type { ClientStackParamList } from '@/types';
 
 type Nav = NativeStackNavigationProp<ClientStackParamList, 'CategoryGrid'>;
+type ActiveTab = 'hogar' | 'empresa';
 
-const { width: SCREEN_W } = Dimensions.get('window');
+const CYAN = CHAMBA.cyan;
+const ICON_BG = '#E0F2FE';
+const BLUE = CHAMBA.blue;
 
-// ─── Tarjeta horizontal Stitch ─────────────────────────────────────────────────
+const SPECIALIZED = [
+  {
+    id: 'electricista',
+    title: 'Electricista',
+    subtitle: 'Cortocircuitos, paneles y cableado general',
+    slug: 'electricista',
+  },
+  {
+    id: 'plomeria',
+    title: 'Plomería y Tuberías',
+    subtitle: 'Fugas ocultas, sanitarios y drenajes',
+    slug: 'plomeria',
+  },
+  {
+    id: 'linea_blanca',
+    title: 'Reparación de Línea Blanca',
+    subtitle: 'Refrigeradoras, lavadoras y cocinas',
+    slug: 'linea_blanca',
+  },
+] as const;
 
-interface SubcategoryRowProps {
-  item: ServiceType;
-  onPress: () => void;
-  suggestedPrice: number;
-}
-
-const SubcategoryRow: React.FC<SubcategoryRowProps> = ({ item, onPress, suggestedPrice }) => {
-  const scale = useRef(new Animated.Value(1)).current;
-
-  const press = () => {
-    Animated.sequence([
-      Animated.timing(scale, { toValue: 0.98, duration: 80, useNativeDriver: true }),
-      Animated.timing(scale, { toValue: 1, duration: 100, useNativeDriver: true }),
-    ]).start(onPress);
-  };
-
-  return (
-    <TouchableOpacity onPress={press} activeOpacity={1}>
-      <Animated.View style={[styles.subRow, { transform: [{ scale }] }]}>
-        <View style={styles.subIconWrap}>
-          <Text style={{ fontSize: 24 }}>{item.icon}</Text>
-        </View>
-
-        <View style={styles.subBody}>
-          <Text style={styles.subTitle} numberOfLines={1}>{item.name}</Text>
-          <Text style={styles.subDesc} numberOfLines={1}>{item.description ?? ''}</Text>
-          <View style={styles.subMetaRow}>
-            <Text style={styles.subPrice}>desde {formatCurrency(suggestedPrice)}</Text>
-          </View>
-        </View>
-
-        <View style={styles.subChevron}>
-          <Ionicons name="chevron-forward" size={18} color={M3.onPrimaryContainer} />
-        </View>
-      </Animated.View>
-    </TouchableOpacity>
-  );
+const premiumSortIndex = (slug: string): number => {
+  const i = EMPRESA_PREMIUM_ORDER.indexOf(slug as (typeof EMPRESA_PREMIUM_ORDER)[number]);
+  return i >= 0 ? i : 999;
 };
-
-// ─── Screen ───────────────────────────────────────────────────────────────────
 
 export const ClientHomeScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
-  const insets     = useSafeAreaInsets();
-  const profile    = useAuthStore((s) => s.profile);
+  const insets = useSafeAreaInsets();
+  const profile = useAuthStore((s) => s.profile);
   const catalog = useCatalog();
-  const [activeTab, setActiveTab] = useState('');
 
-  useEffect(() => {
-    if (catalog.categories.length > 0 && !activeTab) {
-      setActiveTab(catalog.categories[0].slug);
-    }
-  }, [catalog.categories, activeTab]);
+  const [activeTab, setActiveTab] = useState<ActiveTab>('hogar');
+  const [selectedExpressCat, setSelectedExpressCat] = useState<ExpressSubmenu | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [b2bMode, setB2bMode] = useState<B2bHireMode>('jornadas');
 
   const firstName = profile?.full_name?.split(' ')[0] ?? 'Cliente';
-
-  const hour = new Date().getHours();
-  const greeting =
-    hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
 
   const handlePress = (slug: string, serviceLabel: string) => {
     navigation.navigate('CreateJobForm', { serviceTypeSlug: slug, serviceLabel });
   };
 
-  const visibleSubcategories = useMemo(
-    () => catalog.typesByCategory.get(activeTab) ?? [],
-    [catalog.typesByCategory, activeTab],
-  );
+  const priceFor = (slug: string | undefined, fallback: number): string => {
+    if (!slug) return formatCurrency(fallback);
+    const fromCatalog = catalog.getSuggestedPrice(slug);
+    return formatCurrency(fromCatalog > 0 ? fromCatalog : fallback);
+  };
 
-  const activeCategoryName = catalog.categories.find((c: ServiceCategory) => c.slug === activeTab)?.name ?? '';
+  const filteredSpecialized = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return SPECIALIZED;
+    return SPECIALIZED.filter(
+      (s) =>
+        s.title.toLowerCase().includes(q) ||
+        s.subtitle.toLowerCase().includes(q),
+    );
+  }, [searchQuery]);
+
+  const empresaTypes = useMemo((): ServiceType[] => {
+    const allowed = new Set<string>(EMPRESA_PREMIUM_ORDER);
+    return catalog.serviceTypes
+      .filter((t) => allowed.has(t.slug))
+      .sort((a, b) => premiumSortIndex(a.slug) - premiumSortIndex(b.slug));
+  }, [catalog.serviceTypes]);
+
+  const activeExpressTiles = useMemo((): ExpressTileDef[] => {
+    if (selectedExpressCat) return EXPRESS_SUB_TILES[selectedExpressCat];
+    return EXPRESS_MAIN_TILES;
+  }, [selectedExpressCat]);
+
+  const expressSectionMeta = selectedExpressCat
+    ? EXPRESS_SUBMENU_META[selectedExpressCat]
+    : null;
+
+  const onExpressPress = (tile: ExpressTileDef) => {
+    if (tile.submenu) {
+      setSelectedExpressCat(tile.submenu);
+      return;
+    }
+    if (tile.slug) {
+      handlePress(tile.slug, tile.title);
+    }
+  };
+
+  const expressCompactItems = useMemo((): ExpressCompactItem[] => {
+    return activeExpressTiles.map((tile) => {
+      const isCategory = !!(tile.submenu || tile.priceLabel === 'Ver opciones');
+      return {
+        id: tile.id,
+        title: tile.title,
+        iconColor: getServiceIconBg(tile.id, tile.slug),
+        icon: renderExpressTileIcon(tile.id, selectedExpressCat),
+        onPress: () => onExpressPress(tile),
+        isCategory,
+        footer: isCategory
+          ? 'VER OPCIONES'
+          : `Desde ${priceFor(tile.slug, tile.fallbackPrice ?? 0)}`,
+      };
+    });
+  }, [activeExpressTiles, selectedExpressCat, catalog.serviceTypes]);
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
-      {/* ── Top bar minimalista ── */}
-      <View style={styles.topBar}>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.header}>
         <View>
-          <Text style={styles.greetingSmall}>{greeting}</Text>
-          <Text style={styles.greetingName}>{firstName}</Text>
+          <View style={styles.locationRow}>
+            <Ionicons name="location-sharp" size={16} color={CYAN} />
+            <Text style={styles.locationTitle}> Ubicación</Text>
+          </View>
+          <Text style={styles.locationText}>Managua, Altamira</Text>
         </View>
-        <View style={styles.avatarCircle}>
-          <Text style={styles.avatarLetter}>
-            {(profile?.full_name ?? 'C')[0].toUpperCase()}
-          </Text>
-        </View>
+        <Text style={styles.logoText}>CHAMBA</Text>
+        <Avatar uri={profile?.avatar_url} name={profile?.full_name ?? firstName} size={36} />
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
+        contentContainerStyle={[styles.scrollContainer, { paddingBottom: insets.bottom + 100 }]}
+        keyboardShouldPersistTaps="handled"
       >
-        {/* ── Hero ultra-limpio ── */}
-        <View style={styles.hero}>
-          <Text style={styles.heroEyebrow}>CHAMBA</Text>
-          <Text style={styles.heroTitle}>¿Qué servicio{'\n'}necesitas?</Text>
-          <Text style={styles.heroSub}>
-            Elige una categoría y publica tu subasta en minutos.
-          </Text>
-        </View>
+        <ChambaSlidingToggle<ActiveTab>
+          options={[
+            { id: 'hogar', label: 'Para tu Hogar' },
+            { id: 'empresa', label: 'Para tu Negocio' },
+          ]}
+          active={activeTab}
+          onChange={(id) => {
+            setActiveTab(id);
+            setSelectedExpressCat(null);
+          }}
+          style={styles.modeToggle}
+        />
 
-        {/* ── Pestañas principales (Stitch) ── */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabScroll}
-        >
-          {catalog.categories.map((tab: ServiceCategory) => {
-            const selected = activeTab === tab.slug;
-            return (
-              <TouchableOpacity
-                key={tab.id}
-                onPress={() => setActiveTab(tab.slug)}
-                activeOpacity={0.85}
-                style={[styles.tabPill, selected && styles.tabPillActive]}
-              >
-                <Text style={{ fontSize: 16 }}>{tab.icon}</Text>
-                <Text style={[styles.tabLabel, selected && styles.tabLabelActive]}>
-                  {tab.name}
+        {activeTab === 'hogar' && (
+          <View>
+            <View style={styles.searchContainer}>
+              <Ionicons name="search" size={20} color={CHAMBA.muted} style={styles.searchIcon} />
+              <TextInput
+                placeholder="¿Qué ayuda necesitás hoy?"
+                placeholderTextColor={CHAMBA.muted}
+                style={styles.searchInput}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+            </View>
+
+            <ClientHomeHeroCarousel slides={CLIENT_HOGAR_HERO_SLIDES} />
+
+            <View style={styles.sectionHeader}>
+              <View style={chambaStyles.sectionHeader}>
+                <Text style={chambaStyles.sectionTitle}>
+                  {expressSectionMeta?.sectionTitle ?? 'Servicios Express'}
                 </Text>
+                <Text style={chambaStyles.sectionSubtitle}>
+                  {expressSectionMeta?.sectionSubtitle ?? 'Precio fijo, sin complicaciones'}
+                </Text>
+              </View>
+              {selectedExpressCat ? (
+                <TouchableOpacity
+                  onPress={() => setSelectedExpressCat(null)}
+                  style={styles.backBtn}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="arrow-back" size={14} color={BLUE} />
+                  <Text style={styles.backBtnText}> Volver</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity activeOpacity={0.7}>
+                  <Text style={styles.verTodos}>Ver todos →</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <ExpressServiceCompactGrid items={expressCompactItems} />
+
+            <View style={[styles.sectionHeader, { marginTop: 8 }]}>
+              <View style={chambaStyles.sectionHeader}>
+                <Text style={chambaStyles.sectionTitle}>Servicios Especializados</Text>
+                <Text style={chambaStyles.sectionSubtitle}>Cotización a tu medida</Text>
+              </View>
+            </View>
+
+            {filteredSpecialized.map((item) => (
+              <ChambaServiceOptionRow
+                key={item.id}
+                title={item.title}
+                subtitle={item.subtitle}
+                iconColor={getServiceIconBg(item.id, item.slug)}
+                icon={renderSpecializedIcon(item.id)}
+                onPress={() => handlePress(item.slug, item.title)}
+                badge="BAJO COTIZACIÓN"
+              />
+            ))}
+
+            {filteredSpecialized.length === 0 && searchQuery.length > 0 && (
+              <View style={chambaStyles.emptyCard}>
+                <Ionicons name="search-outline" size={32} color={CHAMBA.muted} />
+                <Text style={chambaStyles.cardTitle}>Sin resultados</Text>
+                <Text style={chambaStyles.cardSubtitle}>Probá con otro término de búsqueda.</Text>
+              </View>
+            )}
+
+            <View style={styles.chambearBanner}>
+              <Text style={styles.tagNuevo}>NUEVO</Text>
+              <Text style={styles.chambearTitle}>¿Querés chambear?</Text>
+              <Text style={styles.chambearSubtitle}>Unite como prestador de servicios hoy mismo.</Text>
+            </View>
+          </View>
+        )}
+
+        {activeTab === 'empresa' && (
+          <View>
+            <ClientHomeHeroCarousel slides={CLIENT_EMPRESA_HERO_SLIDES} />
+
+            <B2bHireModeCards value={b2bMode} onChange={setB2bMode} />
+
+            <View style={styles.sectionHeader}>
+              <View style={chambaStyles.sectionHeader}>
+                <Text style={chambaStyles.sectionTitle}>Servicios Premium</Text>
+                <Text style={chambaStyles.sectionSubtitle}>Personal capacitado para tu negocio</Text>
+              </View>
+              <TouchableOpacity activeOpacity={0.7}>
+                <Text style={styles.verTodos}>Ver todos →</Text>
               </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {/* ── Lista dinámica de subcategorías ── */}
-        <View style={styles.listSection}>
-          <Text style={styles.listTitle}>{activeCategoryName}</Text>
-          <Text style={styles.listSub}>
-            {visibleSubcategories.length}{' '}
-            {visibleSubcategories.length === 1 ? 'servicio disponible' : 'servicios disponibles'}
-          </Text>
-
-          {visibleSubcategories.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Ionicons name="paw-outline" size={32} color={M3.outline} />
-              <Text style={styles.emptyTitle}>Próximamente</Text>
-              <Text style={styles.emptySub}>
-                Estamos preparando servicios para mascotas. Mientras tanto, explora Limpieza u Hogar.
-              </Text>
             </View>
-          ) : (
-            <View style={styles.subList}>
-              {visibleSubcategories.map((item) => (
-                <SubcategoryRow
-                  key={item.id}
-                  item={item}
-                  suggestedPrice={catalog.getSuggestedPrice(item.slug)}
-                  onPress={() => handlePress(item.slug, item.name)}
-                />
-              ))}
-            </View>
-          )}
-        </View>
 
-        {/* ── Trust strip ── */}
-        <View style={styles.trustStrip}>
-          {[
-            { icon: 'shield-checkmark-outline' as const, text: 'Técnicos verificados' },
-            { icon: 'star-outline' as const, text: 'Calificación 4.8+' },
-            { icon: 'flash-outline' as const, text: 'Respuesta en menos de 1 h' },
-          ].map(({ icon, text }) => (
-            <View key={text} style={styles.trustItem}>
-              <Ionicons name={icon} size={15} color={M3.primary} />
-              <Text style={styles.trustText}>{text}</Text>
-            </View>
-          ))}
-        </View>
+            {empresaTypes.length === 0 ? (
+              <View style={chambaStyles.emptyCard}>
+                <Ionicons name="business-outline" size={32} color={CHAMBA.muted} />
+                <Text style={chambaStyles.cardTitle}>Sin servicios en esta vista</Text>
+                <Text style={chambaStyles.cardSubtitle}>Cambiá a Para tu Hogar para ver más.</Text>
+              </View>
+            ) : (
+              empresaTypes.map((item) => {
+                const price = catalog.getSuggestedPrice(item.slug);
+                return (
+                  <ChambaServiceOptionRow
+                    key={item.id}
+                    title={item.name}
+                    subtitle={item.description ?? 'Personal capacitado para tu negocio'}
+                    iconColor={getServiceIconBg(item.slug, item.slug)}
+                    icon={renderEmpresaServiceIcon(item.slug)}
+                    onPress={() => handlePress(item.slug, item.name)}
+                    badge="ALTA DEMANDA"
+                    priceLine={`Desde ${formatCurrency(price)}/día`}
+                  />
+                );
+              })
+            )}
+          </View>
+        )}
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 
-// ─── Styles (Stitch — rounded-3xl + ambient-shadow) ───────────────────────────
-
-const R3XL = 24;
-
 const styles = StyleSheet.create({
-  root: {
-    flex:            1,
-    backgroundColor: M3.background,
-  },
+  container: { flex: 1, backgroundColor: CHAMBA.bg },
+  scrollContainer: { paddingHorizontal: 20, paddingBottom: 100 },
 
-  topBar: {
-    flexDirection:     'row',
-    justifyContent:    'space-between',
-    alignItems:        'center',
-    paddingHorizontal: SPACING.md,
-    paddingVertical:   SPACING.sm,
-    backgroundColor:   M3.surfaceContainerLowest,
-    borderBottomWidth: 1,
-    borderBottomColor: M3.surfaceVariant,
-  },
-  greetingSmall: {
-    ...stitchTypography.labelBold,
-    color: M3.outline,
-  },
-  greetingName: {
-    ...stitchTypography.headlineMdMobile,
-    fontWeight: '800',
-  },
-  avatarCircle: {
-    width:           40,
-    height:          40,
-    borderRadius:    20,
-    backgroundColor: M3.primaryContainer,
-    alignItems:      'center',
-    justifyContent:  'center',
-  },
-  avatarLetter: {
-    color:      M3.onPrimaryContainer,
-    fontWeight: '800',
-    fontSize:   FONT_SIZE.md,
-  },
-
-  scroll: {
-    paddingHorizontal: SPACING.md,
-  },
-
-  hero: {
-    backgroundColor:   M3.surfaceContainerLowest,
-    borderRadius:      R3XL,
-    padding:           SPACING.lg,
-    marginTop:         SPACING.md,
-    ...CARD_ELEVATION,
-  },
-  heroEyebrow: {
-    ...stitchTypography.labelBold,
-    color:         M3.primary,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
-  heroTitle: {
-    ...stitchTypography.headlineLg,
-    marginTop:  SPACING.xs,
-    lineHeight: 34,
-  },
-  heroSub: {
-    ...stitchTypography.bodySm,
-    marginTop: SPACING.sm,
-  },
-
-  tabScroll: {
-    gap:              SPACING.sm,
-    paddingVertical:  SPACING.md,
-    paddingHorizontal: 2,
-  },
-  tabPill: {
-    flexDirection:     'row',
-    alignItems:        'center',
-    gap:               6,
-    paddingHorizontal: SPACING.md,
-    paddingVertical:   SPACING.sm + 2,
-    borderRadius:      BORDER_RADIUS.full,
-    backgroundColor:   M3.surfaceContainerLowest,
-    borderWidth:       1,
-    borderColor:       M3.outlineVariant,
-    ...CARD_ELEVATION,
-  },
-  tabPillActive: {
-    backgroundColor: M3.primaryContainer,
-    borderColor:     M3.primaryContainer,
-  },
-  tabLabel: {
-    ...stitchTypography.labelBold,
-    color: M3.onSurfaceVariant,
-  },
-  tabLabelActive: {
-    color: M3.onPrimaryContainer,
-  },
-
-  listSection: {
-    marginTop: SPACING.xs,
-  },
-  listTitle: {
-    ...stitchTypography.headlineMdMobile,
-    paddingHorizontal: 4,
-  },
-  listSub: {
-    ...stitchTypography.labelBold,
-    color:             M3.outline,
-    paddingHorizontal: 4,
-    marginBottom:      SPACING.md,
-    marginTop:         2,
-  },
-  subList: {
-    gap: SPACING.sm + 4,
-  },
-
-  subRow: {
-    flexDirection:     'row',
-    alignItems:        'center',
-    backgroundColor:   M3.surfaceContainerLowest,
-    borderRadius:      R3XL,
-    padding:           SPACING.md,
-    gap:               SPACING.sm + 4,
-    borderWidth:       1,
-    borderColor:       M3.surfaceVariant,
-    maxWidth:          Math.min(SCREEN_W, 800),
-    ...CARD_ELEVATION,
-  },
-  subIconWrap: {
-    width:           52,
-    height:          52,
-    borderRadius:    16,
-    backgroundColor: M3.surfaceContainer,
-    alignItems:      'center',
-    justifyContent:  'center',
-    flexShrink:      0,
-  },
-  subBody: {
-    flex: 1,
-    minWidth: 0,
-  },
-  subTitle: {
-    ...stitchTypography.bodyLg,
-    fontWeight: '700',
-    fontSize:   15,
-  },
-  subDesc: {
-    ...stitchTypography.bodySm,
-    marginTop: 2,
-  },
-  subMetaRow: {
+  header: {
     flexDirection: 'row',
-    alignItems:  'center',
-    gap:         SPACING.xs,
-    marginTop:   6,
-    flexWrap:    'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: CHAMBA.bg,
   },
-  legacyPill: {
-    backgroundColor:   M3.primaryFixed,
-    paddingHorizontal: 8,
-    paddingVertical:   2,
-    borderRadius:      BORDER_RADIUS.full,
-  },
-  legacyPillText: {
-    ...stitchTypography.labelBold,
-    color:         M3.onPrimaryFixedVariant,
-    fontSize:      10,
-    textTransform: 'lowercase',
-  },
-  subPrice: {
-    ...stitchTypography.labelBold,
-    color: M3.primaryContainer,
-  },
-  subChevron: {
-    width:           32,
-    height:          32,
-    borderRadius:    16,
-    backgroundColor: M3.primaryFixed,
-    alignItems:      'center',
-    justifyContent:  'center',
-    flexShrink:      0,
-  },
+  locationRow: { flexDirection: 'row', alignItems: 'center' },
+  locationTitle: { fontSize: 11, color: CHAMBA.muted },
+  locationText: { fontSize: 13, fontWeight: '700', color: CHAMBA.navy },
+  logoText: { fontSize: 20, fontWeight: '900', color: CHAMBA.teal, letterSpacing: 1 },
 
-  emptyCard: {
-    backgroundColor: M3.surfaceContainerLowest,
-    borderRadius:    R3XL,
-    padding:         SPACING.xl,
-    alignItems:      'center',
-    gap:             SPACING.sm,
-    borderWidth:     1,
-    borderColor:     M3.surfaceVariant,
-    ...CARD_ELEVATION,
-  },
-  emptyTitle: {
-    ...stitchTypography.headlineMdMobile,
-  },
-  emptySub: {
-    ...stitchTypography.bodySm,
-    textAlign: 'center',
-  },
+  modeToggle: { marginVertical: 16 },
 
-  trustStrip: {
-    marginTop:         SPACING.lg,
-    backgroundColor:   M3.surfaceContainerLowest,
-    borderRadius:      R3XL,
-    padding:           SPACING.md,
-    gap:               SPACING.sm,
-    borderWidth:       1,
-    borderColor:       M3.surfaceVariant,
-    ...CARD_ELEVATION,
-  },
-  trustItem: {
+  searchContainer: {
     flexDirection: 'row',
-    alignItems:    'center',
-    gap:           SPACING.sm,
+    backgroundColor: CHAMBA.white,
+    borderRadius: 12,
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: CHAMBA.border,
   },
-  trustText: {
-    ...stitchTypography.bodySm,
-    color: M3.onSurfaceVariant,
+  searchIcon: { marginRight: 8 },
+  searchInput: { flex: 1, height: 44, fontSize: 14, color: CHAMBA.navy },
+
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginBottom: 4,
   },
+  verTodos: { fontSize: 13, fontWeight: '600', color: BLUE },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: ICON_BG,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  backBtnText: { fontSize: 12, fontWeight: '700', color: BLUE },
+
+  chambearBanner: {
+    backgroundColor: 'rgba(0, 242, 254, 0.1)',
+    borderRadius: 18,
+    padding: 20,
+    marginTop: 20,
+    position: 'relative',
+  },
+  tagNuevo: {
+    position: 'absolute',
+    top: 12,
+    left: 20,
+    backgroundColor: CYAN,
+    color: '#FFF',
+    fontSize: 9,
+    fontWeight: '900',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  chambearTitle: { fontSize: 18, fontWeight: '800', color: BLUE, marginTop: 10, marginBottom: 4 },
+  chambearSubtitle: { fontSize: 12, color: '#0369A1' },
+
 });

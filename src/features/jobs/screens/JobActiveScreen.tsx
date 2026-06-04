@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  ActivityIndicator, Linking, Alert, StyleSheet,
+  ActivityIndicator, Linking, StyleSheet,
   Animated,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -11,12 +11,27 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from '@components/Card';
 import { ScreenBackButton } from '@components/navigation/ScreenBackButton';
-import { useActiveJob, useStartJob, useCompleteJob } from '../hooks/useJobs';
+import {
+  useActiveJob,
+  useCompleteJob,
+  useAdvanceOperationalPhase,
+} from '../hooks/useJobs';
+import { JobOperationalStepper } from '@components/worker/JobOperationalStepper';
+import { JobQuickContactActions } from '@components/worker/JobQuickContactActions';
+import { JobBeforeAfterUpload } from '@components/jobs/JobBeforeAfterUpload';
+import { useAuthStore } from '@store/authStore';
+import {
+  OPERATIONAL_STEPS,
+  resolveOperationalPhase,
+  getStepVisualState,
+  isActiveOperationalJob,
+} from '@utils/workerOperationalPhase';
+import type { WorkerOperationalPhase } from '@/types';
 import { WORKER_COLORS as COLORS, M3, FONT_SIZE, SPACING, BORDER_RADIUS } from '@constants/workerTheme';
 import { JobLocationLabel } from '@components/worker/JobLocationLabel';
 import { formatCurrency, formatDate, formatTime, getCategoryEmoji, getCategoryLabel } from '@utils/formatters';
 import { confirmAction, showMessage } from '@utils/confirmAction';
-import type { JobStackParamList, WorkerTabParamList, JobStatus } from '@/types';
+import type { JobStackParamList, WorkerTabParamList } from '@/types';
 
 type Route = RouteProp<JobStackParamList, 'JobActive'>;
 type StackNav = NativeStackNavigationProp<JobStackParamList, 'JobActive'>;
@@ -231,40 +246,31 @@ export const JobActiveScreen: React.FC = () => {
   const route      = useRoute<Route>();
   const navigation = useNavigation<StackNav>();
   const { jobId }  = route.params;
+  const workerId = useAuthStore((s) => s.profile?.id);
 
   const { data, isLoading, error } = useActiveJob(jobId);
-  const { mutateAsync: startMut, isPending: isStarting } = useStartJob();
+  const { mutateAsync: advanceMut, isPending: isAdvancing } = useAdvanceOperationalPhase();
   const { mutateAsync: completeMut, isPending: isCompleting } = useCompleteJob();
 
   const [showSuccess, setShowSuccess] = useState(false);
 
   const job        = data?.job;
   const assignment = data?.assignment;
-  const status     = job?.status as JobStatus | undefined;
+  const operationalPhase = resolveOperationalPhase(job);
 
-  // ── Step states derived from job status ──────────────────────────────────
-  const step1: StepState = 'done';
-  const step2: StepState =
-    status === 'in_progress' || status === 'completed' ? 'done' :
-    status === 'taken'                                 ? 'active' : 'upcoming';
-  const step3: StepState =
-    status === 'completed' ? 'done' :
-    status === 'in_progress' ? 'active' : 'upcoming';
-
-  const handleStart = useCallback(async () => {
-    const confirmed = await confirmAction({
-      title: '¿Iniciar trabajo?',
-      message: 'Confirma que ya estás en el lugar y vas a comenzar.',
-      confirmLabel: 'Iniciar',
-    });
-    if (!confirmed) return;
+  const handleAdvance = useCallback(async (nextPhase: WorkerOperationalPhase) => {
     try {
-      await startMut(jobId);
+      await advanceMut({ jobId, nextPhase, job: job ?? null });
+      if (nextPhase === 'en_route') {
+        showMessage('En camino', 'El cliente fue notificado de que vas al destino.');
+      } else if (nextPhase === 'arrived') {
+        showMessage('Llegaste', 'El cliente fue notificado de que estás en el lugar.');
+      }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al iniciar';
+      const msg = err instanceof Error ? err.message : 'No se pudo actualizar';
       showMessage('Error', msg);
     }
-  }, [jobId, startMut]);
+  }, [jobId, advanceMut, job]);
 
   const handleComplete = useCallback(async () => {
     if (!assignment) return;
@@ -283,13 +289,7 @@ export const JobActiveScreen: React.FC = () => {
     }
   }, [jobId, assignment, completeMut]);
 
-  const handleCallClient = useCallback(() => {
-    const phone = (job?.creator as any)?.phone;
-    if (!phone) { Alert.alert('Sin número', 'El cliente no tiene número registrado.'); return; }
-    Linking.openURL(`tel:${phone}`).catch(() =>
-      Alert.alert('Error', 'No se pudo abrir el marcador telefónico.'),
-    );
-  }, [job]);
+  const clientPhone = (job?.creator as { phone?: string | null } | undefined)?.phone ?? null;
 
   const handleOpenMap = useCallback(() => {
     if (!job?.location) return;
@@ -319,8 +319,9 @@ export const JobActiveScreen: React.FC = () => {
     );
   }
 
-  const canStart    = status === 'taken';
-  const canComplete = status === 'in_progress';
+  const showOperational = isActiveOperationalJob(job);
+  const canUploadPhotos =
+  job.status === 'in_progress' || job.status === 'completed' || job.status === 'taken';
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg.primary }}>
@@ -343,7 +344,7 @@ export const JobActiveScreen: React.FC = () => {
           <Text style={styles.sectionMicro}>TU GANANCIA</Text>
           <Text style={styles.payoutBig}>{formatCurrency(job.worker_payout)}</Text>
           <View style={{ marginTop: SPACING.sm, marginBottom: SPACING.xs }}>
-            <JobLocationLabel address={job.location.address} />
+            <JobLocationLabel address={job.location?.address} />
           </View>
           <View style={{ flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.sm }}>
             <InfoPill icon="time-outline"    label={`${job.duration_hours}h`} />
@@ -351,47 +352,47 @@ export const JobActiveScreen: React.FC = () => {
           </View>
         </Card>
 
-        {/* ── Timeline ── */}
+        {/* ── Línea de tiempo operativa ── */}
         <Card>
-          <Text style={styles.sectionMicro}>PROGRESO DEL TRABAJO</Text>
-          <View style={{ marginTop: SPACING.md }}>
-            <TimelineStep
-              label="Asignado"
-              sublabel={`${formatDate(assignment.assigned_at)} · ${formatTime(assignment.assigned_at)}`}
-              state={step1}
+          <Text style={styles.sectionMicro}>LÍNEA DE TIEMPO</Text>
+          <Text style={styles.assignedHint}>
+            Aceptado {formatDate(assignment.assigned_at)} · {formatTime(assignment.assigned_at)}
+          </Text>
+          {showOperational ? (
+            <JobOperationalStepper
+              job={job}
+              clientPhone={clientPhone}
+              onAdvance={handleAdvance}
+              onFinalize={handleComplete}
+              isAdvancing={isAdvancing || isCompleting}
             />
-            <TimelineStep
-              label="En Progreso"
-              sublabel={step2 === 'done' ? 'Trabajo iniciado' : 'Pendiente de iniciar'}
-              state={step2}
-            />
-            <TimelineStep
-              label="Completado"
-              sublabel={
-                assignment.completed_at
-                  ? `${formatDate(assignment.completed_at)} · ${formatTime(assignment.completed_at)}`
-                  : step3 === 'active'
-                    ? 'Marca cuando termines'
-                    : 'Pendiente'
-              }
-              state={step3}
-              isLast
-            />
-          </View>
+          ) : (
+            <View style={{ marginTop: SPACING.md }}>
+              {OPERATIONAL_STEPS.map((step, index) => (
+                <TimelineStep
+                  key={step.phase}
+                  label={step.label}
+                  sublabel={
+                    step.phase === 'completed' && assignment.completed_at
+                      ? `${formatDate(assignment.completed_at)} · ${formatTime(assignment.completed_at)}`
+                      : undefined
+                  }
+                  state={getStepVisualState(step.phase, operationalPhase)}
+                  isLast={index === OPERATIONAL_STEPS.length - 1}
+                />
+              ))}
+            </View>
+          )}
         </Card>
 
         {/* ── Quick Actions ── */}
         <View style={{ gap: SPACING.sm }}>
           <Text style={styles.sectionMicro}>ACCESOS RÁPIDOS</Text>
-          <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
-            <View style={{ flex: 1 }}>
-              <QuickAction
-                icon="call"
-                label="Llamar al Cliente"
-                onPress={handleCallClient}
-                variant="primary"
-              />
-            </View>
+          <View style={{ flexDirection: 'row', gap: SPACING.sm, alignItems: 'center' }}>
+            <JobQuickContactActions
+              clientPhone={clientPhone}
+              jobTitle={job.title}
+            />
             <View style={{ flex: 1 }}>
               <QuickAction
                 icon="map"
@@ -402,6 +403,12 @@ export const JobActiveScreen: React.FC = () => {
           </View>
         </View>
 
+        {canUploadPhotos && workerId && (
+          <Card>
+            <JobBeforeAfterUpload job={job} workerId={workerId} />
+          </Card>
+        )}
+
         {/* ── Description ── */}
         <Card>
           <Text style={styles.sectionMicro}>DESCRIPCIÓN</Text>
@@ -410,44 +417,6 @@ export const JobActiveScreen: React.FC = () => {
           </Text>
         </Card>
       </ScrollView>
-
-      {/* ── Bottom Action Bar ── */}
-      {(canStart || canComplete) && (
-        <View style={styles.bottomBar}>
-          {canStart && (
-            <TouchableOpacity
-              onPress={handleStart}
-              disabled={isStarting}
-              activeOpacity={0.85}
-              style={[styles.mainActionBtn, { backgroundColor: COLORS.status.inProgress }]}
-            >
-              {isStarting
-                ? <ActivityIndicator size="small" color="#fff" />
-                : <>
-                    <Ionicons name="play-circle" size={22} color="#fff" />
-                    <Text style={styles.mainActionLabel}>Iniciar Trabajo</Text>
-                  </>
-              }
-            </TouchableOpacity>
-          )}
-          {canComplete && (
-            <TouchableOpacity
-              onPress={handleComplete}
-              disabled={isCompleting}
-              activeOpacity={0.85}
-              style={[styles.mainActionBtn, { backgroundColor: COLORS.brand[500] }]}
-            >
-              {isCompleting
-                ? <ActivityIndicator size="small" color="#fff" />
-                : <>
-                    <Ionicons name="checkmark-circle" size={22} color="#fff" />
-                    <Text style={styles.mainActionLabel}>Marcar como Finalizado</Text>
-                  </>
-              }
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
 
       {/* ── Confetti / Success Overlay ── */}
       {showSuccess && (
@@ -505,6 +474,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
+  },
+  assignedHint: {
+    color: COLORS.text.muted,
+    fontSize: FONT_SIZE.xs,
+    marginTop: 4,
   },
   payoutBig: {
     color: COLORS.brand[400],

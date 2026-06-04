@@ -16,7 +16,13 @@
     "db:sync-chamba": "node scripts/apply-chamba-schema.mjs",
     "db:apply-catalog": "node scripts/apply-catalog-migration.mjs",
     "db:provision-catalog": "node scripts/provision-catalog.mjs",
-    "test:chamba-flow": "node scripts/test-chamba-flow.mjs"
+    "test:chamba-flow": "node scripts/test-chamba-flow.mjs",
+    "db:fix-signup": "node scripts/apply-migration-018.mjs",
+    "db:fix-client-jobs": "node scripts/apply-migration-019.mjs",
+    "diagnose:client-job": "node scripts/diagnose-client-job.mjs",
+    "health:client-jobs": "node scripts/health-client-jobs.mjs",
+    "prebuild:web": "node scripts/health-client-jobs.mjs",
+    "diagnose:signup": "node scripts/diagnose-signup.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~3.2.3",
@@ -38,6 +44,7 @@
     "expo-document-picker": "~12.0.1",
     "expo-font": "~12.0.7",
     "expo-image-picker": "~15.1.0",
+    "expo-linear-gradient": "~13.0.2",
     "expo-linking": "~6.3.1",
     "expo-location": "~17.0.1",
     "expo-notifications": "~0.28.3",

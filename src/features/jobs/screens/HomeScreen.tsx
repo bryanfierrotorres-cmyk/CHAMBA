@@ -12,13 +12,16 @@ import { useQueryClient } from '@tanstack/react-query';
 import { JobCard } from '../components/JobCard';
 import { EmptyState } from '@components/EmptyState';
 import { WorkerTopBar } from '@components/worker/WorkerTopBar';
+import { RadarServiceFilters } from '@components/worker/RadarServiceFilters';
 import { useJobFeed, JOB_KEYS, useAcceptJob } from '../hooks/useJobs';
 import { useAuthStore } from '@store/authStore';
 import { useProfileStore } from '@store/profileStore';
 import { useJobStore } from '@store/jobStore';
 import { WORKER_COLORS as COLORS, M3, BORDER_RADIUS, FONT_SIZE, SPACING } from '@constants/workerTheme';
 import { stitchTypography, stitchLayout, CARD_ELEVATION } from '@constants/stitchStyles';
+import { textInputWebFocusStyle } from '@constants/textInputFocus';
 import { getCategoryLabel, formatCurrency } from '@utils/formatters';
+import { sortServiceTypesByConfig } from '@constants/servicesConfig';
 import { fromDbJobCategory } from '@constants/chambaCategories';
 import { useCatalog } from '@features/catalog/hooks/useCatalog';
 import type { ServiceType } from '@features/catalog/types';
@@ -28,7 +31,7 @@ import type { Job, JobCategory, JobStackParamList, WorkerTabParamList } from '@/
 
 type StackNav = NativeStackNavigationProp<JobStackParamList, 'JobList'>;
 
-type CategoryItem = { value: string; label: string; emoji: string };
+type CategoryItem = { value: string; label: string };
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
@@ -95,24 +98,6 @@ const FeedItem: React.FC<FeedItemProps> = ({
   />
 );
 
-// ─── Category chip ────────────────────────────────────────────────────────────
-
-interface CategoryChipProps {
-  label: string; emoji: string;
-  isActive: boolean; disabled?: boolean; onPress: () => void;
-}
-const CategoryChip: React.FC<CategoryChipProps> = ({ label, emoji, isActive, disabled, onPress }) => (
-  <TouchableOpacity
-    onPress={onPress}
-    disabled={disabled}
-    activeOpacity={0.8}
-    style={[styles.chip, isActive && styles.chipActive, disabled && styles.chipDisabled]}
-  >
-    <Text style={{ fontSize: 14 }}>{emoji}</Text>
-    <Text style={[styles.chipText, isActive && styles.chipTextActive]} numberOfLines={1}>{label}</Text>
-  </TouchableOpacity>
-);
-
 // ─── Search bar ───────────────────────────────────────────────────────────────
 
 const SearchBar: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => (
@@ -123,7 +108,7 @@ const SearchBar: React.FC<{ value: string; onChange: (v: string) => void }> = ({
       onChangeText={onChange}
       placeholder="¿Qué servicio buscas hoy?"
       placeholderTextColor={COLORS.text.muted}
-      style={styles.searchInput}
+      style={[styles.searchInput, textInputWebFocusStyle]}
       returnKeyType="search"
     />
     {value.length > 0 && (
@@ -165,13 +150,12 @@ export const HomeScreen: React.FC = () => {
 
   const filterChips = useMemo<CategoryItem[]>(() => {
     const approved = new Set(approvedCategories);
-    return catalog.serviceTypes
-      .filter((t: ServiceType) => approved.has(t.slug))
-      .map((t: ServiceType) => ({
-        value: t.slug,
-        label: t.name.split(' ').slice(0, 2).join(' '),
-        emoji: t.icon,
-      }));
+    return sortServiceTypesByConfig(
+      catalog.serviceTypes.filter((t: ServiceType) => approved.has(t.slug)) as ServiceType[],
+    ).map((t) => ({
+      value: t.slug,
+      label: t.name.trim(),
+    }));
   }, [catalog.serviceTypes, approvedCategories]);
 
   const effectiveCategories = useMemo<JobCategory[]>(() => {
@@ -357,30 +341,12 @@ export const HomeScreen: React.FC = () => {
               </View>
             )}
 
-            {/* Category chips */}
-            <View style={styles.chipsRow}>
-              {filterChips.map((cat) => {
-                const disabled = approvedCategories.length > 0 && !approvedCategories.includes(cat.value);
-                return (
-                  <CategoryChip
-                    key={cat.value}
-                    label={cat.label}
-                    emoji={cat.emoji}
-                    isActive={selectedCategory === cat.value}
-                    disabled={disabled}
-                    onPress={() => {
-                      if (disabled) return;
-                      setSelectedCategory((prev) => prev === cat.value ? null : cat.value);
-                    }}
-                  />
-                );
-              })}
-            </View>
-
-            {selectedCategory && (
-              <TouchableOpacity onPress={() => setSelectedCategory(null)} style={styles.clearFilter}>
-                <Text style={styles.clearFilterText}>Ver todas las categorías</Text>
-              </TouchableOpacity>
+            {filterChips.length > 0 && (
+              <RadarServiceFilters
+                items={filterChips.map((c) => ({ slug: c.value, label: c.label }))}
+                selectedSlug={selectedCategory}
+                onSelect={(slug) => setSelectedCategory(slug as JobCategory | null)}
+              />
             )}
 
             {isLoading && (
@@ -474,37 +440,6 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: M3.tertiaryFixedDim,
   },
   pendingText: { color: M3.onTertiaryFixedVariant, fontSize: FONT_SIZE.xs, flex: 1 },
-
-  chipsRow: {
-    flexDirection: 'row',
-    flexWrap:      'wrap',
-    gap:           SPACING.sm,
-    marginBottom:  SPACING.md,
-  },
-  chip: {
-    flexDirection:     'row',
-    alignItems:        'center',
-    gap:               6,
-    paddingHorizontal: SPACING.sm + 4,
-    paddingVertical:   SPACING.xs + 2,
-    borderRadius:      BORDER_RADIUS.full,
-    backgroundColor:   M3.surfaceContainerLowest,
-    borderWidth:       1,
-    borderColor:       M3.outlineVariant,
-  },
-  chipActive: {
-    backgroundColor: M3.primaryContainer,
-    borderColor:     M3.primaryContainer,
-  },
-  chipDisabled: { opacity: 0.45 },
-  chipText: { fontSize: 12, fontWeight: '700', color: M3.primary, maxWidth: 120 },
-  chipTextActive: { color: M3.onPrimaryContainer },
-
-  clearFilter: { marginBottom: SPACING.sm },
-  clearFilterText: {
-    color: M3.primary, fontSize: FONT_SIZE.sm, fontWeight: '700',
-    textDecorationLine: 'underline',
-  },
 
   loadingWrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: SPACING['2xl'] },
 });

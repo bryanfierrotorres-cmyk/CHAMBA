@@ -1,6 +1,10 @@
 import { CONFIG } from '@constants/config';
 import { CATEGORY_LABELS, CATEGORY_EMOJIS } from '@constants/chambaCategories';
 import type { JobCategory } from '@constants/chambaCategories';
+import {
+  CONFIGURED_SERVICE_SEEDS,
+  getConfiguredServiceLabel,
+} from '@constants/servicesConfig';
 import type { JobStatus } from '@/types';
 
 /** Formats a number as Nicaraguan córdobas (C$). */
@@ -72,13 +76,45 @@ export const getServiceStatusLabel = (status: JobStatus): string => {
   return getStatusLabel(status);
 };
 
-/** Returns display label for job category. */
+/** Etiqueta para el cliente según fase operativa del técnico. */
+export const getClientOrderStatusLabel = (
+  status: JobStatus,
+  operationalPhase?: string | null,
+): string => {
+  if (status === 'completed') return 'Completado';
+  if (status === 'cancelled') return 'Cancelado';
+  if (status === 'open') return 'Esperando técnico';
+  if (operationalPhase === 'en_route') return 'Técnico en camino';
+  if (operationalPhase === 'arrived' || status === 'in_progress') return 'Técnico en el lugar';
+  if (operationalPhase === 'accepted' || status === 'taken') return 'Técnico asignado';
+  return 'En proceso';
+};
+
+/** Returns display label for job category / service slug (catálogo canónico primero). */
 export const getCategoryLabel = (category: JobCategory): string =>
-  CATEGORY_LABELS[category] ?? category;
+  getConfiguredServiceLabel(category)
+  ?? CATEGORY_LABELS[category]
+  ?? category;
 
 /** Returns category emoji. */
-export const getCategoryEmoji = (category: JobCategory): string =>
-  CATEGORY_EMOJIS[category] ?? '💼';
+export const getCategoryEmoji = (category: JobCategory): string => {
+  const fromSeed = CONFIGURED_SERVICE_SEEDS.find((s) => s.slug === category)?.icon;
+  return fromSeed ?? CATEGORY_EMOJIS[category] ?? '💼';
+};
+
+/** Coerce Supabase NUMERIC / string fields to number. */
+export const coerceNumber = (value: unknown, fallback = 0): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+/** Rating 1–5 para UI (PostgreSQL NUMERIC suele llegar como string). */
+export const formatRatingAvg = (value: unknown): string => {
+  const n = coerceNumber(value, NaN);
+  if (!Number.isFinite(n) || n <= 0) return '—';
+  return n.toFixed(1);
+};
 
 /** Calculates Haversine distance between two coords in KM. */
 export const haversineDistance = (

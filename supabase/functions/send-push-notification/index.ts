@@ -11,7 +11,7 @@ interface PushPayload {
   title:    string;
   body:     string;
   data?:    Record<string, string>;
-  type:     'new_job' | 'job_taken' | 'job_completed' | 'payment_sent';
+  type:     'new_job' | 'job_taken' | 'job_completed' | 'job_update' | 'payment_sent';
 }
 
 serve(async (req) => {

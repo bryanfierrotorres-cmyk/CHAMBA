@@ -1,8 +1,11 @@
 import './polyfills/webGlobals'; // Metro: webGlobals.web.ts en web, stub vacío en nativo
+import '@/setup/configureTextInputs';
 import 'react-native-gesture-handler';
 
 import React, { useEffect } from 'react';
 import { Platform, StyleSheet } from 'react-native';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Font from 'expo-font';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -57,6 +60,15 @@ function AppBootstrap() {
   const { setSession, setHydrated, setLoading, fetchProfile, loadFromStorage, reset } = useAuthStore();
 
   useWebRootStyles();
+
+  useEffect(() => {
+    void Font.loadAsync({
+      ...Ionicons.font,
+      ...MaterialCommunityIcons.font,
+    }).catch((err) => {
+      console.warn('[App] icon fonts load:', err);
+    });
+  }, []);
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
@@ -115,6 +127,11 @@ function AppBootstrap() {
       if (cancelled) return;
 
       subscription = onAuthStateChange(async (event, session) => {
+        if (event === 'SIGNED_OUT') {
+          reset();
+          return;
+        }
+
         const { isPhoneAuth, isHydrated } = useAuthStore.getState();
         if (isPhoneAuth) return;
 
@@ -122,11 +139,6 @@ function AppBootstrap() {
           setSession(session);
           await fetchProfile(session.user.id);
           if (!isHydrated) setHydrated(true);
-          return;
-        }
-
-        if (event === 'SIGNED_OUT') {
-          reset();
         }
       });
     };

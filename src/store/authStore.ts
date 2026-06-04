@@ -4,6 +4,11 @@ import type { Session } from '@supabase/supabase-js';
 import type { UserProfile, UserRole } from '@/types';
 import { supabase } from '@services/supabase';
 import { CONFIG } from '@constants/config';
+import {
+  PILOT_DOCUMENT_BYPASS,
+  getPilotProfileId,
+  pilotPhoneEmail,
+} from '@constants/pilot';
 import { applyPilotProfile } from '@utils/pilotAccess';
 import {
   normalizePhone,
@@ -12,16 +17,13 @@ import {
   findProfileByPhone,
   fetchProfileByPhone,
   ensureProfileInDb,
+  toDbRole,
+  phonesMatch,
 } from '@utils/profileSync';
 import { useAssignmentsStore } from '@store/assignmentsStore';
+import { withTimeout } from '@utils/withTimeout';
 
 const PILOT_STORAGE_KEY = 'CHAMBA_PILOT_PROFILE';
-
-/** IDs fijos piloto — evitan cambiar created_by en cada login de admin. */
-const PILOT_PROFILE_IDS: Record<'admin' | 'worker', string> = {
-  admin:  'a0000000-0000-4000-8000-000000000001',
-  worker: 'a0000000-0000-4000-8000-000000000002',
-};
 
 /** Minimal UUID v4 — no external dependency needed. */
 const uuid4 = () =>
@@ -112,15 +114,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         profile = applyPilotProfile({
           ...profile,
           worker_status:     profile.worker_status ?? 'active',
-          cedula_url:        profile.cedula_url        ?? 'pilot-bypass',
-          record_policia_url: profile.record_policia_url ?? 'pilot-bypass',
+          cedula_url:        profile.cedula_url        ?? PILOT_DOCUMENT_BYPASS,
+          record_policia_url: profile.record_policia_url ?? PILOT_DOCUMENT_BYPASS,
         });
       }
       set({ profile });
     } catch (err: any) {
       console.error('[AuthStore] fetchProfile error:', err.message);
-      const current = get().profile;
-      if (current?.id === userId) return;
+      const { profile: current, isPhoneAuth } = get();
+      if (isPhoneAuth || current?.id === userId) return;
       set({ profile: null });
     }
   },
@@ -149,31 +151,60 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signUp: async ({ email, password, fullName, phone, role }) => {
     set({ isLoading: true, error: null });
     try {
+      const cleanPhone = normalizePhone(phone);
+      if (cleanPhone.length !== 8) {
+        throw new Error('Celular inválido — ingresa 8 dígitos después de +505');
+      }
+
       // 1. Crear usuario en auth.users
+      const trimmedName = fullName.trim();
+      const trimmedEmail = email.trim().toLowerCase();
+
       const { data: authData, error: authErr } = await supabase.auth.signUp({
-        email:    email.trim().toLowerCase(),
+        email:    trimmedEmail,
         password,
         options: {
           data: {
-            full_name: fullName.trim(),
+            full_name: trimmedName,
             role,
+            phone: cleanPhone,
           },
         },
       });
       if (authErr) throw authErr;
       if (!authData.user) throw new Error('No se pudo crear el usuario');
 
-      // 2. El trigger fn_handle_new_user() crea el perfil automáticamente.
-      //    Hacemos upsert explícito para garantizar phone y datos adicionales.
-      const { error: profileErr } = await supabase.from('profiles').upsert({
-        id:         authData.user.id,
-        email:      email.trim().toLowerCase(),
-        full_name:  fullName.trim(),
-        phone:      phone.trim() || null,
+      if (authData.session) {
+        set({ session: authData.session, isPhoneAuth: false });
+      } else {
+        set({ isPhoneAuth: false });
+      }
+
+      const profilePayload = {
+        id:          authData.user.id,
+        email:       trimmedEmail,
+        full_name:   trimmedName,
+        phone:       cleanPhone,
         role,
-        is_approved: role === 'admin',
-      });
-      if (profileErr) throw profileErr;
+        is_approved: false,
+        ...(role === 'worker' ? { worker_status: 'pending_approval' as const } : {}),
+      };
+
+      // El trigger fn_handle_new_user crea el perfil; este upsert completa teléfono y rol.
+      const { error: profileErr } = await supabase.from('profiles').upsert(profilePayload);
+      if (profileErr) {
+        const { error: updateErr } = await supabase
+          .from('profiles')
+          .update({
+            full_name:   trimmedName,
+            phone:       cleanPhone,
+            role,
+            is_approved: false,
+            ...(role === 'worker' ? { worker_status: 'pending_approval' } : {}),
+          })
+          .eq('id', authData.user.id);
+        if (updateErr) throw profileErr;
+      }
 
       await get().fetchProfile(authData.user.id);
     } catch (err: any) {
@@ -193,7 +224,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     const buildLocalPilotProfile = (): UserProfile => {
       const base: UserProfile = {
-        id:                 PILOT_PROFILE_IDS[pilotKey],
+        id:                 getPilotProfileId(pilotKey) ?? uuid4(),
         email:              creds.email,
         full_name:          creds.fullName,
         phone:              creds.phone,
@@ -201,8 +232,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         role,
         is_approved:        true,
         worker_status:      role === 'worker' ? 'active' : null,
-        cedula_url:         role === 'worker' ? 'pilot-bypass' : null,
-        record_policia_url: role === 'worker' ? 'pilot-bypass' : null,
+        cedula_url:         role === 'worker' ? PILOT_DOCUMENT_BYPASS : null,
+        record_policia_url: role === 'worker' ? PILOT_DOCUMENT_BYPASS : null,
         category_1:         null,
         category_2:         null,
         category_1_approved: role === 'worker',
@@ -238,6 +269,46 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         error:       null,
       });
     };
+
+    // Admin piloto: entrar al panel al instante (sync Supabase en segundo plano).
+    if (role === 'admin' && CONFIG.pilot.enabled) {
+      try {
+        const profile = buildLocalPilotProfile();
+        await finishPilotSession(profile, null);
+
+        void (async () => {
+          try {
+            const { data } = await withTimeout(
+              supabase.auth.signInWithPassword({
+                email:    creds.email,
+                password: creds.password,
+              }),
+              6_000,
+            );
+            if (data.session) set({ session: data.session });
+            const byPhone = await fetchProfileByPhone(creds.phone);
+            if (byPhone) {
+              const merged: UserProfile = {
+                ...byPhone,
+                role: 'admin',
+                full_name: creds.fullName,
+                phone: creds.phone,
+                is_approved: true,
+              };
+              await AsyncStorage.setItem(PILOT_STORAGE_KEY, JSON.stringify(merged));
+              set({ profile: merged, session: data.session ?? null });
+            }
+          } catch (syncErr) {
+            console.warn('[pilotSignIn] sync admin en segundo plano:', syncErr);
+          }
+        })();
+        return;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'No se pudo iniciar sesión de administrador';
+        set({ error: msg, isLoading: false });
+        throw new Error(msg);
+      }
+    }
 
     // 1) Intentar Supabase Auth (opcional en piloto)
     try {
@@ -328,105 +399,122 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const cleanName  = fullName.trim();
       const cleanPhone = normalizePhone(phone);
+      const dbRole     = toDbRole(role);
 
-      // 'client' may not yet exist in the DB user_role enum.
-      // We store 'worker' in the DB and override locally with the real role.
-      const DB_SAFE_ROLE = role === 'client' ? 'worker' : role;
-
-      // 1. Search by phone OR name (check both for conflict detection)
-      const { data: matches, error: searchErr } = await supabase
-        .from('profiles')
-        .select('*')
-        .or(`phone.eq.${cleanPhone},full_name.eq.${cleanName}`)
-        .limit(5);
-
-      // If SELECT fails (RLS or network), treat as "new user" and proceed locally
-      const safeMatches = searchErr ? [] : (matches ?? []);
+      const buildLocalProfile = (id: string): UserProfile => ({
+        id,
+        full_name:          cleanName,
+        phone:              cleanPhone,
+        email:              pilotPhoneEmail(cleanPhone),
+        role,
+        is_approved:        true,
+        worker_status:      role === 'worker' ? 'active' : null,
+        cedula_url:         role === 'worker' ? PILOT_DOCUMENT_BYPASS : null,
+        record_policia_url: role === 'worker' ? PILOT_DOCUMENT_BYPASS : null,
+        category_1:         null,
+        category_2:         null,
+        category_1_approved: false,
+        category_2_approved: false,
+        avatar_url:         null,
+        stripe_account_id:  null,
+        fcm_token:          null,
+        created_at:         new Date().toISOString(),
+        updated_at:         new Date().toISOString(),
+      } as UserProfile);
 
       let profile: UserProfile;
 
-      const remoteByPhone = await fetchProfileByPhone(cleanPhone);
+      const remoteByPhone = await fetchProfileByPhone(cleanPhone).catch(() => null);
 
       if (remoteByPhone) {
-        profile = applyPilotProfile({
+        profile = {
           ...remoteByPhone,
           role,
           full_name: cleanName,
-        });
-      } else if (safeMatches.length > 0) {
-        const exact = findExactProfileMatch(
-          safeMatches as UserProfile[],
-          cleanName,
-          cleanPhone,
-        );
-        const byPhone = findProfileByPhone(safeMatches as UserProfile[], cleanPhone);
-
-        if (exact) {
-          profile = applyPilotProfile({ ...exact, role });
-        } else if (byPhone && CONFIG.pilot.enabled) {
-          profile = applyPilotProfile({ ...byPhone, role, full_name: cleanName });
-        } else {
-          throw new Error(
-            'Este nombre o número ya está registrado. Por favor usa tus datos correctos o intenta con otro nombre.',
-          );
-        }
+          is_approved: true,
+        };
       } else {
-        // 2. New user — try to insert into Supabase, fall back to local-only
-        const newId = uuid4();
+        let safeMatches: UserProfile[] = [];
+        try {
+          const formattedPhone =
+            cleanPhone.length === 8
+              ? `${cleanPhone.slice(0, 4)}-${cleanPhone.slice(4)}`
+              : cleanPhone;
+          const { data: matches, error: searchErr } = await supabase
+            .from('profiles')
+            .select('*')
+            .or(`phone.eq.${cleanPhone},phone.eq.${formattedPhone},full_name.eq.${cleanName}`)
+            .limit(5);
+          if (!searchErr && matches) safeMatches = matches as UserProfile[];
+        } catch {
+          safeMatches = [];
+        }
 
-        const localProfile: UserProfile = {
-          id:                 newId,
-          full_name:          cleanName,
-          phone:              cleanPhone,
-          email:              `${cleanPhone}@chamba-pilot.app`,
-          role,
-          is_approved:        true,
-          worker_status:      'active',
-          cedula_url:         'pilot-bypass',
-          record_policia_url: 'pilot-bypass',
-          category_1:         null,
-          category_2:         null,
-          category_1_approved: false,
-          category_2_approved: false,
-          avatar_url:         null,
-          bio:                null,
-          skills:             [],
-          rating:             0,
-          total_jobs:         0,
-          created_at:         new Date().toISOString(),
-        } as unknown as UserProfile;
+        if (safeMatches.length > 0) {
+          const exact = findExactProfileMatch(safeMatches, cleanName, cleanPhone);
+          const byPhone = findProfileByPhone(safeMatches, cleanPhone)
+            ?? safeMatches.find((r) => phonesMatch(r.phone, cleanPhone));
 
-        const { data: inserted, error: insertErr } = await supabase
-          .from('profiles')
-          .insert({
-            id:          newId,
-            full_name:   cleanName,
-            phone:       cleanPhone,
-            email:       `${cleanPhone}@chamba-pilot.app`,
-            role:        DB_SAFE_ROLE,
-            is_approved: true,
-          })
-          .select()
-          .single();
-
-        if (insertErr) {
-          console.warn('[phoneSignIn] DB insert blocked, using local-only profile:', insertErr.message);
-          profile = applyPilotProfile(localProfile);
+          if (exact) {
+            profile = { ...exact, role, full_name: cleanName, is_approved: true };
+          } else if (byPhone) {
+            profile = { ...byPhone, role, full_name: cleanName, is_approved: true };
+          } else if (CONFIG.pilot.enabled) {
+            profile = buildLocalProfile(uuid4());
+          } else {
+            throw new Error(
+              'Este nombre o número ya está registrado. Por favor usa tus datos correctos o intenta con otro nombre.',
+            );
+          }
         } else {
-          profile = applyPilotProfile({ ...(inserted as UserProfile), role });
+          const newId = uuid4();
+          const localProfile = buildLocalProfile(newId);
+
+          try {
+            const { data: inserted, error: insertErr } = await supabase
+              .from('profiles')
+              .insert({
+                id:          newId,
+                full_name:   cleanName,
+                phone:       cleanPhone,
+                email:       pilotPhoneEmail(cleanPhone),
+                role:        dbRole,
+                is_approved: true,
+              })
+              .select()
+              .single();
+
+            if (insertErr) {
+              console.warn('[phoneSignIn] DB insert blocked, using local-only profile:', insertErr.message);
+              profile = localProfile;
+            } else {
+              profile = { ...(inserted as UserProfile), role, is_approved: true };
+            }
+          } catch (insertErr) {
+            console.warn('[phoneSignIn] insert offline, perfil local:', insertErr);
+            profile = localProfile;
+          }
         }
       }
 
-      // Ensure pilot workers bypass onboarding gate
-      if (CONFIG.pilot.enabled && profile.role === 'worker') {
+      if (role === 'client') {
+        profile = { ...profile, role: 'client', is_approved: true };
+      } else if (CONFIG.pilot.enabled && profile.role === 'worker') {
         profile = applyPilotProfile(profile);
       }
 
-      profile = await syncProfileWithDatabase(profile);
+      try {
+        profile = await syncProfileWithDatabase(profile);
+      } catch {
+        // Mantener perfil local si Supabase no responde
+      }
 
-      // 3. Persist locally so the user stays logged in between app opens
+      if (role === 'client') {
+        profile = { ...profile, role: 'client', is_approved: true };
+      }
+
       await AsyncStorage.setItem(PILOT_STORAGE_KEY, JSON.stringify(profile));
-      set({ profile, isPhoneAuth: true, isLoading: false });
+      set({ profile, isPhoneAuth: true, isLoading: false, error: null });
     } catch (err: any) {
       const msg = err.message ?? 'Error al iniciar sesión';
       set({ error: msg, isLoading: false });
@@ -447,6 +535,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (profile.role === 'admin') {
         profile = { ...profile, role: 'admin', is_approved: true };
       }
+      if (profile.role === 'client') {
+        profile = { ...profile, role: 'client', is_approved: true };
+      }
       await AsyncStorage.setItem(PILOT_STORAGE_KEY, JSON.stringify(profile));
       set({ profile, isPhoneAuth: true });
       return true;
@@ -457,12 +548,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   // ── signOut ───────────────────────────────────────────────────
   signOut: async () => {
-    set({ isLoading: true });
     useAssignmentsStore.getState().clear();
-    await Promise.allSettled([
-      supabase.auth.signOut(),
-      AsyncStorage.removeItem(PILOT_STORAGE_KEY),
-    ]);
+    // Limpiar UI de inmediato (evita quedar atrapado si Supabase tarda o cuelga).
     set({
       session: null,
       profile: null,
@@ -470,6 +557,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       isLoading: false,
       error: null,
     });
+    await Promise.allSettled([
+      withTimeout(supabase.auth.signOut(), 4_000).catch(() => undefined),
+      AsyncStorage.removeItem(PILOT_STORAGE_KEY),
+    ]);
   },
 
   // ── reset ─────────────────────────────────────────────────────
@@ -509,5 +600,7 @@ function translateAuthError(msg: string): string {
     return 'Demasiados intentos. Espera un momento e intenta de nuevo';
   if (msg.includes('network'))
     return 'Sin conexión. Revisa tu internet';
+  if (msg.includes('Database error saving new user'))
+    return 'No se pudo completar el registro en el servidor. Verificá tu conexión o contactá a soporte CHAMBA.';
   return msg;
 }

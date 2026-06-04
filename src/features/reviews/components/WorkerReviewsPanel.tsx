@@ -9,7 +9,7 @@ import { Button } from '@components/Button';
 import { Avatar } from '@components/Avatar';
 import { useWorkerReviews } from '@features/reviews/hooks/useWorkerReviews';
 import { COLORS, FONT_SIZE, SPACING, BORDER_RADIUS } from '@constants/theme';
-import { formatDate } from '@utils/formatters';
+import { coerceNumber, formatDate } from '@utils/formatters';
 import type { ReviewerRole, WorkerReview } from '@/types';
 
 interface WorkerReviewsPanelProps {
@@ -44,7 +44,7 @@ const ReviewRow: React.FC<{ review: WorkerReview }> = ({ review }) => (
           {ROLE_LABELS[review.reviewer_role]} · {formatDate(review.created_at)}
         </Text>
       </View>
-      <StarRating rating={review.rating} showCount={false} size="sm" />
+      <StarRating rating={coerceNumber(review.rating, 0)} showCount={false} size="sm" />
     </View>
     <Text style={styles.reviewComment}>{review.comment}</Text>
   </View>
@@ -63,12 +63,12 @@ export const WorkerReviewsPanel: React.FC<WorkerReviewsPanelProps> = ({
 
   const myReview = reviews.find((r: WorkerReview) => r.reviewer_id === reviewerId);
 
-  const [rating, setRating]   = useState(myReview?.rating ?? 0);
+  const [rating, setRating]   = useState(coerceNumber(myReview?.rating, 0));
   const [comment, setComment] = useState(myReview?.comment ?? '');
 
   useEffect(() => {
     if (myReview) {
-      setRating(myReview.rating);
+      setRating(coerceNumber(myReview.rating, 0));
       setComment(myReview.comment);
     }
   }, [myReview?.id, myReview?.rating, myReview?.comment]);
@@ -111,6 +111,11 @@ export const WorkerReviewsPanel: React.FC<WorkerReviewsPanelProps> = ({
     );
   }
 
+  // Cliente: una sola reseña por técnico — ocultar panel completo para liberar espacio
+  if (reviewerRole === 'client' && myReview) {
+    return null;
+  }
+
   return (
     <View style={[styles.root, compact && styles.rootCompact]}>
       <View style={styles.summaryRow}>
@@ -126,10 +131,12 @@ export const WorkerReviewsPanel: React.FC<WorkerReviewsPanelProps> = ({
         )}
       </View>
 
-      {allowReview && (
+      {allowReview && (reviewerRole !== 'client' || !myReview) && (
         <View style={styles.form}>
           <Text style={styles.formTitle}>
-            {myReview ? 'Actualizar tu calificación' : 'Calificar técnico'}
+            {myReview && reviewerRole !== 'client'
+              ? 'Actualizar tu calificación'
+              : 'Calificar técnico'}
           </Text>
           <Text style={styles.formHint}>
             Toca las estrellas y deja un comentario sobre el servicio.
@@ -156,7 +163,7 @@ export const WorkerReviewsPanel: React.FC<WorkerReviewsPanelProps> = ({
           />
 
           <Button
-            label={myReview ? 'Actualizar reseña' : 'Publicar reseña'}
+            label={myReview && reviewerRole !== 'client' ? 'Actualizar reseña' : 'Publicar reseña'}
             onPress={handleSubmit}
             isLoading={isSubmitting}
             disabled={isSubmitting}

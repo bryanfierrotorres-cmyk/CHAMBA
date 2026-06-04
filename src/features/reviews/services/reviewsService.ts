@@ -1,4 +1,5 @@
 import { supabase } from '@services/supabase';
+import { coerceNumber } from '@utils/formatters';
 import type { UserRole, WorkerReview, WorkerRatingSummary } from '@/types';
 import {
   getLocalWorkerReviews,
@@ -60,9 +61,14 @@ export const fetchWorkerRatingSummary = async (
 
   if (error || !data) return fromReviews;
 
+  const ratingRaw = data.rating_avg ?? fromReviews.rating_avg;
+  const ratingNum = ratingRaw == null || ratingRaw === ''
+    ? null
+    : coerceNumber(ratingRaw, NaN);
+
   return {
-    rating_avg: data.rating_avg ?? fromReviews.rating_avg,
-    total_reviews: data.total_reviews ?? fromReviews.total_reviews,
+    rating_avg: Number.isFinite(ratingNum) ? ratingNum : fromReviews.rating_avg,
+    total_reviews: coerceNumber(data.total_reviews ?? fromReviews.total_reviews, 0),
   };
 };
 

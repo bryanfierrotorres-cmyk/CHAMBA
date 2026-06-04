@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { isPilotDocumentBypass } from '@constants/pilot';
 import { supabase } from '@services/supabase';
 
 const BUCKET = 'worker-documents';
@@ -60,4 +61,4 @@ export async function uploadWorkerDocument(
 }
 
 export const isDisplayableDocUrl = (url?: string | null): url is string =>
-  !!url && url !== 'pilot-bypass' && url.trim().length > 0;
+  !!url && !isPilotDocumentBypass(url) && url.trim().length > 0;

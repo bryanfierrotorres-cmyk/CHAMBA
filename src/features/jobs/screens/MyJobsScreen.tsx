@@ -3,6 +3,7 @@ import {
   View, Text, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity,
   StyleSheet,
 } from 'react-native';
+import { ChambaPressable } from '@components/chamba/ChambaPressable';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,15 +11,27 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBadge } from '@components/Badge';
 import { EmptyState } from '@components/EmptyState';
 import { WorkerTopBar } from '@components/worker/WorkerTopBar';
-import { useMyJobs, useCompleteJob } from '../hooks/useJobs';
+import { JobOperationalStepper } from '@components/worker/JobOperationalStepper';
+import {
+  useMyJobs,
+  useCompleteJob,
+  useAdvanceOperationalPhase,
+} from '../hooks/useJobs';
 import { useAssignmentsStore } from '@store/assignmentsStore';
 import { useAuthStore } from '@store/authStore';
-import { M3, SPACING, CARD_ELEVATION, stitchTypography, stitchLayout } from '@constants/stitchStyles';
+import { M3, SPACING, CARD_ELEVATION, stitchTypography } from '@constants/stitchStyles';
+import { CHAMBA, chambaStyles } from '@constants/chambaUI';
+import { CategoryIconCircle } from '@utils/categoryVisual';
 import {
-  formatCurrency, formatDate, getCategoryEmoji, getCategoryLabel,
+  formatCurrency, formatDate, getCategoryLabel,
 } from '@utils/formatters';
 import { confirmAction, showMessage } from '@utils/confirmAction';
-import type { WorkerTabParamList, JobAssignment } from '@/types';
+import {
+  isActiveOperationalJob,
+  getPhaseAction,
+  resolveOperationalPhase,
+} from '@utils/workerOperationalPhase';
+import type { WorkerTabParamList, JobAssignment, WorkerOperationalPhase } from '@/types';
 
 type Nav = BottomTabNavigationProp<WorkerTabParamList, 'MyJobs'>;
 
@@ -36,7 +49,8 @@ export const MyJobsScreen: React.FC = () => {
   } = useMyJobs();
   const assignments: JobAssignment[] = data ?? [];
   const { mutateAsync: completeMut, isPending: isCompleting } = useCompleteJob();
-  const [finalizingId, setFinalizingId] = useState<string | null>(null);
+  const { mutateAsync: advanceMut, isPending: isAdvancing } = useAdvanceOperationalPhase();
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -46,16 +60,41 @@ export const MyJobsScreen: React.FC = () => {
     }, [refreshStore, profile?.id]),
   );
 
+  const handleAdvance = useCallback(async (
+    item: JobAssignment,
+    nextPhase: WorkerOperationalPhase,
+  ) => {
+    setBusyId(item.id);
+    try {
+      await advanceMut({
+        jobId: item.job_id,
+        nextPhase,
+        job: item.job ?? null,
+      });
+      if (nextPhase === 'en_route') {
+        showMessage('En camino', 'El cliente fue notificado de que vas al destino.');
+      } else if (nextPhase === 'arrived') {
+        showMessage('Llegaste', 'El cliente fue notificado de que estás en el lugar.');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'No se pudo actualizar el estado';
+      showMessage('Error', msg);
+    } finally {
+      setBusyId(null);
+    }
+  }, [advanceMut]);
+
   const handleFinalize = useCallback(async (item: JobAssignment) => {
+    const actionConfig = getPhaseAction(resolveOperationalPhase(item.job));
     const confirmed = await confirmAction({
-      title: '¿Finalizar servicio?',
-      message: 'El cliente y el administrador verán el estado Finalizado en su historial.',
-      confirmLabel: 'Finalizar',
+      title: actionConfig?.confirmTitle ?? '¿Finalizar servicio?',
+      message: actionConfig?.confirmMessage ?? 'El cliente verá el estado Finalizado.',
+      confirmLabel: actionConfig?.confirmLabel ?? 'Finalizar',
       destructive: true,
     });
     if (!confirmed) return;
 
-    setFinalizingId(item.id);
+    setBusyId(item.id);
     try {
       await completeMut({ jobId: item.job_id, assignmentId: item.id });
       showMessage('¡Servicio finalizado!', 'La chamba fue marcada como completada.');
@@ -63,7 +102,7 @@ export const MyJobsScreen: React.FC = () => {
       const msg = err instanceof Error ? err.message : 'No se pudo finalizar';
       showMessage('Error', msg);
     } finally {
-      setFinalizingId(null);
+      setBusyId(null);
     }
   }, [completeMut]);
 
@@ -114,7 +153,11 @@ export const MyJobsScreen: React.FC = () => {
               onPress={() => {
                 if (!item.job_id) return;
                 const status = item.job?.status;
-                if (status === 'taken' || status === 'in_progress') {
+                if (
+                  status === 'taken'
+                  || status === 'in_progress'
+                  || status === 'completed'
+                ) {
                   navigation.navigate('JobFeed', {
                     screen: 'JobActive',
                     params: { jobId: item.job_id },
@@ -126,12 +169,9 @@ export const MyJobsScreen: React.FC = () => {
                   params: { jobId: item.job_id },
                 });
               }}
-              onFinalize={
-                item.job?.status === 'in_progress' || item.job?.status === 'taken'
-                  ? () => { void handleFinalize(item); }
-                  : undefined
-              }
-              isFinalizing={finalizingId === item.id || isCompleting}
+              onAdvance={(phase) => { void handleAdvance(item, phase); }}
+              onFinalize={() => { void handleFinalize(item); }}
+              isBusy={busyId === item.id && (isCompleting || isAdvancing)}
             />
           )}
           contentContainerStyle={styles.list}
@@ -154,10 +194,11 @@ export const MyJobsScreen: React.FC = () => {
 const AssignmentCard: React.FC<{
   assignment: JobAssignment;
   onPress: () => void;
-  onFinalize?: () => void;
-  isFinalizing?: boolean;
+  onAdvance: (phase: WorkerOperationalPhase) => void;
+  onFinalize: () => void;
+  isBusy?: boolean;
 }> = ({
-  assignment, onPress, onFinalize, isFinalizing = false,
+  assignment, onPress, onAdvance, onFinalize, isBusy = false,
 }) => {
   const job = assignment.job;
   const hasJob = !!job;
@@ -182,48 +223,48 @@ const AssignmentCard: React.FC<{
       ? 'Fallido'
       : 'Pendiente';
 
+  const category = job?.category ?? '';
+  const showStepper = hasJob && isActiveOperationalJob(job);
+
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={styles.card}>
+    <ChambaPressable onPress={onPress} style={styles.card}>
       <View style={styles.cardRow}>
-        <View style={stitchLayout.iconCircleSm}>
-          <Text style={{ fontSize: 20 }}>{job?.category ? getCategoryEmoji(job.category) : '🧾'}</Text>
-        </View>
-
-        <View style={{ flex: 1 }}>
-          <Text style={stitchTypography.headlineMdMobile} numberOfLines={1}>{title}</Text>
-          <Text style={stitchTypography.bodySm}>{subtitle}</Text>
-        </View>
-
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={styles.priceValue}>
+        <View style={styles.cardContent}>
+          <View style={styles.badgeRow}>
+            {job?.status ? <StatusBadge status={job.status} size="sm" /> : null}
+          </View>
+          <Text style={styles.cardTitle} numberOfLines={2}>{title}</Text>
+          <Text style={styles.cardSubtitle}>{subtitle}</Text>
+          <Text style={styles.cardPrice}>
             {hasJob ? formatCurrency(job.worker_payout ?? 0) : '—'}
           </Text>
           <Text style={[styles.paymentLabel, { color: paymentColor }]}>{paymentLabel}</Text>
         </View>
+
+        {category ? (
+          <CategoryIconCircle category={category} />
+        ) : (
+          <View style={[chambaStyles.iconCircleRight, styles.fallbackIcon]}>
+            <Ionicons name="receipt-outline" size={22} color="#FFF" />
+          </View>
+        )}
       </View>
 
-      <View style={{ marginTop: SPACING.sm }}>
-        {job?.status ? <StatusBadge status={job.status} size="sm" /> : null}
-      </View>
-
-      {onFinalize && (
-        <TouchableOpacity
-          onPress={onFinalize}
-          disabled={isFinalizing}
-          style={[styles.finalizeBtn, isFinalizing && styles.finalizeBtnDisabled]}
-        >
-          {isFinalizing
-            ? <ActivityIndicator color={M3.onPrimary} size="small" />
-            : <Text style={styles.finalizeText}>Marcar como Finalizado</Text>
-          }
-        </TouchableOpacity>
+      {showStepper && job && (
+        <JobOperationalStepper
+          job={job}
+          onAdvance={onAdvance}
+          onFinalize={onFinalize}
+          isAdvancing={isBusy}
+          compact
+        />
       )}
-    </TouchableOpacity>
+    </ChambaPressable>
   );
 };
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: M3.background },
+  root: { flex: 1, backgroundColor: CHAMBA.bg },
   header: { paddingHorizontal: SPACING.md, paddingBottom: SPACING.sm },
   walletCard: {
     marginTop: SPACING.md,
@@ -250,24 +291,44 @@ const styles = StyleSheet.create({
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   list: { paddingHorizontal: SPACING.md, paddingBottom: 100, flexGrow: 1 },
   card: {
-    backgroundColor: M3.surfaceContainerLowest,
-    borderRadius: 12,
+    backgroundColor: CHAMBA.white,
+    borderRadius: 18,
     padding: SPACING.md,
-    marginBottom: SPACING.sm + 4,
+    marginBottom: 14,
     ...CARD_ELEVATION,
   },
-  cardRow: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm },
-  paymentLabel: { fontSize: 12, fontWeight: '700', marginTop: 2 },
-  priceValue: { fontSize: 18, fontWeight: '700', color: M3.secondary },
-  finalizeBtn: {
-    marginTop: SPACING.sm,
-    backgroundColor: M3.primary,
-    borderRadius: 12,
-    paddingVertical: 10,
+  cardRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 42,
-    justifyContent: 'center',
+    gap: SPACING.sm,
   },
-  finalizeBtnDisabled: { opacity: 0.7 },
-  finalizeText: { color: M3.onPrimary, fontWeight: '700', fontSize: 14 },
+  cardContent: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 8,
+  },
+  badgeRow: {
+    marginBottom: 6,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: CHAMBA.navy,
+    marginBottom: 2,
+  },
+  cardSubtitle: {
+    fontSize: 13,
+    color: CHAMBA.muted,
+    fontWeight: '400',
+    marginBottom: 6,
+  },
+  cardPrice: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: CHAMBA.navy,
+  },
+  fallbackIcon: {
+    backgroundColor: '#007AFF',
+  },
+  paymentLabel: { fontSize: 12, fontWeight: '700', marginTop: 2 },
 });

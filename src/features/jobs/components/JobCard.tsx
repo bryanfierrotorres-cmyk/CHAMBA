@@ -1,25 +1,18 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { ChambaPressable } from '@components/chamba/ChambaPressable';
 import { Ionicons } from '@expo/vector-icons';
 import { SwipeAcceptTrack } from '@components/worker/SwipeAcceptTrack';
 import {
   M3, SPACING, BORDER_RADIUS,
   CARD_ELEVATION, stitchTypography, stitchLayout,
 } from '@constants/stitchStyles';
+import { CHAMBA } from '@constants/chambaUI';
 import { JobLocationLabel } from '@components/worker/JobLocationLabel';
+import { CategoryIconCircle } from '@utils/categoryVisual';
 import { formatCurrency } from '@utils/formatters';
-import type { Job, JobCategory } from '@/types';
-
-const CATEGORY_ICONS: Partial<Record<JobCategory, keyof typeof Ionicons.glyphMap>> = {
-  limpieza_sofas:         'bed-outline',
-  limpieza_alfombra:      'water-outline',
-  alfombra_institucional: 'business-outline',
-  fumigacion:             'bug-outline',
-  vehiculo_profundo:      'car-outline',
-  conserjeria_ocasional:  'time-outline',
-  conserjeria_contrato:   'document-text-outline',
-  jardineria:             'leaf-outline',
-};
+import type { Job } from '@/types';
+import { jobHasRequestPhoto } from '@utils/jobRequestPhoto';
 
 interface JobCardProps {
   job:            Job;
@@ -44,18 +37,16 @@ export const JobCard: React.FC<JobCardProps> = ({
   isInProcess = false,
   showSwipe = false,
 }) => {
-  const icon = CATEGORY_ICONS[job.category] ?? 'construct-outline';
   const isUrgent = job.required_workers > 1 && job.slots_taken >= job.required_workers - 1;
+  const hasClientPhoto = jobHasRequestPhoto(job);
 
   return (
     <View style={styles.card}>
-      <TouchableOpacity onPress={onPress} activeOpacity={0.92}>
+      <ChambaPressable onPress={onPress}>
         {/* Header */}
         <View style={styles.headerRow}>
         <View style={styles.headerLeft}>
-          <View style={stitchLayout.iconCircle}>
-            <Ionicons name={icon} size={28} color={M3.primary} />
-          </View>
+          <CategoryIconCircle category={job.category} size={48} />
           <View style={styles.titleBlock}>
             <Text style={stitchTypography.headlineMdMobile} numberOfLines={2}>
               {job.title}
@@ -66,6 +57,12 @@ export const JobCard: React.FC<JobCardProps> = ({
               showDistance={showDistance}
               distanceKm={job.location?.distance_km}
             />
+            {hasClientPhoto && (
+              <View style={styles.photoBadge}>
+                <Ionicons name="camera" size={12} color={M3.primary} />
+                <Text style={styles.photoBadgeText}>Con foto del cliente</Text>
+              </View>
+            )}
           </View>
         </View>
         {isUrgent && (
@@ -87,11 +84,12 @@ export const JobCard: React.FC<JobCardProps> = ({
       </View>
 
       <View style={stitchLayout.divider} />
-      </TouchableOpacity>
+      </ChambaPressable>
 
       {/* Swipe or tap hint */}
       {showSwipe && onAccept && (job.status === 'open' || isInProcess) ? (
         <SwipeAcceptTrack
+          resetKey={job.id}
           onAccept={onAccept}
           onInProcess={onInProcess}
           isLoading={isAccepting}
@@ -99,10 +97,10 @@ export const JobCard: React.FC<JobCardProps> = ({
           isInProcess={isInProcess}
         />
       ) : (
-        <TouchableOpacity onPress={onPress} style={styles.tapHint} activeOpacity={0.8}>
+        <ChambaPressable onPress={onPress} style={styles.tapHint} pressScale={0.98}>
           <Text style={styles.tapHintText}>Toca para ver detalles</Text>
           <Ionicons name="chevron-forward" size={18} color={M3.outline} />
-        </TouchableOpacity>
+        </ChambaPressable>
       )}
     </View>
   );
@@ -110,8 +108,8 @@ export const JobCard: React.FC<JobCardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: M3.surfaceContainerLowest,
-    borderRadius:    12,
+    backgroundColor: CHAMBA.white,
+    borderRadius:    16,
     padding:         SPACING.md,
     marginBottom:    SPACING.sm + 4,
     gap:             SPACING.sm,
@@ -168,5 +166,21 @@ const styles = StyleSheet.create({
   tapHintText: {
     fontSize: 14,
     color:    M3.outline,
+  },
+  photoBadge: {
+    flexDirection: 'row',
+    alignItems:    'center',
+    gap:           4,
+    marginTop:     4,
+    alignSelf:     'flex-start',
+    backgroundColor: M3.primaryContainer,
+    paddingHorizontal: 8,
+    paddingVertical:   3,
+    borderRadius:      BORDER_RADIUS.sm,
+  },
+  photoBadgeText: {
+    fontSize:   11,
+    fontWeight: '600',
+    color:      M3.onPrimaryContainer,
   },
 });

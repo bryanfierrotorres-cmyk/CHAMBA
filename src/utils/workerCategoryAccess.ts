@@ -1,5 +1,6 @@
 import type { JobCategory } from '@constants/chambaCategories';
-import { CHAMBA_CATEGORY_IDS, fromDbJobCategory } from '@constants/chambaCategories';
+import { fromDbJobCategory } from '@constants/chambaCategories';
+import { ALL_CONFIGURED_SERVICE_SLUGS } from '@constants/servicesConfig';
 import { CONFIG } from '@constants/config';
 import type { UserProfile } from '@/types';
 
@@ -31,7 +32,7 @@ export const getWorkerApprovedCategories = (
 
   // Piloto / técnico aprobado sin especialidades: ver todas las categorías
   if (cats.length === 0 && CONFIG.pilot.enabled) {
-    return [...CHAMBA_CATEGORY_IDS];
+    return [...ALL_CONFIGURED_SERVICE_SLUGS] as JobCategory[];
   }
 
   return cats;

@@ -6,27 +6,30 @@ import {
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from '@components/Avatar';
 import { Badge } from '@components/Badge';
-import { EmptyState } from '@components/EmptyState';
 import { DocImageViewer } from '@components/DocImageViewer';
-import { MaterialSymbol } from '@components/admin/MaterialSymbol';
 import { StitchToggle } from '@components/admin/StitchToggle';
 import {
   fetchAllWorkers,
+  fetchAllClients,
   toggleWorkerApproval,
+  toggleClientApproval,
   approveWorkerCategory2,
 } from '../services/adminService';
+import { formatNicaPhoneDisplay, NICA_PHONE_PREFIX } from '@utils/phoneNicaragua';
 import { formatDate } from '@utils/formatters';
 import { useCatalog } from '@features/catalog/hooks/useCatalog';
 import type { UserProfile } from '@/types';
 import { WorkerReviewsPanel } from '@features/reviews/components/WorkerReviewsPanel';
 import { useAuthStore } from '@store/authStore';
-import {
-  M3, SPACING, BORDER_RADIUS, CARD_ELEVATION, stitchTypography,
-} from '@constants/stitchStyles';
+import { ChambaGradientTabs } from '@components/chamba/ChambaGradientTabs';
+import { CARD_STEP_SHADOW, CHAMBA, chambaStyles } from '@constants/chambaUI';
 
 type FilterMode = 'all' | 'pending' | 'approved';
+type TeamMode = 'workers' | 'clients';
 
 // ─── Worker detail modal ──────────────────────────────────────────────────────
 
@@ -45,38 +48,49 @@ const WorkerDetailModal: React.FC<WorkerModalProps> = ({
   worker, onClose, onApprove, onApproveCat2, approving, approvingCat2,
   adminId, adminName,
 }) => {
+  const insets = useSafeAreaInsets();
   const { getLabel } = useCatalog();
   const cat1Label = worker.category_1 ? getLabel(worker.category_1) : null;
   const cat2Label = worker.category_2 ? getLabel(worker.category_2) : null;
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
-      <View style={modal.root}>
+      <SafeAreaView style={modal.root} edges={['top']}>
         <View style={modal.header}>
-          <TouchableOpacity onPress={onClose} style={modal.closeBtn}>
-            <MaterialSymbol name="cancel" size={22} color={M3.onBackground} />
+          <TouchableOpacity onPress={onClose} style={modal.closeBtn} activeOpacity={0.85}>
+            <Ionicons name="close" size={22} color={CHAMBA.navy} />
           </TouchableOpacity>
           <Text style={modal.headerTitle}>Expediente del Técnico</Text>
           <View style={{ width: 36 }} />
         </View>
 
-        <ScrollView contentContainerStyle={modal.scroll}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[modal.scroll, { paddingBottom: insets.bottom + 40 }]}
+        >
           <View style={modal.profileCard}>
             <Avatar uri={worker.avatar_url} name={worker.full_name} size={56} />
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={modal.workerName}>{worker.full_name}</Text>
               <Text style={modal.workerMeta}>{worker.phone ?? worker.email}</Text>
               <Text style={modal.workerMeta}>Desde {formatDate(worker.created_at)}</Text>
             </View>
             <Badge
               label={worker.is_approved ? 'Verificado' : (worker.worker_status ?? 'Pendiente')}
-              color={worker.is_approved ? M3.secondary : M3.tertiary}
-              bgColor={worker.is_approved ? M3.secondaryFixed : M3.tertiaryFixed}
+              color={worker.is_approved ? '#15803D' : '#B45309'}
+              bgColor={worker.is_approved ? '#DCFCE7' : '#FEF3C7'}
               size="sm"
             />
           </View>
 
           <View style={modal.toggleRow}>
+            <View style={modal.toggleIconWrap}>
+              <Ionicons
+                name={worker.is_approved ? 'checkmark-circle' : 'pause-circle'}
+                size={20}
+                color={worker.is_approved ? '#34C759' : CHAMBA.muted}
+              />
+            </View>
             <View style={{ flex: 1 }}>
               <Text style={modal.toggleTitle}>Estado operativo</Text>
               <Text style={modal.toggleSub}>
@@ -106,11 +120,11 @@ const WorkerDetailModal: React.FC<WorkerModalProps> = ({
             <View style={modal.catRow}>
               <View style={{ flex: 1 }}>
                 <Text style={modal.catLabel}>{cat1Label}</Text>
-                <Text style={[modal.catStatus, { color: worker.category_1_approved ? M3.secondary : M3.tertiary }]}>
+                <Text style={[modal.catStatus, { color: worker.category_1_approved ? '#15803D' : '#B45309' }]}>
                   {worker.category_1_approved ? 'Aprobada' : 'Pendiente'}
                 </Text>
               </View>
-              <Badge label="Principal" color={M3.primaryContainer} bgColor={M3.primaryFixed} size="sm" />
+              <Badge label="Principal" color={CHAMBA.blue} bgColor="#E0F2FE" size="sm" />
             </View>
           ) : (
             <Text style={modal.emptyCat}>Sin especialidad principal</Text>
@@ -120,19 +134,20 @@ const WorkerDetailModal: React.FC<WorkerModalProps> = ({
             <View style={modal.catRow}>
               <View style={{ flex: 1 }}>
                 <Text style={modal.catLabel}>{cat2Label}</Text>
-                <Text style={[modal.catStatus, { color: worker.category_2_approved ? M3.secondary : M3.tertiary }]}>
+                <Text style={[modal.catStatus, { color: worker.category_2_approved ? '#15803D' : '#B45309' }]}>
                   {worker.category_2_approved ? 'Aprobada' : 'Pendiente aprobación'}
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                <Badge label="Secundaria" color={M3.tertiary} bgColor={M3.tertiaryFixed} size="sm" />
+                <Badge label="Secundaria" color="#7C3AED" bgColor="#EDE9FE" size="sm" />
                 <TouchableOpacity
                   onPress={() => onApproveCat2(!worker.category_2_approved)}
                   disabled={approvingCat2}
+                  activeOpacity={0.85}
                   style={[modal.cat2Btn, worker.category_2_approved && modal.cat2BtnRevoke]}
                 >
                   {approvingCat2
-                    ? <ActivityIndicator size="small" color={M3.onPrimary} />
+                    ? <ActivityIndicator size="small" color="#FFF" />
                     : <Text style={modal.cat2BtnText}>
                         {worker.category_2_approved ? 'Revocar 2ª cat.' : 'Aprobar 2ª cat.'}
                       </Text>}
@@ -153,68 +168,99 @@ const WorkerDetailModal: React.FC<WorkerModalProps> = ({
             />
           </View>
         </ScrollView>
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 };
 
 const modal = StyleSheet.create({
-  root:         { flex: 1, backgroundColor: M3.background },
-  header:       {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    padding: SPACING.lg, paddingTop: 56,
-    backgroundColor: M3.surfaceContainerLowest,
-    borderBottomWidth: 1, borderBottomColor: M3.surfaceVariant,
+  root: { flex: 1, backgroundColor: CHAMBA.bg },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: CHAMBA.bg,
   },
-  closeBtn:     {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: M3.surfaceContainer, alignItems: 'center', justifyContent: 'center',
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 14,
+    backgroundColor: CHAMBA.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...CARD_STEP_SHADOW,
   },
-  headerTitle:  { ...stitchTypography.headlineMdMobile, fontWeight: '800' },
-  scroll:       { padding: SPACING.lg, paddingBottom: 60, gap: SPACING.md },
+  headerTitle: { fontSize: 18, fontWeight: '600', color: CHAMBA.navy, letterSpacing: -0.3 },
+  scroll: { paddingHorizontal: 20, paddingTop: 8, gap: 14 },
 
-  profileCard:  {
-    flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
-    backgroundColor: M3.surfaceContainerLowest, borderRadius: 12,
-    padding: SPACING.md, ...CARD_ELEVATION,
+  profileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: CHAMBA.white,
+    borderRadius: 18,
+    padding: 18,
+    ...CARD_STEP_SHADOW,
   },
-  workerName:   { ...stitchTypography.bodyLg, fontWeight: '800' },
-  workerMeta:   { ...stitchTypography.labelBold, color: M3.outline, marginTop: 2 },
+  workerName: { fontSize: 16, fontWeight: '600', color: CHAMBA.navy },
+  workerMeta: { fontSize: 12, color: CHAMBA.muted, marginTop: 2, fontWeight: '400' },
 
   toggleRow: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
-    backgroundColor: M3.surfaceContainerLowest, borderRadius: 12,
-    padding: SPACING.md, ...CARD_ELEVATION,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: CHAMBA.white,
+    borderRadius: 18,
+    padding: 18,
+    ...CARD_STEP_SHADOW,
   },
-  toggleTitle: { ...stitchTypography.bodyLg, fontWeight: '600' },
-  toggleSub:   { ...stitchTypography.labelBold, color: M3.outline, marginTop: 2 },
-
-  sectionTitle: { ...stitchTypography.headlineMdMobile, marginTop: SPACING.xs },
-
-  docsRow:  { flexDirection: 'row', gap: SPACING.sm },
-  docBox:   {
-    width: '100%', height: 140, borderRadius: 12,
+  toggleIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 14,
+    backgroundColor: '#EFF2F9',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  toggleTitle: { fontSize: 14, fontWeight: '600', color: CHAMBA.navy },
+  toggleSub: { fontSize: 12, color: CHAMBA.muted, marginTop: 2, fontWeight: '400' },
 
-  catRow:   {
-    flexDirection: 'row', alignItems: 'flex-start',
-    backgroundColor: M3.surfaceContainerLowest, borderRadius: 12,
-    padding: SPACING.md, borderWidth: 1, borderColor: M3.outlineVariant,
-  },
-  catLabel: { ...stitchTypography.bodySm, fontWeight: '700', color: M3.onBackground },
-  catStatus:{ ...stitchTypography.labelBold, marginTop: 2 },
-  emptyCat: { ...stitchTypography.bodySm, color: M3.outline },
+  sectionTitle: { fontSize: 18, fontWeight: '600', color: CHAMBA.navy, marginTop: 4, letterSpacing: -0.3 },
 
-  cat2Btn:       {
-    backgroundColor: M3.primary, borderRadius: BORDER_RADIUS.full,
-    paddingHorizontal: 12, paddingVertical: 6, marginTop: 4,
+  docsRow: { flexDirection: 'row', gap: 12 },
+  docBox: { width: '100%', height: 140, borderRadius: 14 },
+
+  catRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: CHAMBA.white,
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: CHAMBA.border,
+    ...CARD_STEP_SHADOW,
   },
-  cat2BtnRevoke: { backgroundColor: M3.tertiary },
-  cat2BtnText:   { color: M3.onPrimary, fontSize: 11, fontWeight: '700' },
+  catLabel: { fontSize: 14, fontWeight: '600', color: CHAMBA.navy },
+  catStatus: { fontSize: 12, marginTop: 2, fontWeight: '500' },
+  emptyCat: { fontSize: 13, color: CHAMBA.muted, fontWeight: '400' },
+
+  cat2Btn: {
+    backgroundColor: CHAMBA.blue,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginTop: 4,
+  },
+  cat2BtnRevoke: { backgroundColor: '#B45309' },
+  cat2BtnText: { color: '#FFF', fontSize: 11, fontWeight: '700' },
 
   reviewsCard: {
-    backgroundColor: M3.surfaceContainerLowest, borderRadius: 12,
-    padding: SPACING.md, ...CARD_ELEVATION,
+    backgroundColor: CHAMBA.white,
+    borderRadius: 18,
+    padding: 18,
+    ...CARD_STEP_SHADOW,
   },
 });
 
@@ -224,24 +270,42 @@ export const ManageWorkersScreen: React.FC = () => {
   const queryClient = useQueryClient();
   const insets        = useSafeAreaInsets();
   const adminProfile  = useAuthStore((s) => s.profile);
+  const [teamMode, setTeamMode]         = useState<TeamMode>('workers');
   const [filter, setFilter]             = useState<FilterMode>('all');
   const [selected, setSelected]         = useState<UserProfile | null>(null);
   const [approvingId, setApprovingId]   = useState<string | null>(null);
   const [approvingCat2Id, setAC2Id]     = useState<string | null>(null);
 
-  const { data, isLoading, refetch, isRefetching } = useQuery<UserProfile[]>({
+  const { data: workersData, isLoading: workersLoading, refetch: refetchWorkers, isRefetching: workersRefetching } = useQuery<UserProfile[]>({
     queryKey: ['admin', 'workers'],
     queryFn:  fetchAllWorkers,
   });
-  const workers: UserProfile[] = data ?? [];
+  const { data: clientsData, isLoading: clientsLoading, refetch: refetchClients, isRefetching: clientsRefetching } = useQuery<UserProfile[]>({
+    queryKey: ['admin', 'clients'],
+    queryFn:  fetchAllClients,
+  });
+  const users: UserProfile[] = teamMode === 'workers' ? (workersData ?? []) : (clientsData ?? []);
+  const isLoading = teamMode === 'workers' ? workersLoading : clientsLoading;
+  const isRefetching = teamMode === 'workers' ? workersRefetching : clientsRefetching;
+  const refetch = teamMode === 'workers' ? refetchWorkers : refetchClients;
 
   const { mutate: toggleApproval } = useMutation({
     mutationFn: ({ id, approve }: { id: string; approve: boolean }) =>
-      toggleWorkerApproval(id, approve),
+      teamMode === 'workers'
+        ? toggleWorkerApproval(id, approve)
+        : toggleClientApproval(id, approve),
     onMutate:   ({ id }) => setApprovingId(id),
-    onSettled:  () => { setApprovingId(null); queryClient.invalidateQueries({ queryKey: ['admin', 'workers'] }); },
+    onSettled:  () => {
+      setApprovingId(null);
+      queryClient.invalidateQueries({ queryKey: ['admin', 'workers'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'clients'] });
+    },
     onSuccess:  (_data, { approve }) => {
-      setSelected((prev) => prev ? { ...prev, is_approved: approve, worker_status: approve ? 'active' : 'suspended' } : null);
+      setSelected((prev) => prev ? {
+        ...prev,
+        is_approved: approve,
+        ...(teamMode === 'workers' ? { worker_status: approve ? 'active' : 'suspended' } : {}),
+      } : null);
     },
     onError: (err: Error) => Alert.alert('Error', err.message),
   });
@@ -254,51 +318,54 @@ export const ManageWorkersScreen: React.FC = () => {
     onError:    (err: Error) => Alert.alert('Error', err.message),
   });
 
-  const filtered = workers.filter((w) => {
+  const filtered = users.filter((w) => {
     if (filter === 'pending')  return !w.is_approved;
     if (filter === 'approved') return w.is_approved;
     return true;
   });
 
-  const pendingCount  = workers.filter((w) => !w.is_approved).length;
-  const approvedCount = workers.filter((w) => w.is_approved).length;
+  const pendingCount  = users.filter((w) => !w.is_approved).length;
+  const approvedCount = users.filter((w) => w.is_approved).length;
+  const clientsPending = (clientsData ?? []).filter((c) => !c.is_approved).length;
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <View style={styles.headerIcon}>
-          <MaterialSymbol name="engineering" size={22} color={M3.onPrimaryContainer} filled />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.eyebrow}>Gestión de Técnicos</Text>
-          <Text style={styles.title}>Equipo Operativo</Text>
-        </View>
+    <SafeAreaView style={styles.root} edges={['top']}>
+      <View style={chambaStyles.screenHeader}>
+        <Text style={chambaStyles.screenTitle}>Equipo y clientes</Text>
+        <Text style={chambaStyles.screenSubtitle}>
+          {teamMode === 'workers'
+            ? 'Gestión de técnicos y verificaciones'
+            : 'Aprobación de cuentas de clientes'}
+        </Text>
       </View>
 
-      {/* Filtros */}
-      <View style={styles.filterRow}>
-        {([
-          ['all',      'Todos',      workers.length, M3.onSurfaceVariant],
-          ['pending',  'Pendientes', pendingCount,   M3.tertiary],
-          ['approved', 'Verificados', approvedCount,  M3.secondary],
-        ] as const).map(([mode, label, count, color]) => (
-          <TouchableOpacity
-            key={mode}
-            onPress={() => setFilter(mode)}
-            style={[styles.filterChip, filter === mode && styles.filterChipActive]}
-            activeOpacity={0.85}
-          >
-            <Text style={[styles.filterCount, { color }]}>{count}</Text>
-            <Text style={[styles.filterLabel, filter === mode && styles.filterLabelActive]}>
-              {label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      <View style={{ paddingHorizontal: 20, gap: 12, marginBottom: 4 }}>
+        <ChambaGradientTabs
+          tabs={[
+            { id: 'workers', label: 'Técnicos', badge: workersData?.length ?? 0 },
+            { id: 'clients', label: 'Clientes', badge: clientsPending || undefined },
+          ]}
+          active={teamMode}
+          onChange={(id) => {
+            setTeamMode(id as TeamMode);
+            setFilter('all');
+            setSelected(null);
+          }}
+        />
+        <ChambaGradientTabs
+          tabs={[
+            { id: 'all', label: 'Todos', badge: users.length },
+            { id: 'pending', label: 'Pendientes', badge: pendingCount },
+            { id: 'approved', label: 'Verificados', badge: approvedCount },
+          ]}
+          active={filter}
+          onChange={setFilter}
+        />
       </View>
 
       {isLoading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={M3.primary} />
+          <ActivityIndicator size="large" color={CHAMBA.blue} />
         </View>
       ) : (
         <FlatList
@@ -307,7 +374,8 @@ export const ManageWorkersScreen: React.FC = () => {
           renderItem={({ item }) => (
             <WorkerRow
               worker={item}
-              onOpen={() => setSelected(item)}
+              isClient={teamMode === 'clients'}
+              onOpen={() => teamMode === 'workers' && setSelected(item)}
               onToggle={(approve) => toggleApproval({ id: item.id, approve })}
               toggling={approvingId === item.id}
             />
@@ -317,19 +385,27 @@ export const ManageWorkersScreen: React.FC = () => {
             { paddingBottom: 100 + insets.bottom },
           ]}
           refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={M3.primary} />
+            <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={CHAMBA.blue} />
           }
           ListEmptyComponent={
-            <EmptyState
-              icon="people-outline"
-              title="Sin técnicos"
-              subtitle={filter === 'pending' ? 'No hay técnicos pendientes' : 'Aún no hay técnicos registrados'}
-            />
+            <View style={chambaStyles.emptyCard}>
+              <View style={[chambaStyles.iconCircleRight, { backgroundColor: '#34C759' }]}>
+                <Ionicons name="people" size={22} color="#FFF" />
+              </View>
+              <Text style={styles.emptyTitle}>
+                {teamMode === 'workers' ? 'Sin técnicos' : 'Sin clientes'}
+              </Text>
+              <Text style={styles.emptySub}>
+                {filter === 'pending'
+                  ? (teamMode === 'workers' ? 'No hay técnicos pendientes' : 'No hay clientes pendientes')
+                  : (teamMode === 'workers' ? 'Aún no hay técnicos registrados' : 'Aún no hay clientes registrados')}
+              </Text>
+            </View>
           }
         />
       )}
 
-      {selected && adminProfile && (
+      {selected && adminProfile && teamMode === 'workers' && (
         <WorkerDetailModal
           worker={selected}
           onClose={() => setSelected(null)}
@@ -341,7 +417,7 @@ export const ManageWorkersScreen: React.FC = () => {
           adminName={adminProfile.full_name}
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -349,68 +425,83 @@ export const ManageWorkersScreen: React.FC = () => {
 
 const WorkerRow: React.FC<{
   worker:   UserProfile;
+  isClient: boolean;
   onOpen:   () => void;
   onToggle: (approve: boolean) => void;
   toggling: boolean;
-}> = ({ worker, onOpen, onToggle, toggling }) => {
+}> = ({ worker, isClient, onOpen, onToggle, toggling }) => {
   const { getLabel } = useCatalog();
   const cat1Label = worker.category_1 ? getLabel(worker.category_1) : null;
   const hasDocs   = !!(worker.cedula_url && worker.record_policia_url);
+  const phoneDisplay = formatNicaPhoneDisplay(worker.phone);
+  const contactLine = phoneDisplay
+    ? `${NICA_PHONE_PREFIX} ${phoneDisplay}`
+    : (worker.email ?? '—');
 
   return (
     <View style={styles.workerCard}>
-      <TouchableOpacity onPress={onOpen} activeOpacity={0.85} style={styles.workerMain}>
-        <Avatar uri={worker.avatar_url} name={worker.full_name} size={48} />
-
-        <View style={{ flex: 1 }}>
+      <TouchableOpacity
+        onPress={isClient ? undefined : onOpen}
+        activeOpacity={isClient ? 1 : 0.88}
+        style={styles.workerMain}
+        disabled={isClient}
+      >
+        <View style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
           <View style={styles.nameRow}>
             <Text style={styles.workerName}>{worker.full_name}</Text>
             {worker.is_approved && (
-              <MaterialSymbol name="verified" size={16} color={M3.secondary} filled />
+              <Ionicons name="checkmark-circle" size={16} color="#34C759" />
             )}
           </View>
           <Text style={styles.workerMeta}>
-            {worker.phone ?? worker.email} · {formatDate(worker.created_at)}
+            {contactLine} · {formatDate(worker.created_at)}
           </Text>
-
           <View style={styles.badgeRow}>
             <Badge
-              label={worker.is_approved ? 'Activo' : 'Suspendido'}
-              color={worker.is_approved ? M3.secondary : M3.tertiary}
-              bgColor={worker.is_approved ? M3.secondaryFixed : M3.tertiaryFixed}
+              label={worker.is_approved ? (isClient ? 'Aprobado' : 'Activo') : 'Pendiente'}
+              color={worker.is_approved ? '#15803D' : '#B45309'}
+              bgColor={worker.is_approved ? '#DCFCE7' : '#FEF3C7'}
               size="sm"
             />
-            {hasDocs
-              ? <Badge label="Docs OK" color={M3.secondary} bgColor={M3.secondaryFixed} size="sm" />
-              : <Badge label="Sin docs" color={M3.error} bgColor={M3.errorContainer} size="sm" />}
-            {cat1Label && (
-              <Badge label={cat1Label} color={M3.primaryContainer} bgColor={M3.primaryFixed} size="sm" />
+            {isClient ? (
+              <Badge label="Cliente" color={CHAMBA.blue} bgColor="#E0F2FE" size="sm" />
+            ) : (
+              <>
+                {hasDocs
+                  ? <Badge label="Docs OK" color="#15803D" bgColor="#DCFCE7" size="sm" />
+                  : <Badge label="Sin docs" color="#B91C1C" bgColor="#FEE2E2" size="sm" />}
+                {cat1Label && (
+                  <Badge label={cat1Label} color={CHAMBA.blue} bgColor="#E0F2FE" size="sm" />
+                )}
+              </>
             )}
           </View>
         </View>
-
-        <MaterialSymbol name="chevron_right" size={20} color={M3.outlineVariant} />
+        <View style={[chambaStyles.iconCircleRight, { backgroundColor: worker.is_approved ? '#34C759' : '#FF9500' }]}>
+          <Ionicons name="person" size={22} color="#FFF" />
+        </View>
       </TouchableOpacity>
 
       <View style={styles.toggleDivider} />
 
       <View style={styles.toggleRow}>
         <View style={styles.toggleIconWrap}>
-          <MaterialSymbol
-            name={worker.is_approved ? 'check_circle' : 'pause_circle'}
+          <Ionicons
+            name={worker.is_approved ? 'checkmark-circle' : 'pause-circle'}
             size={20}
-            color={worker.is_approved ? M3.secondary : M3.outline}
-            filled={worker.is_approved}
+            color={worker.is_approved ? '#34C759' : CHAMBA.muted}
           />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.toggleLabel}>
-            {worker.is_approved ? 'Verificado — operando' : 'Suspendido del radar'}
+            {worker.is_approved
+              ? (isClient ? 'Aprobado — puede usar CHAMBA' : 'Verificado — operando')
+              : (isClient ? 'Pendiente de aprobación' : 'Suspendido del radar')}
           </Text>
           <Text style={styles.toggleHint}>
             {worker.is_approved
-              ? 'El técnico puede aceptar chambas'
-              : 'Toggle para reactivar acceso'}
+              ? (isClient ? 'El cliente puede solicitar servicios' : 'El técnico puede aceptar chambas')
+              : (isClient ? 'Activa para habilitar la app de servicios' : 'Toggle para reactivar acceso')}
           </Text>
         </View>
         <StitchToggle
@@ -424,133 +515,44 @@ const WorkerRow: React.FC<{
 };
 
 const styles = StyleSheet.create({
-  root: {
-    flex:            1,
-    backgroundColor: M3.background,
-  },
-  header: {
-    flexDirection:     'row',
-    alignItems:        'center',
-    gap:               SPACING.sm + 4,
-    paddingHorizontal: SPACING.md,
-    paddingBottom:     SPACING.sm,
-  },
-  headerIcon: {
-    width:           44,
-    height:          44,
-    borderRadius:    22,
-    backgroundColor: M3.primaryContainer,
-    alignItems:      'center',
-    justifyContent:  'center',
-  },
-  eyebrow: {
-    ...stitchTypography.labelBold,
-    color:         M3.primary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  title: {
-    ...stitchTypography.headlineLg,
-    fontSize: 22,
-  },
-  filterRow: {
-    flexDirection:     'row',
-    gap:               SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    marginBottom:      SPACING.sm,
-  },
-  filterChip: {
-    flex:              1,
-    alignItems:        'center',
-    padding:           SPACING.sm,
-    borderRadius:      10,
-    backgroundColor:   M3.surfaceContainerLowest,
-    borderWidth:       1,
-    borderColor:       M3.outlineVariant,
-  },
-  filterChipActive: {
-    borderColor:     M3.primary,
-    backgroundColor: M3.primaryFixed,
-  },
-  filterCount: {
-    fontSize:   20,
-    fontWeight: '800',
-  },
-  filterLabel: {
-    ...stitchTypography.labelBold,
-    marginTop: 2,
-  },
-  filterLabelActive: {
-    color: M3.onPrimaryFixedVariant,
-  },
-  center: {
-    flex: 1, alignItems: 'center', justifyContent: 'center',
-  },
-  listContent: {
-    paddingHorizontal: SPACING.md,
-    flexGrow:          1,
-  },
+  root: { flex: 1, backgroundColor: CHAMBA.bg },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  listContent: { paddingHorizontal: 20, flexGrow: 1 },
   workerCard: {
-    backgroundColor: M3.surfaceContainerLowest,
-    borderRadius:    12,
-    marginBottom:    SPACING.sm + 4,
-    overflow:        'hidden',
-    ...CARD_ELEVATION,
+    backgroundColor: CHAMBA.white,
+    borderRadius: 18,
+    marginBottom: 14,
+    overflow: 'hidden',
+    ...CARD_STEP_SHADOW,
   },
   workerMain: {
     flexDirection: 'row',
-    alignItems:    'center',
-    gap:           SPACING.md,
-    padding:       SPACING.md,
+    alignItems: 'center',
+    padding: 18,
   },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems:    'center',
-    gap:           4,
-  },
-  workerName: {
-    ...stitchTypography.bodyLg,
-    fontWeight: '700',
-  },
-  workerMeta: {
-    ...stitchTypography.labelBold,
-    color:     M3.outline,
-    marginTop: 2,
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    flexWrap:      'wrap',
-    gap:           4,
-    marginTop:     6,
-  },
-  toggleDivider: {
-    height:          1,
-    backgroundColor: M3.surfaceVariant,
-  },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  workerName: { fontSize: 16, fontWeight: '600', color: CHAMBA.navy },
+  workerMeta: { fontSize: 12, color: CHAMBA.muted, marginTop: 2, fontWeight: '400' },
+  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 8 },
+  toggleDivider: { height: 1, backgroundColor: '#E2E8F0' },
   toggleRow: {
-    flexDirection:     'row',
-    alignItems:        'center',
-    gap:               SPACING.sm + 4,
-    paddingHorizontal: SPACING.md,
-    paddingVertical:   SPACING.sm + 2,
-    backgroundColor:   M3.surfaceContainerLow,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    backgroundColor: '#F8FAFC',
   },
   toggleIconWrap: {
-    width:           36,
-    height:          36,
-    borderRadius:    18,
-    backgroundColor: M3.surfaceContainer,
-    alignItems:      'center',
-    justifyContent:  'center',
+    width: 36,
+    height: 36,
+    borderRadius: 14,
+    backgroundColor: '#EFF2F9',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  toggleLabel: {
-    ...stitchTypography.bodySm,
-    fontWeight: '600',
-    color:      M3.onBackground,
-  },
-  toggleHint: {
-    ...stitchTypography.labelBold,
-    color:     M3.outline,
-    marginTop: 1,
-  },
+  toggleLabel: { fontSize: 13, fontWeight: '600', color: CHAMBA.navy },
+  toggleHint: { fontSize: 11, color: CHAMBA.muted, marginTop: 1, fontWeight: '400' },
+  emptyTitle: { fontSize: 16, fontWeight: '600', color: CHAMBA.navy, textAlign: 'center' },
+  emptySub: { fontSize: 13, color: CHAMBA.muted, textAlign: 'center', fontWeight: '400' },
 });

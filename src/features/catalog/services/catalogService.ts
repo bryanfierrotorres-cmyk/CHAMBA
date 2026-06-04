@@ -1,44 +1,39 @@
 import { supabase } from '@services/supabase';
 import {
-  CHAMBA_CATEGORIES,
-  CATEGORY_EMOJIS,
-  CATEGORY_LABELS,
-  SUGGESTED_PRICES_FALLBACK,
-  type JobCategory,
-} from '@constants/chambaCategories';
-import { getLocalCatalog, saveLocalCatalog, SEED_CATALOG } from '@utils/localCatalog';
+  CONFIGURED_SERVICE_SEEDS,
+  CONFIGURED_CATEGORY_SEEDS,
+  getConfiguredServiceLabel,
+  SERVICE_FALLBACK_PRICES,
+  buildSeedCatalog,
+} from '@constants/servicesConfig';
+import { getLocalCatalog, saveLocalCatalog } from '@utils/localCatalog';
 import { withTimeout } from '@utils/withTimeout';
 import type { ServiceCatalog, ServiceCategory, ServiceType } from '../types';
 
 const REMOTE_TIMEOUT_MS = 8_000;
 
-export const FALLBACK_CATALOG: ServiceCatalog = SEED_CATALOG;
+export const FALLBACK_CATALOG: ServiceCatalog = buildSeedCatalog();
 
-/** Asegura las 8 categorías oficiales + cualquier tipo extra en BD (evita solo 2 en piloto). */
+/** Asegura el catálogo canónico (servicesConfig) + tipos extra en BD. */
 const mergeCatalogWithFallback = (catalog: ServiceCatalog): ServiceCatalog => {
   const remoteBySlug = new Map(catalog.serviceTypes.map((t) => [t.slug, t]));
 
-  const merged: ServiceType[] = CHAMBA_CATEGORIES.map((c, i) => {
-    const remote = remoteBySlug.get(c.id);
+  const merged: ServiceType[] = CONFIGURED_SERVICE_SEEDS.map((def) => {
+    const remote = remoteBySlug.get(def.slug);
     if (remote) return remote;
 
-    const categorySlug =
-      c.id.startsWith('vehiculo') ? 'vehiculos'
-      : c.id.startsWith('conserjeria') || c.id === 'jardineria' ? 'hogar'
-      : 'limpieza';
-
     return {
-      id: `fallback-${c.id}`,
+      id: `fallback-${def.slug}`,
       category_id: '',
-      category_slug: categorySlug,
-      slug: c.id,
-      name: c.label,
-      description: null,
-      icon: c.emoji,
+      category_slug: def.categorySlug,
+      slug: def.slug,
+      name: def.label,
+      description: def.description,
+      icon: def.icon,
       image_url: null,
-      suggested_price: SUGGESTED_PRICES_FALLBACK[c.id as JobCategory] ?? 1000,
+      suggested_price: def.suggestedPrice,
       min_price_ratio: 0.5,
-      sort_order: i,
+      sort_order: def.sortOrder,
     };
   });
 
@@ -49,7 +44,16 @@ const mergeCatalogWithFallback = (catalog: ServiceCatalog): ServiceCatalog => {
   merged.sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
 
   return {
-    categories: catalog.categories.length > 0 ? catalog.categories : FALLBACK_CATALOG.categories,
+    categories: catalog.categories.length > 0
+      ? catalog.categories
+      : CONFIGURED_CATEGORY_SEEDS.map((c) => ({
+          id: `fallback-${c.slug}`,
+          slug: c.slug,
+          name: c.name,
+          icon: c.icon,
+          image_url: null,
+          sort_order: c.sort_order,
+        })),
     serviceTypes: merged,
   };
 };
@@ -202,11 +206,19 @@ export const buildCatalogLookups = (catalog: ServiceCatalog) => {
     minRatioBySlug.set(t.slug, t.min_price_ratio);
   }
 
-  for (const id of Object.keys(CATEGORY_LABELS)) {
-    const key = id as JobCategory;
-    if (!labelBySlug.has(key)) labelBySlug.set(key, CATEGORY_LABELS[key]);
-    if (!emojiBySlug.has(key)) emojiBySlug.set(key, CATEGORY_EMOJIS[key]);
-    if (!priceBySlug.has(key)) priceBySlug.set(key, SUGGESTED_PRICES_FALLBACK[key]);
+  for (const def of CONFIGURED_SERVICE_SEEDS) {
+    if (!labelBySlug.has(def.slug)) labelBySlug.set(def.slug, def.label);
+    if (!emojiBySlug.has(def.slug)) emojiBySlug.set(def.slug, def.icon);
+    if (!priceBySlug.has(def.slug)) priceBySlug.set(def.slug, def.suggestedPrice);
+  }
+
+  for (const [slug, price] of Object.entries(SERVICE_FALLBACK_PRICES)) {
+    if (!priceBySlug.has(slug)) priceBySlug.set(slug, price);
+  }
+
+  for (const slug of Object.keys(SERVICE_FALLBACK_PRICES)) {
+    const label = getConfiguredServiceLabel(slug);
+    if (label && !labelBySlug.has(slug)) labelBySlug.set(slug, label);
   }
 
   return { typeBySlug, labelBySlug, emojiBySlug, priceBySlug, minRatioBySlug };

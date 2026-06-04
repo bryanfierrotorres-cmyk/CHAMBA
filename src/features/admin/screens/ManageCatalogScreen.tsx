@@ -4,9 +4,10 @@ import {
 } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { Input } from '@components/Input';
 import { Button } from '@components/Button';
-import { MaterialSymbol } from '@components/admin/MaterialSymbol';
 import { useAuthStore } from '@store/authStore';
 import { useCatalog, CATALOG_QUERY_KEY } from '@features/catalog/hooks/useCatalog';
 import {
@@ -15,7 +16,7 @@ import {
   slugify,
 } from '@features/admin/services/catalogAdminService';
 import { showMessage } from '@utils/confirmAction';
-import { M3, SPACING, BORDER_RADIUS, stitchTypography } from '@constants/stitchStyles';
+import { CARD_STEP_SHADOW, CHAMBA, chambaStyles } from '@constants/chambaUI';
 import type { ServiceCategory, ServiceType } from '@features/catalog/types';
 
 export const ManageCatalogScreen: React.FC = () => {
@@ -87,20 +88,27 @@ export const ManageCatalogScreen: React.FC = () => {
   });
 
   return (
+    <SafeAreaView style={styles.root} edges={['top']}>
     <ScrollView
-      style={styles.root}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + SPACING.md }]}
+      contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.title}>Catálogo dinámico</Text>
-      <Text style={styles.subtitle}>
-        Agrega categorías y tipos de trabajo sin actualizar la app.
-      </Text>
+      <View style={chambaStyles.screenHeader}>
+        <Text style={chambaStyles.screenTitle}>Catálogo dinámico</Text>
+        <Text style={chambaStyles.screenSubtitle}>
+          Agregá categorías y tipos de trabajo sin actualizar la app.
+        </Text>
+      </View>
 
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <MaterialSymbol name="category" size={20} color={M3.primary} />
-          <Text style={styles.cardTitle}>Agregar nueva categoría</Text>
+          <View style={[chambaStyles.iconCircleRight, { backgroundColor: '#5856D6' }]}>
+            <Ionicons name="grid" size={22} color="#FFF" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>Agregar nueva categoría</Text>
+            <Text style={styles.cardHint}>Organizá los servicios por rubro</Text>
+          </View>
         </View>
         <Input
           label="Nombre"
@@ -130,8 +138,13 @@ export const ManageCatalogScreen: React.FC = () => {
 
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <MaterialSymbol name="handyman" size={20} color={M3.primary} />
-          <Text style={styles.cardTitle}>Agregar nuevo trabajo</Text>
+          <View style={[chambaStyles.iconCircleRight, { backgroundColor: '#FF9500' }]}>
+            <Ionicons name="construct" size={22} color="#FFF" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>Agregar nuevo trabajo</Text>
+            <Text style={styles.cardHint}>Servicios visibles en la app cliente</Text>
+          </View>
         </View>
         <Text style={styles.fieldLabel}>Categoría</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
@@ -179,12 +192,12 @@ export const ManageCatalogScreen: React.FC = () => {
       <View style={styles.card}>
         <View style={styles.listHeader}>
           <Text style={styles.cardTitle}>Catálogo activo</Text>
-          <TouchableOpacity onPress={() => refetch()}>
-            <MaterialSymbol name="refresh" size={22} color={M3.primary} />
+          <TouchableOpacity onPress={() => refetch()} style={styles.refreshOrb}>
+            <Ionicons name="refresh" size={20} color={CHAMBA.blue} />
           </TouchableOpacity>
         </View>
         {isLoading ? (
-          <ActivityIndicator color={M3.primary} style={{ marginVertical: SPACING.lg }} />
+          <ActivityIndicator color={CHAMBA.blue} style={{ marginVertical: 20 }} />
         ) : (
           categories.map((cat: ServiceCategory) => (
             <View key={cat.id} style={styles.listBlock}>
@@ -201,41 +214,50 @@ export const ManageCatalogScreen: React.FC = () => {
         )}
       </View>
     </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: M3.background },
-  content: { padding: SPACING.lg, paddingBottom: 120 },
-  title: { ...stitchTypography.headlineLg, color: M3.onBackground, marginBottom: 4 },
-  subtitle: { color: M3.onSurfaceVariant, marginBottom: SPACING.lg, fontSize: 14 },
+  root: { flex: 1, backgroundColor: CHAMBA.bg },
+  content: { paddingHorizontal: 20, paddingTop: 8 },
   card: {
-    backgroundColor: M3.surfaceContainerLowest,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
-    gap: SPACING.sm,
+    backgroundColor: CHAMBA.white,
+    borderRadius: 18,
+    padding: 18,
+    marginBottom: 14,
+    gap: 12,
+    ...CARD_STEP_SHADOW,
   },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.xs },
-  cardTitle: { ...stitchTypography.headlineMd, color: M3.onBackground },
-  fieldLabel: { color: M3.onSurfaceVariant, fontSize: 12, fontWeight: '600' },
-  chipRow: { marginBottom: SPACING.sm },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 },
+  cardTitle: { fontSize: 16, fontWeight: '600', color: CHAMBA.navy },
+  cardHint: { fontSize: 13, color: CHAMBA.muted, fontWeight: '400', marginTop: 2 },
+  fieldLabel: { color: CHAMBA.muted, fontSize: 12, fontWeight: '600' },
+  chipRow: { marginBottom: 8 },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: BORDER_RADIUS.full,
-    backgroundColor: M3.surfaceContainerHigh,
+    borderRadius: 20,
+    backgroundColor: '#EFF2F9',
     marginRight: 8,
   },
-  chipActive: { backgroundColor: M3.primaryContainer },
+  chipActive: { backgroundColor: '#E0F2FE' },
   chipEmoji: { fontSize: 16 },
-  chipText: { color: M3.onSurfaceVariant, fontWeight: '600', fontSize: 13 },
-  chipTextActive: { color: M3.onPrimaryContainer },
+  chipText: { color: CHAMBA.muted, fontWeight: '600', fontSize: 13 },
+  chipTextActive: { color: CHAMBA.blue },
   listHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  listBlock: { marginTop: SPACING.sm },
-  listCat: { fontWeight: '800', color: M3.onBackground, marginBottom: 4 },
-  listItem: { color: M3.onSurfaceVariant, fontSize: 13, marginLeft: SPACING.sm, marginBottom: 2 },
+  refreshOrb: {
+    width: 36,
+    height: 36,
+    borderRadius: 14,
+    backgroundColor: '#EFF2F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  listBlock: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#E2E8F0' },
+  listCat: { fontWeight: '600', color: CHAMBA.navy, marginBottom: 4, fontSize: 15 },
+  listItem: { color: CHAMBA.muted, fontSize: 13, marginLeft: 8, marginBottom: 2, fontWeight: '400' },
 });

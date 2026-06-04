@@ -7,9 +7,12 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { WorkerTopBar } from '@components/worker/WorkerTopBar';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '@components/Avatar';
+import { ChambaScreenHeader } from '@components/chamba/ChambaScreenHeader';
+import { ChambaMenuRow } from '@components/chamba/ChambaMenuRow';
+import { AdminMetricCard } from '@components/admin/AdminMetricCard';
+import { CARD_STEP_SHADOW, CHAMBA, chambaStyles } from '@constants/chambaUI';
 import {
   AvailabilitySelector,
   AvailabilityBadge,
@@ -17,6 +20,7 @@ import {
 } from '@components/AvailabilitySelector';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { isPilotDocumentBypass } from '@constants/pilot';
 import { useAuthStore }          from '@store/authStore';
 import { useProfileStore }       from '@store/profileStore';
 import type { ProfileStackParamList, JobCategory } from '@/types';
@@ -25,7 +29,9 @@ import { subscribeToWorkerProfile }    from '../services/profileService';
 import { WorkerReviewsPanel }          from '@features/reviews/components/WorkerReviewsPanel';
 import { useMyJobs }                   from '@features/jobs/hooks/useJobs';
 import { M3, FONT_SIZE, SPACING, BORDER_RADIUS, CARD_ELEVATION } from '@constants/stitchStyles';
-import { formatCurrency, getCategoryLabel } from '@utils/formatters';
+import { formatCurrency, formatRatingAvg, getCategoryLabel, coerceNumber } from '@utils/formatters';
+import { ServiceCatalogGroups } from '@components/catalog/ServiceCatalogGroups';
+import { ProfileSectionBoundary } from '@components/ProfileSectionBoundary';
 import type { AvailabilityStatus } from '@/types';
 
 const CATEGORY_ICONS: Partial<Record<JobCategory, keyof typeof Ionicons.glyphMap>> = {
@@ -36,60 +42,21 @@ const CATEGORY_ICONS: Partial<Record<JobCategory, keyof typeof Ionicons.glyphMap
   vehiculo_profundo:      'car-outline',
   conserjeria_ocasional:  'time-outline',
   conserjeria_contrato:   'document-text-outline',
+  b2b_personal_operativo: 'cube-outline',
+  b2b_mesero_barman:      'wine-outline',
+  b2b_ayudante_cocina:    'restaurant-outline',
+  b2b_apoyo_hogar:        'home-outline',
+  b2b_conserje_empresa:   'brush-outline',
+  b2b_otro_servicio:      'ellipsis-horizontal-outline',
   jardineria:             'leaf-outline',
 };
 
-// ─── Section header (Stitch headline-md) ──────────────────────────
-
-const SectionTitle: React.FC<{ label: string }> = ({ label }) => (
-  <Text style={styles.sectionTitle}>{label}</Text>
+const SectionTitle: React.FC<{ label: string; subtitle?: string }> = ({ label, subtitle }) => (
+  <View style={chambaStyles.sectionHeader}>
+    <Text style={chambaStyles.sectionTitle}>{label}</Text>
+    {subtitle ? <Text style={chambaStyles.sectionSubtitle}>{subtitle}</Text> : null}
+  </View>
 );
-
-// ─── Menu row (Stitch secondary menu) ─────────────────────────────
-
-const MenuRow: React.FC<{
-  icon:      keyof typeof Ionicons.glyphMap;
-  title:     string;
-  subtitle?: string;
-  onPress?:  () => void;
-  last?:     boolean;
-  trailing?: React.ReactNode;
-}> = ({ icon, title, subtitle, onPress, last, trailing }) => {
-  const content = (
-    <>
-      <View style={styles.menuRowLeft}>
-        <Ionicons name={icon} size={22} color={M3.onSurfaceVariant} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.menuRowTitle}>{title}</Text>
-          {subtitle ? <Text style={styles.menuRowSub}>{subtitle}</Text> : null}
-        </View>
-      </View>
-      {trailing ?? (
-        onPress
-          ? <Ionicons name="chevron-forward" size={20} color={M3.outlineVariant} />
-          : null
-      )}
-    </>
-  );
-
-  if (onPress) {
-    return (
-      <TouchableOpacity
-        onPress={onPress}
-        activeOpacity={0.75}
-        style={[styles.menuRow, !last && styles.menuRowBorder]}
-      >
-        {content}
-      </TouchableOpacity>
-    );
-  }
-
-  return (
-    <View style={[styles.menuRow, !last && styles.menuRowBorder]}>
-      {content}
-    </View>
-  );
-};
 
 // ─── Service / specialty row (Stitch Mis Servicios) ─────────────────
 
@@ -119,34 +86,6 @@ const ServiceRow: React.FC<{
     </View>
   </View>
 );
-
-// ─── Bento stat tile ──────────────────────────────────────────────
-
-const BentoStat: React.FC<{
-  icon:    keyof typeof Ionicons.glyphMap;
-  value:   string;
-  label:   string;
-  color?:  string;
-  onPress?: () => void;
-}> = ({ icon, value, label, color = M3.primary, onPress }) => {
-  const inner = (
-    <>
-      <Ionicons name={icon} size={28} color={color} style={{ marginBottom: 4 }} />
-      <Text style={[styles.bentoValue, { color }]}>{value}</Text>
-      <Text style={styles.bentoLabel}>{label}</Text>
-    </>
-  );
-
-  if (onPress) {
-    return (
-      <TouchableOpacity style={styles.bentoTile} onPress={onPress} activeOpacity={0.8}>
-        {inner}
-      </TouchableOpacity>
-    );
-  }
-
-  return <View style={styles.bentoTile}>{inner}</View>;
-};
 
 // ─── Main screen ──────────────────────────────────────────────────
 
@@ -266,17 +205,20 @@ export const ProfileScreen: React.FC = () => {
 
   if (!profile) return null;
 
-  const currentAvailability = workerProfile?.availability_status ?? 'offline';
+  const currentAvailability: AvailabilityStatus =
+    workerProfile?.availability_status === 'available'
+    || workerProfile?.availability_status === 'busy'
+    || workerProfile?.availability_status === 'offline'
+      ? workerProfile.availability_status
+      : 'offline';
   const availCfg = AVAILABILITY_CONFIG[currentAvailability];
-  const ratingDisplay = workerProfile?.rating_avg
-    ? workerProfile.rating_avg.toFixed(1)
-    : '—';
+  const ratingDisplay = formatRatingAvg(workerProfile?.rating_avg);
   const reviewCount = workerProfile?.total_reviews ?? 0;
 
   const acceptedCount = myJobs.length > 0 ? myJobs.length : (stats?.acceptedJobs ?? 0);
   const earnedFromJobs = myJobs
     .filter((a) => a.completed_at || a.job?.status === 'completed')
-    .reduce((sum, a) => sum + (a.job?.worker_payout ?? 0), 0);
+    .reduce((sum, a) => sum + coerceNumber(a.job?.worker_payout, 0), 0);
   const earnedTotal = Math.max(stats?.totalEarned ?? 0, earnedFromJobs);
   const completedCount = myJobs.filter(
     (a) => a.completed_at || a.job?.status === 'completed',
@@ -301,10 +243,10 @@ export const ProfileScreen: React.FC = () => {
   }
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
-      <WorkerTopBar
-        avatarUri={avatarPreview ?? profile.avatar_url}
-        avatarName={profile.full_name}
+    <SafeAreaView style={[chambaStyles.screen, styles.root]} edges={['top']}>
+      <ChambaScreenHeader
+        title="Mi Perfil"
+        subtitle="Tu cuenta, métricas y especialidades"
       />
 
       <ScrollView
@@ -319,7 +261,6 @@ export const ProfileScreen: React.FC = () => {
         }
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 + insets.bottom }]}
       >
-        {/* ── Profile card (Stitch) ── */}
         <View style={styles.profileCard}>
           <View style={styles.profileGradient} />
 
@@ -397,8 +338,8 @@ export const ProfileScreen: React.FC = () => {
 
         {/* ── Disponibilidad ── */}
         <View style={styles.section}>
-          <SectionTitle label="Disponibilidad" />
-          <View style={styles.ambientCard}>
+          <SectionTitle label="Disponibilidad" subtitle="Tu estado para recibir chambas" />
+          <View style={chambaStyles.panelCard}>
             <AvailabilitySelector
               current={currentAvailability}
               onChange={handleAvailabilityChange}
@@ -413,43 +354,45 @@ export const ProfileScreen: React.FC = () => {
           )}
         </View>
 
-        {/* ── Stats bento ── */}
         <View style={styles.section}>
-          <SectionTitle label="Resumen" />
-          <View style={styles.statsBento}>
-            <BentoStat
-              icon="briefcase-outline"
-              value={String(acceptedCount)}
-              label="Aceptadas"
-              color={M3.primary}
-            />
-            <BentoStat
-              icon="wallet-outline"
-              value={formatCurrency(earnedTotal)}
-              label="Ganado"
-              color={M3.secondary}
-            />
-            <BentoStat
-              icon="trophy-outline"
-              value={ratingDisplay}
-              label="Ranking"
-              color={M3.tertiaryContainer}
-              onPress={scrollToReviews}
-            />
-            <BentoStat
-              icon="checkmark-done-outline"
-              value={String(completedCount)}
-              label="Completadas"
-              color={M3.onSecondaryFixedVariant}
-            />
+          <SectionTitle label="Resumen" subtitle="Métricas de tu actividad" />
+          <View style={styles.bentoGrid}>
+            <View style={styles.bentoRow}>
+              <AdminMetricCard
+                icon="work"
+                label="Chambas aceptadas"
+                value={String(acceptedCount)}
+                accent="#007AFF"
+              />
+              <AdminMetricCard
+                icon="payments"
+                label="Total ganado"
+                value={formatCurrency(earnedTotal)}
+                accent="#34C759"
+              />
+            </View>
+            <View style={styles.bentoRow}>
+              <AdminMetricCard
+                icon="star"
+                label="Calificación"
+                value={ratingDisplay}
+                accent="#FF9500"
+              />
+              <AdminMetricCard
+                icon="task_alt"
+                label="Completadas"
+                value={String(completedCount)}
+                accent="#5856D6"
+              />
+            </View>
           </View>
         </View>
 
-        {/* ── Mis Servicios / Especialidades ── */}
+        {/* ── Mis especialidades registradas ── */}
         {(specialties.length > 0 || (workerProfile?.skills?.length ?? 0) > 0) && (
           <View style={styles.section}>
-            <SectionTitle label="Mis Servicios" />
-            <View style={styles.ambientCard}>
+            <SectionTitle label="Mis especialidades" subtitle="Categorías aprobadas" />
+            <View style={chambaStyles.panelCard}>
               {specialties.map((svc, idx) => (
                 <ServiceRow
                   key={svc.id}
@@ -482,11 +425,28 @@ export const ProfileScreen: React.FC = () => {
           </View>
         )}
 
+        {/* ── Catálogo CHAMBA (sincronizado con cliente y admin) ── */}
+        <View style={styles.section}>
+          <SectionTitle
+            label="Catálogo de servicios"
+            subtitle="Sincronizado con el cliente — verde = tus especialidades"
+          />
+          <View style={chambaStyles.catalogPanel}>
+            <ProfileSectionBoundary title="el catálogo">
+              <ServiceCatalogGroups
+                highlightSlugs={
+                  [profile.category_1, profile.category_2].filter(Boolean) as JobCategory[]
+                }
+              />
+            </ProfileSectionBoundary>
+          </View>
+        </View>
+
         {/* ── Bio ── */}
         {workerProfile?.bio && (
           <View style={styles.section}>
             <SectionTitle label="Sobre mí" />
-            <View style={styles.ambientCard}>
+            <View style={chambaStyles.panelCard}>
               <Text style={styles.bioText}>{workerProfile.bio}</Text>
             </View>
           </View>
@@ -497,152 +457,113 @@ export const ProfileScreen: React.FC = () => {
           style={styles.section}
           onLayout={(e) => { reviewsSectionY.current = e.nativeEvent.layout.y; }}
         >
-          <SectionTitle label="Reseñas de clientes y admin" />
-          <View style={styles.ambientCard}>
-            <WorkerReviewsPanel
-              workerId={profile.id}
-              reviewerId={profile.id}
-              reviewerRole="client"
-              reviewerName={profile.full_name}
-              allowReview={false}
-            />
-          </View>
-        </View>
-
-        {/* ── Datos de contacto (Stitch menu card) ── */}
-        <View style={styles.section}>
-          <View style={styles.ambientCard}>
-            <MenuRow
-              icon="mail-outline"
-              title="Correo electrónico"
-              subtitle={profile.email}
-            />
-            <MenuRow
-              icon="call-outline"
-              title="Teléfono"
-              subtitle={profile.phone ?? 'No registrado'}
-            />
-            <MenuRow
-              icon="shield-checkmark-outline"
-              title="Estado de cuenta"
-              subtitle={profile.is_approved ? 'Verificado ✓' : 'Pendiente de aprobación'}
-              last
-            />
-          </View>
-        </View>
-
-        {/* ── Verificación de identidad ── */}
-        <View style={styles.section}>
-          <View style={styles.ambientCard}>
-            <View style={styles.docRow}>
-              <View
-                style={[
-                  styles.docIconWrap,
-                  { backgroundColor: workerProfile?.id_verified ? M3.secondaryFixed : M3.surfaceContainer },
-                ]}
-              >
-                <Ionicons
-                  name={workerProfile?.id_verified ? 'shield-checkmark' : 'document-outline'}
-                  size={22}
-                  color={workerProfile?.id_verified ? M3.secondary : M3.onSurfaceVariant}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.docTitle}>
-                  {workerProfile?.id_verified
-                    ? 'Identidad verificada'
-                    : 'Identificación oficial'}
-                </Text>
-                <Text style={styles.docSub}>
-                  {workerProfile?.id_verified
-                    ? 'Tu ID fue revisado y aprobado por el equipo'
-                    : 'Sube tu INE o pasaporte para verificar tu identidad'}
-                </Text>
-              </View>
-              {!workerProfile?.id_verified && (
-                <TouchableOpacity
-                  style={styles.docUploadBtn}
-                  onPress={() => navigation.navigate('Onboarding')}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="cloud-upload-outline" size={18} color={M3.primary} />
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-        </View>
-
-        {/* ── Método de cobro ── */}
-        <View style={styles.section}>
-          <View style={styles.ambientCard}>
-            <View style={styles.stripeRow}>
-              <View style={styles.stripeIconWrap}>
-                <Ionicons name="card-outline" size={22} color={M3.primaryContainer} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.stripeTitle}>
-                  {profile.stripe_account_id
-                    ? 'Cuenta bancaria conectada'
-                    : 'Conectar cuenta bancaria'}
-                </Text>
-                <Text style={styles.stripeSub}>
-                  {profile.stripe_account_id
-                    ? 'Recibes el 95% de cada chamba vía Stripe Connect'
-                    : 'Necesario para recibir pagos — tarda 2 minutos'}
-                </Text>
-              </View>
-              <View
-                style={[
-                  styles.stripeStatus,
-                  { backgroundColor: profile.stripe_account_id ? M3.secondaryFixed : M3.tertiaryFixed },
-                ]}
-              >
-                <Ionicons
-                  name={profile.stripe_account_id ? 'checkmark-circle' : 'alert-circle'}
-                  size={16}
-                  color={profile.stripe_account_id ? M3.secondary : M3.tertiary}
-                />
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* ── Secondary menu (Stitch) ── */}
-        {profile.role === 'worker' && (
-          <View style={styles.section}>
-            <View style={styles.ambientCard}>
-              <MenuRow
-                icon="document-text-outline"
-                title="Mis Documentos y Especialidades"
-                subtitle={
-                  profile.cedula_url && profile.cedula_url !== 'pilot-bypass'
-                    ? 'Documentos enviados — toca para actualizar'
-                    : 'Sube tu cédula y récord de policía'
-                }
-                onPress={() => navigation.navigate('Onboarding')}
+          <SectionTitle label="Reseñas" subtitle="Clientes y administración" />
+          <View style={chambaStyles.panelCard}>
+            <ProfileSectionBoundary title="las reseñas">
+              <WorkerReviewsPanel
+                workerId={profile.id}
+                reviewerId={profile.id}
+                reviewerRole="client"
+                reviewerName={profile.full_name}
+                allowReview={false}
               />
-            </View>
+            </ProfileSectionBoundary>
           </View>
-        )}
+        </View>
 
-        {/* ── Cerrar sesión (Stitch text button) ── */}
-        <TouchableOpacity onPress={handleSignOut} style={styles.signOutWrap} activeOpacity={0.7}>
-          <Text style={styles.signOutText}>Cerrar Sesión</Text>
-        </TouchableOpacity>
+        <View style={styles.section}>
+          <SectionTitle label="Cuenta" subtitle="Contacto y verificación" />
+          <ChambaMenuRow
+            title="Correo electrónico"
+            subtitle={profile.email ?? '—'}
+            iconColor="#007AFF"
+            icon={<Ionicons name="mail" size={22} color="#FFF" />}
+          />
+          <ChambaMenuRow
+            title="Teléfono"
+            subtitle={profile.phone ?? 'No registrado'}
+            iconColor="#34C759"
+            icon={<Ionicons name="call" size={22} color="#FFF" />}
+          />
+          <ChambaMenuRow
+            title="Estado de cuenta"
+            subtitle={profile.is_approved ? 'Verificado ✓' : 'Pendiente de aprobación'}
+            iconColor="#5856D6"
+            icon={<Ionicons name="shield-checkmark" size={22} color="#FFF" />}
+          />
+          <ChambaMenuRow
+            title={
+              workerProfile?.id_verified ? 'Identidad verificada' : 'Identificación oficial'
+            }
+            subtitle={
+              workerProfile?.id_verified
+                ? 'Tu ID fue revisado por el equipo'
+                : 'Sube tu INE o pasaporte para verificar'
+            }
+            iconColor={workerProfile?.id_verified ? '#34C759' : '#FF9500'}
+            icon={
+              <Ionicons
+                name={workerProfile?.id_verified ? 'shield-checkmark' : 'document-text'}
+                size={22}
+                color="#FFF"
+              />
+            }
+            onPress={
+              workerProfile?.id_verified ? undefined : () => navigation.navigate('Onboarding')
+            }
+          />
+          <ChambaMenuRow
+            title={
+              profile.stripe_account_id ? 'Cuenta bancaria conectada' : 'Conectar cuenta bancaria'
+            }
+            subtitle={
+              profile.stripe_account_id
+                ? 'Recibís el 95% de cada chamba vía Stripe'
+                : 'Necesario para cobrar — ~2 minutos'
+            }
+            iconColor={profile.stripe_account_id ? '#34C759' : '#FF9500'}
+            icon={<Ionicons name="card" size={22} color="#FFF" />}
+          />
+          {profile.role === 'worker' && (
+            <ChambaMenuRow
+              title="Mis documentos y especialidades"
+              subtitle={
+                profile.cedula_url && !isPilotDocumentBypass(profile.cedula_url)
+                  ? 'Documentos enviados — toca para actualizar'
+                  : 'Sube tu cédula y récord de policía'
+              }
+              iconColor="#5856D6"
+              icon={<Ionicons name="folder-open" size={22} color="#FFF" />}
+              onPress={() => navigation.navigate('Onboarding')}
+            />
+          )}
+          <ChambaMenuRow
+            title="Reseñas y ranking"
+            subtitle={`${reviewCount} comentarios · ${ratingDisplay} estrellas`}
+            iconColor="#FF9500"
+            icon={<Ionicons name="star" size={22} color="#FFF" />}
+            onPress={scrollToReviews}
+          />
+          <ChambaMenuRow
+            title="Cerrar sesión"
+            subtitle="Salir de tu cuenta de forma segura"
+            iconColor="#FF453A"
+            icon={<Ionicons name="log-out-outline" size={22} color="#FFF" />}
+            onPress={handleSignOut}
+            destructive
+          />
+        </View>
 
-        <Text style={styles.versionText}>CHAMBA v1.0.0 · MVP</Text>
+        <Text style={styles.versionText}>CHAMBA · Perfil técnico</Text>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 
 // ─── Styles (Stitch / Material 3) ─────────────────────────────────
 
 const styles = StyleSheet.create({
-  root: {
-    flex:            1,
-    backgroundColor: M3.background,
-  },
+  root: { flex: 1 },
   topBar: {
     flexDirection:     'row',
     alignItems:        'center',
@@ -670,33 +591,21 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   scrollContent: {
-    paddingHorizontal: SPACING.md,
-    paddingTop:        SPACING.sm,
-    gap:               SPACING.md + 4,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    gap: 16,
   },
-  section: {
-    gap: SPACING.sm,
-  },
-  sectionTitle: {
-    fontSize:   18,
-    fontWeight: '600',
-    color:      M3.onBackground,
-    paddingHorizontal: 4,
-  },
-  ambientCard: {
-    backgroundColor: M3.surfaceContainerLowest,
-    borderRadius:    12,
-    overflow:        'hidden',
-    ...CARD_ELEVATION,
-  },
+  section: { gap: 4 },
+  bentoGrid: { gap: 10, marginBottom: 4 },
+  bentoRow: { flexDirection: 'row', gap: 10 },
   profileCard: {
-    backgroundColor: M3.surfaceContainerLowest,
-    borderRadius:    12,
-    padding:         SPACING.md + 4,
-    alignItems:      'center',
-    overflow:        'hidden',
-    position:        'relative',
-    ...CARD_ELEVATION,
+    backgroundColor: CHAMBA.white,
+    borderRadius: 18,
+    padding: SPACING.md + 4,
+    alignItems: 'center',
+    overflow: 'hidden',
+    position: 'relative',
+    ...CARD_STEP_SHADOW,
   },
   profileGradient: {
     position:        'absolute',
@@ -819,11 +728,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
     textAlign: 'center',
   },
-  statsBento: {
-    flexDirection: 'row',
-    flexWrap:      'wrap',
-    gap:           SPACING.sm + 4,
-  },
   pendingBanner: {
     flexDirection:   'row',
     alignItems:      'flex-start',
@@ -912,119 +816,17 @@ const styles = StyleSheet.create({
   statusPillTextPaused: {
     color: M3.outline,
   },
-  menuRow: {
-    flexDirection:  'row',
-    alignItems:     'center',
-    justifyContent: 'space-between',
-    padding:        SPACING.md,
-  },
-  menuRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: M3.surfaceVariant,
-  },
-  menuRowLeft: {
-    flexDirection: 'row',
-    alignItems:    'center',
-    gap:           SPACING.sm + 4,
-    flex:          1,
-  },
-  menuRowTitle: {
-    fontSize:   16,
-    color:      M3.onBackground,
-    fontWeight: '400',
-  },
-  menuRowSub: {
-    fontSize:  14,
-    color:     M3.onSurfaceVariant,
-    marginTop: 2,
-  },
   bioText: {
     color:      M3.onSurfaceVariant,
     fontSize:   16,
     lineHeight: 24,
     padding:    SPACING.md,
   },
-  docRow: {
-    flexDirection: 'row',
-    alignItems:    'center',
-    gap:           SPACING.md,
-    padding:       SPACING.md,
-  },
-  docIconWrap: {
-    width:           48,
-    height:          48,
-    borderRadius:    14,
-    alignItems:      'center',
-    justifyContent:  'center',
-    flexShrink:      0,
-  },
-  docTitle: {
-    color:      M3.onBackground,
-    fontSize:   16,
-    fontWeight: '600',
-  },
-  docSub: {
-    color:      M3.onSurfaceVariant,
-    fontSize:   12,
-    marginTop:  2,
-    lineHeight: 17,
-  },
-  docUploadBtn: {
-    width:           36,
-    height:          36,
-    borderRadius:    10,
-    backgroundColor: M3.primaryFixed,
-    alignItems:      'center',
-    justifyContent:  'center',
-    flexShrink:      0,
-  },
-  stripeRow: {
-    flexDirection: 'row',
-    alignItems:    'center',
-    gap:           SPACING.md,
-    padding:       SPACING.md,
-  },
-  stripeIconWrap: {
-    width:           48,
-    height:          48,
-    borderRadius:    14,
-    backgroundColor: M3.surfaceContainerLow,
-    alignItems:      'center',
-    justifyContent:  'center',
-    flexShrink:      0,
-  },
-  stripeTitle: {
-    color:      M3.onBackground,
-    fontSize:   16,
-    fontWeight: '600',
-  },
-  stripeSub: {
-    color:      M3.onSurfaceVariant,
-    fontSize:   12,
-    marginTop:  2,
-    lineHeight: 17,
-  },
-  stripeStatus: {
-    width:           32,
-    height:          32,
-    borderRadius:    16,
-    alignItems:      'center',
-    justifyContent:  'center',
-    flexShrink:      0,
-  },
-  signOutWrap: {
-    paddingVertical: SPACING.md,
-    alignItems:      'center',
-  },
-  signOutText: {
-    color:      M3.error,
-    fontSize:   16,
-    fontWeight: '400',
-  },
   versionText: {
-    color:      M3.outline,
-    fontSize:   FONT_SIZE.xs,
-    textAlign:  'center',
+    color: CHAMBA.muted,
+    fontSize: FONT_SIZE.xs,
+    textAlign: 'center',
     marginBottom: SPACING.md,
+    marginTop: 4,
   },
 });

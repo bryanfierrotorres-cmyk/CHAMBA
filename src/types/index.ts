@@ -88,6 +88,9 @@ export interface ClientOrderJob extends Job {
 
 export type JobStatus = 'open' | 'taken' | 'in_progress' | 'completed' | 'cancelled';
 
+/** Progreso operativo del técnico en campo (viaje → llegada → cierre). */
+export type WorkerOperationalPhase = 'accepted' | 'en_route' | 'arrived' | 'completed';
+
 export type { JobCategory, ClientCategory };
 export {
   CHAMBA_CATEGORY_IDS,
@@ -111,6 +114,7 @@ export interface Job {
   description: string;
   category: JobCategory;
   status: JobStatus;
+  operational_phase?: WorkerOperationalPhase | null;
   pay_amount: number;
   platform_fee: number;
   worker_payout: number;
@@ -120,6 +124,8 @@ export interface Job {
   required_workers: number;
   slots_taken: number;
   media_urls: string[];
+  before_photo_url?: string | null;
+  after_photo_url?: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -156,7 +162,7 @@ export interface AppNotification {
   user_id: string;
   title: string;
   body: string;
-  type: 'new_job' | 'job_taken' | 'job_completed' | 'payment_sent';
+  type: 'new_job' | 'job_taken' | 'job_completed' | 'job_update' | 'payment_sent';
   data: Record<string, string>;
   read: boolean;
   created_at: string;
@@ -214,11 +220,24 @@ export type ClientStackParamList = {
   ClientJobDetail: { jobId: string };
 };
 
+export type ClientOrdersStackParamList = {
+  ClientOrdersList: undefined;
+  ClientCompletedJob: { jobId: string };
+};
+
 export type ClientTabParamList = {
   ClientHome:   NavigatorScreenParams<ClientStackParamList> | undefined;
-  ClientOrders: undefined;
+  ClientOrders: NavigatorScreenParams<ClientOrdersStackParamList> | undefined;
   Profile:      undefined;
 };
+
+/** Resumen de chamba completada (vista cliente). */
+export interface ClientJobSummary {
+  job: ClientOrderJob;
+  completed_at: string | null;
+  client_review: WorkerReview | null;
+  worker_rating_avg: number | null;
+}
 
 // ─── API Responses ────────────────────────────────────────────────────────────
 

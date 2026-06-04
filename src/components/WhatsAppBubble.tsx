@@ -1,12 +1,9 @@
 import React, { useRef, useEffect } from 'react';
 import {
-  TouchableOpacity, Animated, Linking, StyleSheet,
+  TouchableOpacity, Animated, StyleSheet,
   Platform, View, Text,
 } from 'react-native';
-
-const WA_NUMBER  = '50578608108';
-const WA_MESSAGE = encodeURIComponent('Hola, necesito ayuda con CHAMBA ⚡');
-const WA_URL     = `https://wa.me/${WA_NUMBER}?text=${WA_MESSAGE}`;
+import { openWhatsAppSupport } from '@utils/whatsappSupport';
 
 interface Props {
   /** Bottom offset — useful to clear the tab bar. Default 90 */
@@ -35,9 +32,7 @@ export const WhatsAppBubble: React.FC<Props> = ({ bottom = 90, right = 20 }) => 
   }, []);
 
   const openWhatsApp = () => {
-    Linking.canOpenURL(WA_URL)
-      .then((supported) => Linking.openURL(WA_URL))
-      .catch(() => Linking.openURL(`https://wa.me/${WA_NUMBER}`));
+    void openWhatsAppSupport();
   };
 
   return (

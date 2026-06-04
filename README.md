@@ -49,7 +49,8 @@ CHAMBA/
 │   ├── types/                  # TypeScript globals
 │   └── utils/                  # formatters, validation
 ├── supabase/
-│   ├── schema.sql              # Esquema completo PostgreSQL + RLS + trigger concurrencia
+│   ├── migrations/             # Esquema actual (001–011); ver README.md en supabase/
+│   ├── archive/                # Snapshots históricos (no ejecutar)
 │   ├── seed.sql                # Datos de prueba
 │   ├── config.toml             # Supabase local config
 │   └── functions/
@@ -97,7 +98,7 @@ EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=AIza...
 ### 4. Supabase Setup
 
 1. Crea un proyecto en [supabase.com](https://supabase.com)
-2. Ve a **SQL Editor** y ejecuta `supabase/schema.sql` completo
+2. Aplica migraciones en orden: `npm run db:sync-chamba` o manualmente según `supabase/README.md`
 3. Crea los **Storage Buckets**:
    - `avatars` → público, máx 5MB
    - `job-media` → privado, máx 10MB
@@ -155,7 +156,7 @@ npm run ios
 La protección contra doble-aceptación está implementada **a nivel de base de datos** con:
 
 ```sql
--- RPC accept_job en schema.sql usa:
+-- RPC accept_job (migración 005+) usa:
 SELECT * FROM jobs WHERE id = p_job_id FOR UPDATE NOWAIT;
 ```
 
@@ -231,9 +232,9 @@ Supabase Realtime está activo en las tablas:
 
 | Rol | Email | Password |
 |---|---|---|
-| Admin | admin@chamba.com | Admin123! |
-| Worker (aprobado) | worker1@chamba.com | Worker123! |
-| Worker (pendiente) | worker2@chamba.com | Worker123! |
+| Admin | Ver `.env` (`EXPO_PUBLIC_PILOT_ADMIN_*`) | Definir en `.env` local |
+| Worker (aprobado) | Ver `.env` (`EXPO_PUBLIC_PILOT_WORKER_*`) | Definir en `.env` local |
+| Worker (pendiente) | worker2@chamba.com | Ver `seed-test-users.sql` |
 
 > Crear manualmente en Supabase Auth → luego ejecutar seed.sql
 
@@ -259,6 +260,3 @@ npm run lint       # ESLint
 - [ ] Onboarding con verificación de ID (Stripe Identity)
 - [ ] Multi-idioma (i18n)
 - [ ] Analytics con Amplitude/Mixpanel
-#   C H A M B A 
- 
- 

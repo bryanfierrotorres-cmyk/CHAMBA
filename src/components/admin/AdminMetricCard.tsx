@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, type ViewStyle } from 'react-native';
 import { MaterialSymbol } from './MaterialSymbol';
-import { M3, SPACING, CARD_ELEVATION, stitchTypography } from '@constants/stitchStyles';
+import { CARD_STEP_SHADOW, CHAMBA } from '@constants/chambaUI';
 
 interface AdminMetricCardProps {
   icon: string;
@@ -16,48 +16,54 @@ export const AdminMetricCard: React.FC<AdminMetricCardProps> = ({
   icon,
   label,
   value,
-  accent = M3.primary,
+  accent = '#007AFF',
   wide = false,
   style,
 }) => (
   <View style={[styles.card, wide && styles.cardWide, style]}>
-    <View style={[styles.iconWrap, { backgroundColor: accent + '18' }]}>
-      <MaterialSymbol name={icon} size={26} color={accent} filled />
+    <View style={styles.content}>
+      <Text style={styles.value} numberOfLines={1}>{value}</Text>
+      <Text style={styles.label} numberOfLines={2}>{label}</Text>
     </View>
-    <Text style={styles.value} numberOfLines={1}>{value}</Text>
-    <Text style={styles.label}>{label}</Text>
+    <View style={[styles.iconCircle, { backgroundColor: accent }]}>
+      <MaterialSymbol name={icon} size={22} color="#FFF" filled />
+    </View>
   </View>
 );
 
 const styles = StyleSheet.create({
   card: {
-    flex:              1,
-    minWidth:          '46%',
-    backgroundColor:   M3.surfaceContainerLowest,
-    borderRadius:      12,
-    padding:           SPACING.md,
-    ...CARD_ELEVATION,
+    flex: 1,
+    minWidth: '46%',
+    backgroundColor: CHAMBA.white,
+    borderRadius: 18,
+    padding: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    ...CARD_STEP_SHADOW,
   },
-  cardWide: {
-    minWidth: '100%',
-  },
-  iconWrap: {
-    width:           44,
-    height:          44,
-    borderRadius:    22,
-    alignItems:      'center',
-    justifyContent:  'center',
-    marginBottom:    SPACING.sm,
-  },
+  cardWide: { minWidth: '100%' },
+  content: { flex: 1, paddingRight: 10, minWidth: 0 },
   value: {
-    ...stitchTypography.displayPrice,
-    fontSize:   22,
-    lineHeight: 28,
-    color:      M3.onBackground,
+    fontSize: 22,
+    fontWeight: '600',
+    color: CHAMBA.navy,
+    letterSpacing: -0.3,
+    marginBottom: 4,
   },
   label: {
-    ...stitchTypography.labelBold,
-    marginTop: 4,
-    color:     M3.onSurfaceVariant,
+    fontSize: 12,
+    fontWeight: '400',
+    color: CHAMBA.muted,
+    lineHeight: 16,
+  },
+  iconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
 });

@@ -28,6 +28,35 @@ export const fetchAllWorkers = async (): Promise<UserProfile[]> => {
   return (data ?? []) as UserProfile[];
 };
 
+/** Fetch all clients (registro con aprobación). */
+export const fetchAllClients = async (): Promise<UserProfile[]> => {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('role', 'client')
+    .order('created_at', { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return (data ?? []) as UserProfile[];
+};
+
+/** Aprobar o suspender cliente (sin campos de técnico). */
+export const toggleClientApproval = async (
+  clientId: string,
+  approve: boolean,
+): Promise<void> => {
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      is_approved: approve,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', clientId)
+    .eq('role', 'client');
+
+  if (error) throw new Error(error.message);
+};
+
 /** Toggle worker approval status and mark active. */
 export const toggleWorkerApproval = async (
   workerId: string,

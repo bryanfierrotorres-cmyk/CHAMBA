@@ -22,6 +22,8 @@ import {
 
   completeJob,
 
+  advanceOperationalPhase,
+
 } from '../services/jobsService';
 
 import { useJobStore } from '@store/jobStore';
@@ -34,7 +36,14 @@ import { mergeAssignments, patchLocalJobStatus, getLocalAssignments } from '@uti
 
 import { CONFIG } from '@constants/config';
 
-import type { JobCategory, JobStatus, Job, JobAssignment } from '@/types';
+import type {
+  JobCategory,
+  JobStatus,
+  Job,
+  JobAssignment,
+  WorkerOperationalPhase,
+} from '@/types';
+import { phaseToJobStatus } from '@utils/workerOperationalPhase';
 
 
 
@@ -296,6 +305,51 @@ export const useStartJob = () => {
 
 
 
+export const useAdvanceOperationalPhase = () => {
+  const queryClient = useQueryClient();
+  const profile = useAuthStore((s) => s.profile);
+
+  return useMutation({
+    mutationFn: ({
+      jobId,
+      nextPhase,
+      job,
+    }: {
+      jobId: string;
+      nextPhase: WorkerOperationalPhase;
+      job?: Job | Partial<Job> | null;
+    }) => advanceOperationalPhase(jobId, profile!.id, nextPhase, job as Job | null),
+
+    onMutate: async ({ jobId, nextPhase }) => {
+      const status = phaseToJobStatus(nextPhase);
+      useAssignmentsStore.getState().patchItem(
+        `${jobId}-${profile?.id}`,
+        {},
+        { operational_phase: nextPhase, status, updated_at: new Date().toISOString() },
+      );
+      const items = useAssignmentsStore.getState().items;
+      const match = items.find((a) => a.job_id === jobId);
+      if (match) {
+        useAssignmentsStore.getState().patchItem(
+          match.id,
+          {},
+          { operational_phase: nextPhase, status, updated_at: new Date().toISOString() },
+        );
+      }
+      await patchLocalJobStatus(jobId, status, undefined, nextPhase);
+    },
+
+    onSettled: (_data, _err, { jobId }) => {
+      queryClient.invalidateQueries({ queryKey: JOB_KEYS.all });
+      queryClient.invalidateQueries({ queryKey: JOB_KEYS.detail(jobId) });
+      if (profile?.id) {
+        queryClient.invalidateQueries({ queryKey: JOB_KEYS.myJobs(profile.id) });
+      }
+      queryClient.invalidateQueries({ queryKey: ['client-orders'] });
+    },
+  });
+};
+
 export const useCompleteJob = () => {
   const queryClient = useQueryClient();
   const profile = useAuthStore((s) => s.profile);
@@ -309,7 +363,7 @@ export const useCompleteJob = () => {
       useAssignmentsStore.getState().patchItem(
         assignmentId,
         { completed_at: now },
-        { status: 'completed', updated_at: now },
+        { status: 'completed', operational_phase: 'completed', updated_at: now },
       );
       if (profile?.id) {
         queryClient.setQueryData<JobAssignment[]>(
@@ -321,7 +375,12 @@ export const useCompleteJob = () => {
                     ...a,
                     completed_at: now,
                     job: a.job
-                      ? { ...a.job, status: 'completed' as const, updated_at: now }
+                      ? {
+                          ...a.job,
+                          status: 'completed' as const,
+                          operational_phase: 'completed' as const,
+                          updated_at: now,
+                        }
                       : a.job,
                   }
                 : a,

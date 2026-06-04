@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, FONT_SIZE, SPACING } from '@constants/theme';
+import { COLORS, SPACING } from '@constants/theme';
+import { coerceNumber } from '@utils/formatters';
 
 interface StarRatingProps {
   rating?:       number | null;
@@ -25,14 +26,21 @@ export const StarRating: React.FC<StarRatingProps> = ({
   onChange,
 }) => {
   const starSize = SIZE_MAP[size];
-  const displayRating = interactive ? value : (rating ?? 0);
-  const hasRating = interactive ? value > 0 : rating != null;
+  const displayRating = interactive
+    ? coerceNumber(value, 0)
+    : rating != null && rating !== ''
+      ? coerceNumber(rating, NaN)
+      : NaN;
+  const hasRating = interactive
+    ? displayRating > 0
+    : Number.isFinite(displayRating) && displayRating > 0;
 
   const renderStar = (index: number) => {
+    const score = interactive ? coerceNumber(value, 0) : displayRating;
     const filled = interactive
-      ? index < value
-      : index < Math.floor(displayRating) ||
-        (index === Math.floor(displayRating) && displayRating - Math.floor(displayRating) >= 0.4);
+      ? index < score
+      : index < Math.floor(score) ||
+        (index === Math.floor(score) && score - Math.floor(score) >= 0.4);
 
     const iconName = filled ? 'star' : 'star-outline';
 
