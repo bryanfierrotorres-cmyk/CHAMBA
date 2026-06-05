@@ -1,13 +1,18 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { safePersistPilotProfile } from '@utils/pilotProfileStorage';
 import { supabase } from '@services/supabase';
 import { CONFIG } from '@constants/config';
 import { pilotPhoneEmail } from '@constants/pilot';
 import { applyPilotProfile } from '@utils/pilotAccess';
 import { useAuthStore } from '@store/authStore';
 import { migrateLocalAssignmentsWorkerId } from '@utils/localAssignments';
+import {
+  PILOT_STORAGE_KEY,
+  safePersistPilotProfile,
+} from '@utils/pilotProfileStorage';
 import type { UserProfile, UserRole } from '@/types';
 
-export const PILOT_STORAGE_KEY = 'CHAMBA_PILOT_PROFILE';
+// Re-export for compat
+export { PILOT_STORAGE_KEY };
 
 type SyncableProfile = Pick<
   UserProfile,
@@ -125,7 +130,7 @@ export const persistPilotProfileIfChanged = async (
 ): Promise<void> => {
   if (before.id === after.id) return;
   await migrateLocalAssignmentsWorkerId(before.id, after.id);
-  await AsyncStorage.setItem(PILOT_STORAGE_KEY, JSON.stringify(after));
+  await safePersistPilotProfile(after);
   useAuthStore.getState().setProfile(after);
   useAuthStore.getState().setPhoneAuth(true);
 };

@@ -30,6 +30,8 @@
     "db:apply-worker-count-fix": "node scripts/apply-migration-021-worker-count.mjs",
     "db:apply-approve-exclude": "node scripts/apply-migration-022-approve-exclude.mjs",
     "diagnose:pepe-active": "node scripts/diagnose-pepe-active-count.mjs",
+    "verify:chamba-health": "node scripts/verify-chamba-flow-health.mjs",
+    "repair:browser-storage": "node scripts/repair-browser-storage.mjs",
     "db:reset-two-users": "node scripts/reset-two-test-users.mjs",
     "diagnose:client-job": "node scripts/diagnose-client-job.mjs",
     "diagnose:pepe-limpieza": "node scripts/diagnose-pepe-limpieza.mjs",

@@ -5,7 +5,7 @@ import {
   StyleSheet, Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { safePersistPilotProfile } from '@utils/pilotProfileStorage';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '@components/Avatar';
@@ -167,7 +167,7 @@ export const ProfileScreen: React.FC = () => {
       setProfile(updatedProfile);
       setAvatarPreview(url);
 
-      await AsyncStorage.setItem('CHAMBA_PILOT_PROFILE', JSON.stringify(updatedProfile));
+      await safePersistPilotProfile(updatedProfile);
 
       try {
         await updateProfile(profile!.id, { avatar_url: url });

@@ -23,8 +23,11 @@ import {
 import { useAssignmentsStore } from '@store/assignmentsStore';
 import { withTimeout } from '@utils/withTimeout';
 import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
-
-const PILOT_STORAGE_KEY = 'CHAMBA_PILOT_PROFILE';
+import {
+  PILOT_STORAGE_KEY,
+  safePersistPilotProfile,
+  safeRemovePilotProfile,
+} from '@utils/pilotProfileStorage';
 
 /** Minimal UUID v4 — no external dependency needed. */
 const uuid4 = () =>
@@ -267,7 +270,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         normalized = { ...normalized, role: 'admin', is_approved: true };
       }
 
-      await AsyncStorage.setItem(PILOT_STORAGE_KEY, JSON.stringify(normalized));
+      await safePersistPilotProfile(normalized);
       set({
         profile:     normalized,
         session,
@@ -302,7 +305,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 phone: creds.phone,
                 is_approved: true,
               };
-              await AsyncStorage.setItem(PILOT_STORAGE_KEY, JSON.stringify(merged));
+              await safePersistPilotProfile(merged);
               set({ profile: merged, session: data.session ?? null });
             }
           } catch (syncErr) {
@@ -486,7 +489,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       await ensureProfileInDb(profile);
 
-      await AsyncStorage.removeItem(PILOT_STORAGE_KEY);
+      await safeRemovePilotProfile();
 
       set({
         session: data.session,
@@ -697,7 +700,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       const session = await ensurePhoneAuthSession(profile);
 
-      await AsyncStorage.setItem(PILOT_STORAGE_KEY, JSON.stringify(profile));
+      await safePersistPilotProfile(profile);
       set({
         profile,
         session,
@@ -725,7 +728,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         profile = applyPilotProfile(profile);
       }
       const session = await ensurePhoneAuthSession(profile);
-      await AsyncStorage.setItem(PILOT_STORAGE_KEY, JSON.stringify(profile));
+      await safePersistPilotProfile(profile);
       set({ profile, session, isPhoneAuth: !session });
       return true;
     } catch {
@@ -746,7 +749,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     });
     await Promise.allSettled([
       withTimeout(supabase.auth.signOut(), 4_000).catch(() => undefined),
-      AsyncStorage.removeItem(PILOT_STORAGE_KEY),
+      safeRemovePilotProfile(),
     ]);
   },
 

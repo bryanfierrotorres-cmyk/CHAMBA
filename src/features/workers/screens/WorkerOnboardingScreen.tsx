@@ -12,7 +12,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Alert, Platform, Image,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { safePersistPilotProfile } from '@utils/pilotProfileStorage';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -289,7 +289,7 @@ export const WorkerOnboardingScreen: React.FC = () => {
       setProfile(updatedProfile);
 
       // Persist to AsyncStorage for phone-auth users
-      await AsyncStorage.setItem('CHAMBA_PILOT_PROFILE', JSON.stringify(updatedProfile));
+      await safePersistPilotProfile(updatedProfile);
 
       const msg = 'Tus documentos fueron enviados. El administrador los revisará pronto.';
       if (Platform.OS === 'web') window.alert(msg);
