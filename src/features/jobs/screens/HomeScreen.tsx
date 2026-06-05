@@ -13,6 +13,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { JobCard } from '../components/JobCard';
 import { EmptyState } from '@components/EmptyState';
 import { WorkerTopBar } from '@components/worker/WorkerTopBar';
+import { TechServiceRadar } from '@components/worker/TechServiceRadar';
 import { RadarServiceFilters } from '@components/worker/RadarServiceFilters';
 import { useJobFeed, JOB_KEYS, useAcceptJob } from '../hooks/useJobs';
 import { useAuthStore } from '@store/authStore';
@@ -399,6 +400,8 @@ export const HomeScreen: React.FC = () => {
         )}
         ListHeaderComponent={
           <>
+            <TechServiceRadar />
+
             {/* Radar Activo header */}
             <View style={styles.radarHeader}>
               <View>

@@ -3,6 +3,7 @@ node_modules/
 dist/
 dist-web-test/
 dist-web-preview/
+dist-web-radar/
 web-build/
 
 # Artefactos de scripts locales
