@@ -8,4 +8,4 @@ export const CLIENT_ACTIVE_JOBS_LIMIT_MESSAGE =
   'Ya tenés 2 solicitudes activas. Cuando una figure como finalizada, podés publicar otra.';
 
 export const WORKER_ACTIVE_COMMITMENTS_LIMIT_MESSAGE =
-  'Ya tenés 2 chambas activas (en curso o esperando al cliente). Finalizá una en Agenda para postularte a otra.';
+  'Ya tenés 2 chambas activas (en curso o postulaciones pendientes). Revisá Agenda → Activas para gestionarlas.';

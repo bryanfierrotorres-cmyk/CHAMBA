@@ -38,6 +38,7 @@ import { useAssignmentsStore } from '@store/assignmentsStore';
 import { mergeAssignments, patchLocalJobStatus, getLocalAssignments } from '@utils/localAssignments';
 
 import { CONFIG } from '@constants/config';
+import { workerActiveCountKey } from '@features/jobs/hooks/useJobActiveLimits';
 
 import type {
   JobCategory,
@@ -374,6 +375,7 @@ export const useAdvanceOperationalPhase = () => {
       queryClient.invalidateQueries({ queryKey: JOB_KEYS.detail(jobId) });
       if (profile?.id) {
         queryClient.invalidateQueries({ queryKey: JOB_KEYS.myJobs(profile.id) });
+        queryClient.invalidateQueries({ queryKey: workerActiveCountKey(profile.id) });
       }
       queryClient.invalidateQueries({ queryKey: ['client-orders'] });
     },
@@ -423,6 +425,9 @@ export const useCompleteJob = () => {
     onSettled: (_data, _err, { jobId }) => {
       queryClient.invalidateQueries({ queryKey: JOB_KEYS.adminControl() });
       queryClient.invalidateQueries({ queryKey: JOB_KEYS.detail(jobId) });
+      if (profile?.id) {
+        queryClient.invalidateQueries({ queryKey: workerActiveCountKey(profile.id) });
+      }
     },
   });
 };
@@ -490,6 +495,10 @@ export const useAcceptJob = () => {
       queryClient.invalidateQueries({ queryKey: ['client-orders'] });
 
       queryClient.invalidateQueries({ queryKey: JOB_KEYS.adminControl() });
+
+      if (profile?.id) {
+        queryClient.invalidateQueries({ queryKey: workerActiveCountKey(profile.id) });
+      }
 
     },
 

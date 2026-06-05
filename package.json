@@ -27,6 +27,7 @@
     "db:apply-approve-fix": "node scripts/apply-migration-018-approve-fix.mjs",
     "db:apply-realtime": "node scripts/apply-migration-019-realtime.mjs",
     "db:apply-job-limits": "node scripts/apply-migration-020-job-limits.mjs",
+    "db:apply-worker-count-fix": "node scripts/apply-migration-021-worker-count.mjs",
     "db:reset-two-users": "node scripts/reset-two-test-users.mjs",
     "diagnose:client-job": "node scripts/diagnose-client-job.mjs",
     "diagnose:pepe-limpieza": "node scripts/diagnose-pepe-limpieza.mjs",

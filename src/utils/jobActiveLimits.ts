@@ -23,23 +23,47 @@ type AssignmentRow = JobAssignment & { selection_status?: string | null };
 /**
  * Cuenta chambas no finalizadas del técnico: postulación pendiente (open) o trabajo asignado/en curso.
  */
+/** Postulación enviada — el cliente aún no eligió técnico. */
+export const isWorkerPendingClientSelection = (row: AssignmentRow): boolean => {
+  const job = row.job;
+  if (job?.status !== 'open') return false;
+  const selection = row.selection_status;
+  if (selection === 'rejected') return false;
+  return !selection || selection === 'pending';
+};
+
+/**
+ * Cupo activo = postulación pending en job open, o trabajo approved en taken/in_progress.
+ * (Evita contar caché local sin selection_status o postulaciones ya rechazadas.)
+ */
+export const isWorkerCommitmentActive = (row: AssignmentRow): boolean => {
+  const job = row.job;
+  if (!job?.id || !isNonTerminalJobStatus(job.status as JobStatus)) return false;
+
+  const selection = row.selection_status;
+  if (selection === 'rejected') return false;
+
+  if (job.status === 'open') {
+    return selection === 'pending';
+  }
+
+  if (job.status === 'taken' || job.status === 'in_progress') {
+    return selection === 'approved' || selection == null;
+  }
+
+  return false;
+};
+
 export const countWorkerActiveCommitments = (assignments: AssignmentRow[]): number => {
   const seen = new Set<string>();
   let count = 0;
 
   for (const row of assignments) {
-    const job = row.job;
-    if (!job?.id || !isNonTerminalJobStatus(job.status as JobStatus)) continue;
+    if (!isWorkerCommitmentActive(row)) continue;
 
-    const selection = row.selection_status;
-    if (selection === 'rejected') continue;
-
-    if (job.status === 'open') {
-      if (selection && selection !== 'pending') continue;
-    }
-
-    if (seen.has(job.id)) continue;
-    seen.add(job.id);
+    const jobId = row.job!.id;
+    if (seen.has(jobId)) continue;
+    seen.add(jobId);
     count += 1;
   }
 

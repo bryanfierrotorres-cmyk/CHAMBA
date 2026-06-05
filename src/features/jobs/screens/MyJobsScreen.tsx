@@ -36,11 +36,14 @@ import {
 import { confirmAction, showMessage } from '@utils/confirmAction';
 import {
   isActiveOperationalJob,
-  isWorkerAssignmentActive,
   isWorkerAssignmentHistory,
   getPhaseAction,
   resolveOperationalPhase,
 } from '@utils/workerOperationalPhase';
+import {
+  isWorkerCommitmentActive,
+  isWorkerPendingClientSelection,
+} from '@utils/jobActiveLimits';
 import type { WorkerTabParamList, JobAssignment, WorkerOperationalPhase } from '@/types';
 
 type Nav = BottomTabNavigationProp<WorkerTabParamList, 'MyJobs'>;
@@ -71,10 +74,10 @@ export const MyJobsScreen: React.FC = () => {
     const active: JobAssignment[] = [];
     const history: JobAssignment[] = [];
     for (const item of assignments) {
-      if (isWorkerAssignmentHistory(item.job)) {
-        history.push(item);
-      } else if (isWorkerAssignmentActive(item.job)) {
+      if (isWorkerCommitmentActive(item)) {
         active.push(item);
+      } else if (isWorkerAssignmentHistory(item.job)) {
+        history.push(item);
       } else {
         history.push(item);
       }
@@ -190,7 +193,7 @@ export const MyJobsScreen: React.FC = () => {
     <EmptyState
       icon="flash-outline"
       title="Sin chambas activas"
-      subtitle="Aceptá un trabajo en el radar y aparecerá aquí con los pasos del servicio."
+      subtitle="Tus postulaciones pendientes y chambas en curso aparecen aquí."
     />
   ) : (
     <EmptyState
@@ -321,7 +324,8 @@ const AssignmentCard: React.FC<{
       : 'Pendiente';
 
   const category = job?.category ?? '';
-  const showStepper = !isHistory && hasJob && isActiveOperationalJob(job);
+  const awaitingClient = !isHistory && isWorkerPendingClientSelection(assignment);
+  const showStepper = !isHistory && hasJob && isActiveOperationalJob(job) && !awaitingClient;
 
   return (
     <ChambaPressable
@@ -338,8 +342,13 @@ const AssignmentCard: React.FC<{
           <Text style={styles.cardPrice}>
             {hasJob ? formatCurrency(job.worker_payout ?? 0) : '—'}
           </Text>
-          {!isHistory && (
+          {!isHistory && !awaitingClient && (
             <Text style={[styles.paymentLabel, { color: paymentColor }]}>{paymentLabel}</Text>
+          )}
+          {awaitingClient && (
+            <Text style={styles.pendingClientText}>
+              Postulación enviada — el cliente revisará tu perfil
+            </Text>
           )}
         </View>
 
@@ -469,6 +478,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#007AFF',
   },
   paymentLabel: { fontSize: 12, fontWeight: '700', marginTop: 2 },
+  pendingClientText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: M3.primary,
+    marginTop: 6,
+    lineHeight: 17,
+  },
   historyFooter: {
     flexDirection: 'row',
     alignItems: 'center',

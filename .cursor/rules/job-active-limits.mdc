@@ -10,7 +10,7 @@ alwaysApply: true
 | Rol | Límite | Qué cuenta como activo |
 |-----|--------|------------------------|
 | **Cliente** | Máx. **2** solicitudes publicadas | `jobs` con `status` ≠ `completed` ni `cancelled` |
-| **Técnico** | Máx. **2** chambas hasta finalizar una | Postulación `pending` en job `open` + asignación `approved` en `taken` / `in_progress` |
+| **Técnico** | Máx. **2** chambas hasta finalizar una | Solo `pending` en job `open` o `approved` en `taken`/`in_progress` (no rechazadas ni caché fantasma) |
 
 ## Comportamiento UI
 
@@ -19,10 +19,10 @@ alwaysApply: true
 
 ## Backend (fuente de verdad)
 
-- Migración `020_job_active_limits.sql`
+- Migraciones `020_job_active_limits.sql`, `021_worker_active_count_fix.sql`
 - RPC: `count_client_active_jobs`, `count_worker_active_commitments`
 - Validación en: `create_client_job`, `accept_job`, `client_approve_worker_application`
-- Aplicar: `npm run db:apply-job-limits`
+- Aplicar: `npm run db:apply-job-limits` y `npm run db:apply-worker-count-fix`
 
 ## App
 

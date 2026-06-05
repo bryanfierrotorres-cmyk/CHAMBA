@@ -152,6 +152,13 @@ export const HomeScreen: React.FC = () => {
   const { mutateAsync: acceptMut } = useAcceptJob();
   const workerLimit = useWorkerCommitmentLimit();
 
+  useFocusEffect(
+    useCallback(() => {
+      if (profile?.role !== 'worker' || !profile.id) return;
+      void workerLimit.refetch();
+    }, [profile?.id, profile?.role, workerLimit.refetch]),
+  );
+
   const [selectedCategory, setSelectedCategory] = useState<JobCategory | null>(null);
   const [acceptingJobId, setAcceptingJobId]      = useState<string | null>(null);
   const [acceptedJobIds, setAcceptedJobIds]      = useState<Set<string>>(new Set());
@@ -391,7 +398,11 @@ export const HomeScreen: React.FC = () => {
             acceptedJobIds={acceptedJobIds}
             processJobIds={processJobIds}
             awaitingClientChoice={pendingApplicationIds.has(item.id)}
-            acceptBlocked={workerLimit.atLimit && !pendingApplicationIds.has(item.id)}
+            acceptBlocked={
+              !workerLimit.isLoading
+              && workerLimit.atLimit
+              && !pendingApplicationIds.has(item.id)
+            }
             acceptBlockedMessage={workerLimit.message}
             onPressDetail={() => navigation.navigate('JobDetail', { jobId: item.id })}
             onAccept={handleAccept}
@@ -400,7 +411,10 @@ export const HomeScreen: React.FC = () => {
         )}
         ListHeaderComponent={
           <>
-            <TechServiceRadar />
+            <TechServiceRadar
+              jobs={feedJobs}
+              onOpenJob={(jobId) => navigation.navigate('JobDetail', { jobId })}
+            />
 
             {/* Radar Activo header */}
             <View style={styles.radarHeader}>
@@ -425,7 +439,7 @@ export const HomeScreen: React.FC = () => {
               </View>
             )}
 
-            {isApproved && workerLimit.atLimit && (
+            {isApproved && !workerLimit.isLoading && workerLimit.atLimit && (
               <View style={styles.limitBanner}>
                 <Ionicons name="information-circle-outline" size={16} color={M3.primary} />
                 <Text style={styles.limitBannerText}>

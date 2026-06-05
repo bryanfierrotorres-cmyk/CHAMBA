@@ -394,7 +394,7 @@ export const JobDetailScreen: React.FC = () => {
                 Postulaste — el cliente revisará tu perfil y te elegirá
               </Text>
             </View>
-          ) : workerLimit.atLimit ? (
+          ) : !workerLimit.isLoading && workerLimit.atLimit ? (
             <View style={styles.pendingBox}>
               <Ionicons name="lock-closed-outline" size={18} color={COLORS.warning} />
               <Text style={styles.pendingText}>{workerLimit.message}</Text>

@@ -1,0 +1,22 @@
+-- CHAMBA 021 — Cupo técnico: solo postulaciones pending (open) o trabajo approved (taken/in_progress)
+SET statement_timeout = '60s';
+
+CREATE OR REPLACE FUNCTION count_worker_active_commitments(p_worker_id UUID)
+RETURNS INT
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT COUNT(DISTINCT j.id)::INT
+  FROM job_assignments ja
+  JOIN jobs j ON j.id = ja.job_id
+  WHERE ja.worker_id = p_worker_id
+    AND j.status::text NOT IN ('completed', 'cancelled')
+    AND (
+      (j.status::text = 'open' AND ja.selection_status = 'pending')
+      OR (j.status::text IN ('taken', 'in_progress') AND ja.selection_status = 'approved')
+    );
+$$;
+
+GRANT EXECUTE ON FUNCTION count_worker_active_commitments(UUID) TO anon, authenticated;
