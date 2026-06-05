@@ -233,9 +233,13 @@ export const MyJobsScreen: React.FC = () => {
 
         {agendaFilter === 'activas' && activeAssignments.length > 0 && (
           <Text style={styles.sectionHint}>
-            {activeAssignments.length === 1
-              ? '1 chamba en curso — actualizá el estado desde la tarjeta'
-              : `${activeAssignments.length} chambas en curso`}
+            {activeAssignments.every(isWorkerPendingClientSelection)
+              ? activeAssignments.length === 1
+                ? '1 postulación esperando que el cliente te elija'
+                : `${activeAssignments.length} postulaciones esperando al cliente`
+              : activeAssignments.length === 1
+                ? '1 chamba en curso — actualizá el estado desde la tarjeta'
+                : `${activeAssignments.length} chambas activas (postulaciones o en curso)`}
           </Text>
         )}
         {agendaFilter === 'historial' && historyAssignments.length > 0 && (

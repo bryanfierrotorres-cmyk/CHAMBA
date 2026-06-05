@@ -1,0 +1,101 @@
+-- CHAMBA 022 — Al elegir técnico, no contar la postulación del mismo job (ya está en su cupo)
+SET statement_timeout = '60s';
+
+DROP FUNCTION IF EXISTS count_worker_active_commitments(UUID);
+
+CREATE OR REPLACE FUNCTION count_worker_active_commitments(
+  p_worker_id UUID,
+  p_exclude_job_id UUID DEFAULT NULL
+)
+RETURNS INT
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT COUNT(DISTINCT j.id)::INT
+  FROM job_assignments ja
+  JOIN jobs j ON j.id = ja.job_id
+  WHERE ja.worker_id = p_worker_id
+    AND j.status::text NOT IN ('completed', 'cancelled')
+    AND (p_exclude_job_id IS NULL OR j.id IS DISTINCT FROM p_exclude_job_id)
+    AND (
+      (j.status::text = 'open' AND ja.selection_status = 'pending')
+      OR (j.status::text IN ('taken', 'in_progress') AND ja.selection_status = 'approved')
+    );
+$$;
+
+CREATE OR REPLACE FUNCTION client_approve_worker_application(
+  p_job_id    UUID,
+  p_client_id UUID,
+  p_worker_id UUID
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_job jobs%ROWTYPE;
+  v_assignment_id UUID;
+  v_active INT;
+  v_max_active INT := 2;
+BEGIN
+  SELECT * INTO v_job FROM jobs WHERE id = p_job_id FOR UPDATE;
+
+  IF NOT FOUND OR v_job.created_by <> p_client_id THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Solicitud no encontrada');
+  END IF;
+
+  IF v_job.status::text <> 'open' THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Esta solicitud ya fue asignada');
+  END IF;
+
+  SELECT id INTO v_assignment_id
+  FROM job_assignments
+  WHERE job_id = p_job_id
+    AND worker_id = p_worker_id
+    AND selection_status = 'pending';
+
+  IF v_assignment_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Este técnico no tiene una postulación activa');
+  END IF;
+
+  -- Cupo sin esta solicitud: elegir al técnico convierte su postulación pending → approved
+  v_active := count_worker_active_commitments(p_worker_id, p_job_id);
+  IF v_active >= v_max_active THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'Este técnico ya tiene 2 chambas activas y no puede tomar otra hasta finalizar una.',
+      'code', 'worker_active_limit'
+    );
+  END IF;
+
+  UPDATE job_assignments
+  SET selection_status = 'approved'
+  WHERE id = v_assignment_id;
+
+  UPDATE job_assignments
+  SET selection_status = 'rejected'
+  WHERE job_id = p_job_id
+    AND selection_status = 'pending'
+    AND worker_id <> p_worker_id;
+
+  UPDATE jobs
+  SET status = 'taken',
+      assigned_worker_id = p_worker_id,
+      slots_taken = 1,
+      operational_phase = 'accepted',
+      updated_at = NOW()
+  WHERE id = p_job_id;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'assignment_id', v_assignment_id,
+    'worker_id', p_worker_id
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION count_worker_active_commitments(UUID, UUID) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION client_approve_worker_application(UUID, UUID, UUID) TO anon, authenticated;

@@ -21,7 +21,7 @@ alwaysApply: true
 
 - Migraciones `020_job_active_limits.sql`, `021_worker_active_count_fix.sql`
 - RPC: `count_client_active_jobs`, `count_worker_active_commitments`
-- Validación en: `create_client_job`, `accept_job`, `client_approve_worker_application`
+- Validación en: `create_client_job`, `accept_job`, `client_approve_worker_application` (al elegir técnico el cupo **excluye** esa solicitud — migración `022`)
 - Aplicar: `npm run db:apply-job-limits` y `npm run db:apply-worker-count-fix`
 
 ## App

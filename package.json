@@ -28,6 +28,8 @@
     "db:apply-realtime": "node scripts/apply-migration-019-realtime.mjs",
     "db:apply-job-limits": "node scripts/apply-migration-020-job-limits.mjs",
     "db:apply-worker-count-fix": "node scripts/apply-migration-021-worker-count.mjs",
+    "db:apply-approve-exclude": "node scripts/apply-migration-022-approve-exclude.mjs",
+    "diagnose:pepe-active": "node scripts/diagnose-pepe-active-count.mjs",
     "db:reset-two-users": "node scripts/reset-two-test-users.mjs",
     "diagnose:client-job": "node scripts/diagnose-client-job.mjs",
     "diagnose:pepe-limpieza": "node scripts/diagnose-pepe-limpieza.mjs",
