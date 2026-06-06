@@ -15,7 +15,7 @@ import { JOB_KEYS } from '@features/jobs/hooks/useJobs';
 import { validateJobForm } from '@utils/validation';
 import { formatCurrency } from '@utils/formatters';
 import { showMessage } from '@utils/confirmAction';
-import { ensureProfileInDb } from '@utils/profileSync';
+import { resolveAdminActorProfile } from '@utils/profileSync';
 import { CONFIG } from '@constants/config';
 import { useCatalog } from '@features/catalog/hooks/useCatalog';
 import type { ServiceType } from '@features/catalog/types';
@@ -184,14 +184,7 @@ export const CreateJobScreen: React.FC = () => {
     const coords = DEPARTMENT_COORDS[department];
 
     try {
-      await ensureProfileInDb(profile);
-    } catch (syncErr: unknown) {
-      const msg = syncErr instanceof Error ? syncErr.message : 'No se pudo verificar tu perfil';
-      setError(msg);
-      return;
-    }
-
-    try {
+      const adminProfile = await resolveAdminActorProfile(profile);
       await publish({
         title:           title.trim(),
         description:     description.trim(),
@@ -202,7 +195,7 @@ export const CreateJobScreen: React.FC = () => {
         lng:             coords.lng,
         durationHours:   parseFloat(durationHours) || 4,
         requiredWorkers: parseInt(requiredWorkers, 10) || 1,
-        createdBy:       profile.id,
+        createdBy:       adminProfile.id,
         relaxedPricing:  true,
       });
     } catch (err: unknown) {

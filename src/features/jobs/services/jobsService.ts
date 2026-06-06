@@ -32,9 +32,11 @@ import {
   ensureWorkerProfileInDb,
   resolveWorkerProfileForActions,
   persistPilotProfileIfChanged,
+  syncProfileWithDatabase,
   normalizePhone,
   pilotPhoneEmail,
 } from '@utils/profileSync';
+import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
 import type { UserProfile } from '@/types';
 import { assertClientJobPlatformReady } from '@services/clientJobPlatform';
 import {
@@ -49,35 +51,29 @@ type ClientProfileRef = Pick<
   'id' | 'full_name' | 'phone' | 'email' | 'role' | 'is_approved'
 >;
 
-/** ID canónico del cliente (sesión Supabase = RLS) y perfil en BD antes de crear/listar. */
+/** ID canónico del cliente (perfil en BD por teléfono) antes de crear/listar. */
 export const resolveClientIdForJobs = async (profile: ClientProfileRef): Promise<string> => {
-  const { data: { session } } = await supabase.auth.getSession();
-  const targetId = session?.user?.id ?? profile.id;
-  const phone = normalizePhone(profile.phone);
+  const synced = await syncProfileWithDatabase(profile as UserProfile);
+  await persistPilotProfileIfChanged(profile as UserProfile, synced);
+  await ensurePhoneAuthSession(synced);
+
+  const targetId = synced.id;
+  const phone = normalizePhone(synced.phone);
 
   const { error } = await supabase.from('profiles').upsert(
     {
       id:          targetId,
-      full_name:   profile.full_name.trim(),
+      full_name:   synced.full_name.trim(),
       phone:       phone || null,
-      email:       profile.email ?? pilotPhoneEmail(phone || targetId.replace(/-/g, '').slice(0, 12)),
+      email:       synced.email ?? pilotPhoneEmail(phone || targetId.replace(/-/g, '').slice(0, 12)),
       role:        'client',
-      is_approved: profile.is_approved ?? true,
+      is_approved: synced.is_approved ?? true,
     },
     { onConflict: 'id' },
   );
 
   if (error) {
     console.warn('[resolveClientIdForJobs] profile upsert:', error.message);
-  }
-
-  if (session?.user?.id && session.user.id !== profile.id) {
-    console.warn(
-      '[resolveClientIdForJobs] profile.id ≠ auth.uid; usando sesión',
-      profile.id,
-      '→',
-      session.user.id,
-    );
   }
 
   return targetId;
@@ -968,8 +964,13 @@ export const createJob = async (params: CreateJobParams): Promise<Job> => {
   }
 
   const slugCategory = params.category.trim();
-  const dbCategory = toDbJobCategory(params.category);
-  const categoryAttempts = Array.from(new Set([slugCategory, dbCategory]));
+  const categoryAttempts = Array.from(
+    new Set([
+      slugCategory,
+      toDbJobCategory(slugCategory),
+      ...toDbJobCategoryQueryValues(slugCategory),
+    ]),
+  );
   const platformFee   = parseFloat((params.payAmount * 0.05).toFixed(2));
   const workerPayout  = parseFloat((params.payAmount * 0.95).toFixed(2));
 
@@ -997,6 +998,21 @@ export const createJob = async (params: CreateJobParams): Promise<Job> => {
     });
     const rpcBody = parseCreateJobRpc(rpcData);
     rpcFailedMsg = rpcBody?.error ?? rpcErr?.message ?? rpcFailedMsg;
+
+    if (rpcErr) {
+      console.warn('[createJob] RPC create_client_job error:', {
+        category: cat,
+        message: rpcErr.message,
+        details: (rpcErr as { details?: string }).details ?? null,
+        hint: (rpcErr as { hint?: string }).hint ?? null,
+        code: rpcErr.code ?? null,
+      });
+    } else if (rpcBody && !rpcBody.success) {
+      console.warn('[createJob] RPC create_client_job rejected:', {
+        category: cat,
+        error: rpcBody.error,
+      });
+    }
 
     if (!rpcErr && rpcBody?.success && rpcBody.job) {
       job = normalizeJobRow(rpcBody.job);
@@ -1040,6 +1056,15 @@ export const createJob = async (params: CreateJobParams): Promise<Job> => {
       if (!error && data) {
         job = normalizeJobRow(data as Job);
         break;
+      }
+      if (error) {
+        console.warn('[createJob] direct INSERT jobs error:', {
+          category: cat,
+          message: error.message,
+          details: (error as { details?: string }).details ?? null,
+          hint: (error as { hint?: string }).hint ?? null,
+          code: error.code ?? null,
+        });
       }
       insertError = error?.message ?? insertError;
     }

@@ -1,6 +1,6 @@
 import { supabase } from '@services/supabase';
 import { CONFIG } from '@constants/config';
-import { pilotPhoneEmail } from '@constants/pilot';
+import { pilotPhoneEmail, getPilotProfileId } from '@constants/pilot';
 import { applyPilotProfile } from '@utils/pilotAccess';
 import { useAuthStore } from '@store/authStore';
 import { migrateLocalAssignmentsWorkerId } from '@utils/localAssignments';
@@ -200,6 +200,98 @@ export const ensureProfileInDb = async (profile: UserProfile): Promise<void> => 
   if (upsertErr) {
     console.warn('[ensureProfileInDb]', upsertErr.message);
   }
+};
+
+/**
+ * ID canónico del admin en Supabase (auth.uid o perfil por teléfono).
+ * Necesario en piloto: el store local puede tener un UUID distinto al de la BD.
+ */
+export const resolveAdminActorProfile = async (
+  profile: UserProfile,
+): Promise<UserProfile> => {
+  const phoneCandidates = [
+    normalizePhone(profile.phone),
+    normalizePhone(CONFIG.pilot.admin.phone),
+  ].filter((p, i, arr) => p.length > 0 && arr.indexOf(p) === i);
+
+  for (const phone of phoneCandidates) {
+    const byPhone = await fetchProfileByPhone(phone);
+    if (byPhone?.role === 'admin') {
+      const resolved: UserProfile = {
+        ...byPhone,
+        role: 'admin',
+        is_approved: true,
+      };
+      await persistPilotProfileIfChanged(profile, resolved);
+      return resolved;
+    }
+  }
+
+  let { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user?.id && CONFIG.pilot.enabled) {
+    const creds = CONFIG.pilot.admin;
+    if (creds.email && creds.password) {
+      try {
+        const { data } = await supabase.auth.signInWithPassword({
+          email: creds.email,
+          password: creds.password,
+        });
+        session = data.session;
+      } catch {
+        // Sin red o credenciales inválidas
+      }
+    }
+  }
+
+  const canonicalId = session?.user?.id ?? getPilotProfileId('admin') ?? profile.id;
+  const effective: UserProfile = {
+    ...profile,
+    id: canonicalId,
+    role: 'admin',
+    is_approved: true,
+    phone: profile.phone || CONFIG.pilot.admin.phone,
+    email: profile.email || CONFIG.pilot.admin.email,
+    full_name: profile.full_name || CONFIG.pilot.admin.fullName,
+  };
+
+  await ensureProfileInDb(effective);
+  invalidateProfilePhoneCache();
+
+  for (const phone of phoneCandidates) {
+    const byPhone = await fetchProfileByPhone(phone);
+    if (byPhone?.role === 'admin') {
+      const resolved: UserProfile = {
+        ...byPhone,
+        role: 'admin',
+        is_approved: true,
+      };
+      await persistPilotProfileIfChanged(profile, resolved);
+      return resolved;
+    }
+  }
+
+  if (session?.user?.id) {
+    const { data: row } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', session.user.id)
+      .maybeSingle();
+    if (row) {
+      const resolved: UserProfile = {
+        ...(row as UserProfile),
+        role: 'admin',
+        is_approved: true,
+      };
+      await persistPilotProfileIfChanged(profile, resolved);
+      return resolved;
+    }
+    const fallback: UserProfile = { ...effective, id: session.user.id };
+    await persistPilotProfileIfChanged(profile, fallback);
+    return fallback;
+  }
+
+  await persistPilotProfileIfChanged(profile, effective);
+  return effective;
 };
 
 /** @deprecated Usar ensureProfileInDb */

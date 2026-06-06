@@ -19,6 +19,7 @@ import {
   slugify,
 } from '@features/admin/services/catalogAdminService';
 import { showMessage } from '@utils/confirmAction';
+import { resolveAdminActorProfile } from '@utils/profileSync';
 import { CARD_STEP_SHADOW, CHAMBA, chambaStyles } from '@constants/chambaUI';
 import type { ServiceCategory } from '@features/catalog/types';
 
@@ -30,7 +31,6 @@ export const ManageCatalogScreen: React.FC = () => {
     categories,
     serviceTypes,
     isLoading,
-    getSuggestedPrice,
     preciosSource,
     preciosDbRowCount,
   } = useCatalog();
@@ -52,22 +52,22 @@ export const ManageCatalogScreen: React.FC = () => {
   const baselinePrices = useMemo(() => {
     const map: Record<string, number> = {};
     for (const t of serviceTypes) {
-      map[t.slug] = getSuggestedPrice(t.slug);
+      map[t.slug] = Math.round(Number(t.suggested_price) || 0);
     }
     return map;
-  }, [serviceTypes, getSuggestedPrice]);
+  }, [serviceTypes]);
 
   useEffect(() => {
     if (isLoading || serviceTypes.length === 0) return;
     setPriceDrafts((prev) => {
       const next: Record<string, string> = {};
       for (const t of serviceTypes) {
-        const baseline = baselinePrices[t.slug] ?? getSuggestedPrice(t.slug);
-        next[t.slug] = prev[t.slug] ?? String(Math.round(baseline));
+        const baseline = baselinePrices[t.slug] ?? 0;
+        next[t.slug] = prev[t.slug] ?? String(baseline);
       }
       return next;
     });
-  }, [serviceTypes, isLoading, baselinePrices, getSuggestedPrice]);
+  }, [serviceTypes, isLoading, baselinePrices]);
 
   const handlePriceChange = useCallback((slug: string, value: string) => {
     setPriceDrafts((prev) => ({ ...prev, [slug]: value }));
@@ -105,7 +105,8 @@ export const ManageCatalogScreen: React.FC = () => {
         return { service_slug: slug, suggested_price: price };
       });
 
-      const result = await adminUpsertPreciosBatch(profile.id, rows);
+      const adminProfile = await resolveAdminActorProfile(profile);
+      const result = await adminUpsertPreciosBatch(adminProfile.id, rows);
       if (!result.success) throw new Error(result.error ?? 'No se pudieron guardar los precios');
       return result;
     },
@@ -126,9 +127,10 @@ export const ManageCatalogScreen: React.FC = () => {
   const addCategory = useMutation({
     mutationFn: async () => {
       if (!profile?.id) throw new Error('Sesión de administrador requerida');
+      const adminProfile = await resolveAdminActorProfile(profile);
       const slug = catSlug.trim() || slugify(catName);
       if (!catName.trim() || !slug) throw new Error('Nombre de categoría requerido');
-      return adminUpsertCategory(profile.id, {
+      return adminUpsertCategory(adminProfile.id, {
         slug,
         name: catName.trim(),
         icon: catIcon.trim() || '📋',
@@ -147,11 +149,12 @@ export const ManageCatalogScreen: React.FC = () => {
   const addServiceType = useMutation({
     mutationFn: async () => {
       if (!profile?.id) throw new Error('Sesión de administrador requerida');
+      const adminProfile = await resolveAdminActorProfile(profile);
       const slug = typeSlug.trim() || slugify(typeName);
       const price = parseFloat(typePrice) || 0;
       if (!typeName.trim() || !slug) throw new Error('Nombre del trabajo requerido');
       if (!typeCategorySlug) throw new Error('Selecciona una categoría');
-      return adminUpsertServiceType(profile.id, {
+      return adminUpsertServiceType(adminProfile.id, {
         categorySlug: typeCategorySlug,
         slug,
         name: typeName.trim(),
@@ -188,7 +191,7 @@ export const ManageCatalogScreen: React.FC = () => {
         <View style={chambaStyles.screenHeader}>
           <Text style={chambaStyles.screenTitle}>Catálogo y precios</Text>
           <Text style={chambaStyles.screenSubtitle}>
-            Editá el precio sugerido por servicio. Los cambios se aplican en toda la app.
+            Editá el precio sugerido por servicio, cambiá el monto y tocá Guardar cambios.
           </Text>
         </View>
 

@@ -162,11 +162,18 @@ const AccordionCatalog: React.FC<{
   modifiedSlugs,
 }) => {
   const sections = useMemo(() => buildAccordionSections(grouped), [grouped]);
+  const allSectionKeys = useMemo(() => sections.map((s) => s.key), [sections]);
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
 
   useEffect(() => {
     enableLayoutAnimation();
   }, []);
+
+  useEffect(() => {
+    if (editablePrices && allSectionKeys.length > 0) {
+      setExpandedKeys(allSectionKeys);
+    }
+  }, [editablePrices, allSectionKeys]);
 
   const toggleSection = useCallback((key: string) => {
     if (Platform.OS !== 'web') {
