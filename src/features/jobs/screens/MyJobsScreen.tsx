@@ -36,6 +36,8 @@ import {
 import { confirmAction, showMessage } from '@utils/confirmAction';
 import { JobChatEntryButton } from '@components/chat/JobChatEntryButton';
 import { showJobChatEntry } from '@features/chat/utils/chatHelpers';
+import { WorkerWalletCard } from '@components/worker/WorkerWalletCard';
+import { computeWorkerWalletSummary } from '@utils/workerWalletSummary';
 import {
   isWorkerCommitmentActive,
   isWorkerPendingClientSelection,
@@ -167,9 +169,10 @@ export const MyJobsScreen: React.FC = () => {
     }
   }, [completeMut]);
 
-  const totalEarned = assignments
-    .filter((a) => a.payment_status === 'paid')
-    .reduce((sum, a) => sum + (a.job?.worker_payout ?? 0), 0);
+  const walletSummary = useMemo(
+    () => computeWorkerWalletSummary(assignments),
+    [assignments],
+  );
 
   const openAssignment = useCallback((item: JobAssignment) => {
     if (!item.job_id) return;
@@ -224,15 +227,7 @@ export const MyJobsScreen: React.FC = () => {
           Gestioná trabajos en curso y revisá tu historial
         </Text>
 
-        {totalEarned > 0 && (
-          <View style={styles.walletCard}>
-            <Ionicons name="wallet-outline" size={22} color={M3.onSecondaryContainer} />
-            <View>
-              <Text style={styles.walletLabel}>Total ganado</Text>
-              <Text style={styles.walletAmount}>{formatCurrency(totalEarned)}</Text>
-            </View>
-          </View>
-        )}
+        <WorkerWalletCard summary={walletSummary} />
 
         <ChambaSlidingToggle
           options={filterTabs}
@@ -440,18 +435,6 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     paddingHorizontal: 2,
   },
-  walletCard: {
-    marginTop: SPACING.md,
-    backgroundColor: M3.secondaryContainer,
-    borderRadius: 12,
-    padding: SPACING.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    ...CARD_ELEVATION,
-  },
-  walletLabel: { color: M3.onSecondaryContainer, fontSize: 12, fontWeight: '700' },
-  walletAmount: { color: M3.onSecondaryFixed, fontSize: 24, fontWeight: '700' },
   errorCard: {
     marginTop: SPACING.md,
     backgroundColor: M3.errorContainer,

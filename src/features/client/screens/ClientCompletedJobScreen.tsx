@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Image,
+  TouchableOpacity,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
@@ -16,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ScreenBackButton } from '@components/navigation/ScreenBackButton';
 import { Avatar } from '@components/Avatar';
 import { StarRating } from '@components/StarRating';
+import { WorkerRatingPrompt } from '@components/reviews/WorkerRatingPrompt';
 import { useAuthStore } from '@store/authStore';
 import { fetchClientJobSummary } from '@features/jobs/services/jobsService';
 import {
@@ -26,7 +28,10 @@ import {
   coerceNumber,
 } from '@utils/formatters';
 import { getCategoryVisual } from '@utils/categoryVisual';
+import { useReceiptGenerator } from '@features/client/hooks/useReceiptGenerator';
 import type { ClientOrdersStackParamList } from '@/types';
+
+const DEEP_BLUE = '#1E293B';
 
 type Route = RouteProp<ClientOrdersStackParamList, 'ClientCompletedJob'>;
 type Nav = NativeStackNavigationProp<ClientOrdersStackParamList, 'ClientCompletedJob'>;
@@ -43,6 +48,7 @@ export const ClientCompletedJobScreen: React.FC = () => {
   const { jobId } = useRoute<Route>().params;
   const navigation = useNavigation<Nav>();
   const profile = useAuthStore((s) => s.profile);
+  const { downloadReceipt, isGenerating } = useReceiptGenerator();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['client-job-summary', jobId, profile?.id],
@@ -71,13 +77,26 @@ export const ClientCompletedJobScreen: React.FC = () => {
     );
   }
 
-  const { job, completed_at, client_review, worker_rating_avg } = data;
+  const { job, completed_at, worker_rating_avg } = data;
   const worker = job.assigned_worker;
   const visual = getCategoryVisual(job.category);
   const title = job.title?.trim() || getCategoryLabel(job.category);
   const finishedLabel = completed_at
     ? `${formatDate(completed_at)} · ${formatTime(completed_at)}`
     : formatDate(job.updated_at);
+
+  const handleDownloadReceipt = () => {
+    void downloadReceipt({
+      jobId: job.id,
+      jobTitle: title,
+      categoryLabel: getCategoryLabel(job.category),
+      payAmountLabel: formatCurrency(job.pay_amount),
+      completedAt: finishedLabel,
+      workerName: worker?.full_name ?? null,
+      clientName: profile?.full_name ?? null,
+      address: job.location?.address ?? null,
+    });
+  };
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
@@ -116,6 +135,22 @@ export const ClientCompletedJobScreen: React.FC = () => {
           />
         </View>
 
+        <TouchableOpacity
+          style={styles.receiptBtn}
+          onPress={handleDownloadReceipt}
+          disabled={isGenerating}
+          activeOpacity={0.88}
+        >
+          {isGenerating ? (
+            <ActivityIndicator color="#FFFFFF" size="small" />
+          ) : (
+            <>
+              <Ionicons name="document-text-outline" size={20} color="#FFFFFF" />
+              <Text style={styles.receiptBtnText}>Descargar Recibo (PDF)</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
         {worker && (
           <View style={styles.sectionCard}>
             <Text style={styles.sectionLabel}>TU TÉCNICO</Text>
@@ -138,21 +173,15 @@ export const ClientCompletedJobScreen: React.FC = () => {
           </View>
         )}
 
-        {client_review && (
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionLabel}>TU RESEÑA</Text>
-            <View style={styles.reviewRow}>
-              <StarRating
-                rating={coerceNumber(client_review.rating, 0)}
-                showCount={false}
-                size="md"
-              />
-              <Text style={styles.reviewDate}>
-                {formatDate(client_review.created_at)} · {formatTime(client_review.created_at)}
-              </Text>
-            </View>
-            <Text style={styles.reviewComment}>{client_review.comment}</Text>
-          </View>
+        {worker && profile?.id && (
+          <WorkerRatingPrompt
+            workerId={worker.id}
+            workerName={worker.full_name}
+            reviewerId={profile.id}
+            reviewerRole="client"
+            reviewerName={profile.full_name}
+            title="Calificá tu experiencia"
+          />
         )}
 
         <View style={styles.sectionCard}>
@@ -262,6 +291,23 @@ const styles = StyleSheet.create({
   infoLabel: { fontSize: 11, fontWeight: '600', color: '#94A3B8', marginBottom: 2 },
   infoValue: { fontSize: 14, fontWeight: '600', color: '#0F172A', lineHeight: 20 },
 
+  receiptBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: DEEP_BLUE,
+    borderRadius: 14,
+    minHeight: 50,
+    paddingHorizontal: 18,
+    ...CARD_SHADOW,
+  },
+  receiptBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+
   sectionCard: {
     backgroundColor: '#FFF',
     borderRadius: 18,
@@ -279,20 +325,6 @@ const styles = StyleSheet.create({
   workerInfo: { flex: 1, gap: 4 },
   workerName: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
   workerRatingHint: { fontSize: 12, color: '#64748B' },
-
-  reviewRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  reviewDate: { fontSize: 12, color: '#64748B' },
-  reviewComment: {
-    fontSize: 14,
-    color: '#334155',
-    lineHeight: 22,
-  },
 
   photosRow: { flexDirection: 'row', gap: 12 },
   photoPanel: { flex: 1, gap: 8 },

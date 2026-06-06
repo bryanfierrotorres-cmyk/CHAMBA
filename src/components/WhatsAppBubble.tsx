@@ -3,7 +3,9 @@ import {
   TouchableOpacity, Animated, StyleSheet,
   Platform, View, Text,
 } from 'react-native';
+import { useNavigationState } from '@react-navigation/native';
 import { openWhatsAppSupport } from '@utils/whatsappSupport';
+import { isJobChatRouteFocused } from '@utils/navigationFocus';
 
 interface Props {
   /** Bottom offset — useful to clear the tab bar. Default 90 */
@@ -13,6 +15,7 @@ interface Props {
 }
 
 export const WhatsAppBubble: React.FC<Props> = ({ bottom = 90, right = 20 }) => {
+  const hiddenOnChat = useNavigationState(isJobChatRouteFocused);
   const pulse = useRef(new Animated.Value(1)).current;
   const enter = useRef(new Animated.Value(0)).current;
 
@@ -34,6 +37,10 @@ export const WhatsAppBubble: React.FC<Props> = ({ bottom = 90, right = 20 }) => 
   const openWhatsApp = () => {
     void openWhatsAppSupport();
   };
+
+  if (hiddenOnChat) {
+    return null;
+  }
 
   return (
     <Animated.View

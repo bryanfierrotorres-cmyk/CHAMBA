@@ -73,7 +73,11 @@ export const RadarFullMap: React.FC<RadarFullMapProps> = ({ jobs }) => {
 
   return (
     <View style={styles.container}>
-      <MapView style={styles.map} initialRegion={region}>
+      <MapView
+        key={pins.map((p) => p.jobId).join('|') || 'empty'}
+        style={styles.map}
+        initialRegion={region}
+      >
         {pins.map((pin) => (
           <ChambaMapMarker
             key={pin.jobId}

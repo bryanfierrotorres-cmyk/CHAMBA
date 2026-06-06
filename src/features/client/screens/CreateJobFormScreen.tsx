@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -46,6 +46,11 @@ import { textInputWebFocusStyle } from '@constants/textInputFocus';
 import { formatCurrency } from '@utils/formatters';
 import { useCatalog } from '@features/catalog/hooks/useCatalog';
 import { useClientPublishLimit } from '@features/jobs/hooks/useJobActiveLimits';
+import {
+  getClientMinimumOffer,
+  parseOfferAmountInput,
+  validateClientOfferAmount,
+} from '@utils/clientOfferValidation';
 import type { ClientStackParamList } from '@/types';
 
 type Nav = NativeStackNavigationProp<ClientStackParamList, 'CreateJobForm'>;
@@ -84,7 +89,29 @@ export const CreateJobFormScreen: React.FC = () => {
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [requestPhotoUri, setRequestPhotoUri] = useState<string | null>(null);
+  const [offerPriceText, setOfferPriceText] = useState('');
   const schedulingFields = useJobSchedulingFields();
+
+  const suggestedMinimum = useMemo(
+    () => getClientMinimumOffer(suggestedPrice),
+    [suggestedPrice],
+  );
+
+  const offerAmount = useMemo(
+    () => parseOfferAmountInput(offerPriceText),
+    [offerPriceText],
+  );
+
+  const offerValidation = useMemo(
+    () => validateClientOfferAmount(offerAmount, suggestedPrice),
+    [offerAmount, suggestedPrice],
+  );
+
+  useEffect(() => {
+    if (currentStep === 2 && !offerPriceText.trim() && suggestedPrice > 0) {
+      setOfferPriceText(String(Math.round(suggestedPrice)));
+    }
+  }, [currentStep, offerPriceText, suggestedPrice]);
 
   const autoTitle = label.trim() || serviceLabel;
 
@@ -94,6 +121,7 @@ export const CreateJobFormScreen: React.FC = () => {
   const canSubmit =
     isStep1Valid &&
     address.trim().length > 0 &&
+    offerValidation.valid &&
     !publishLimit.atLimit;
 
   const animateStepChange = useCallback((nextStep: number) => {
@@ -135,6 +163,13 @@ export const CreateJobFormScreen: React.FC = () => {
       return;
     }
 
+    if (!offerValidation.valid) {
+      const msg = offerValidation.message;
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Oferta inválida', msg);
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       await assertClientJobPlatformReady();
@@ -152,7 +187,7 @@ export const CreateJobFormScreen: React.FC = () => {
         title: autoTitle,
         description: description.trim(),
         category: serviceTypeSlug,
-        payAmount: suggestedPrice,
+        payAmount: offerAmount,
         address: address.trim(),
         lat: coords.lat,
         lng: coords.lng,
@@ -166,7 +201,7 @@ export const CreateJobFormScreen: React.FC = () => {
       });
 
       setSuccessMessage(
-        `Tu solicitud de "${serviceLabel}" quedó en pendiente. Revisala en Mis Solicitudes → Activas.`,
+        `Tu solicitud de "${serviceLabel}" quedó en pendiente. Revisala en Mis Solicitudes → Pendientes.`,
       );
       setShowSuccess(true);
 
@@ -345,11 +380,30 @@ export const CreateJobFormScreen: React.FC = () => {
                 </Text>
               ) : null}
               <View style={styles.priceBlock}>
-                <Text style={styles.priceLabel}>Precio del servicio</Text>
-                <Text style={styles.priceValue}>{formatCurrency(suggestedPrice)}</Text>
-                <Text style={styles.priceNote}>
-                  El pago se realiza directamente al técnico al finalizar
+                <Text style={styles.suggestedLine}>
+                  Precio sugerido: {formatCurrency(suggestedPrice)}
                 </Text>
+                <Text style={styles.priceLabel}>Tu oferta (C$)</Text>
+                <View style={styles.offerInputRow}>
+                  <Text style={styles.currencyPrefix}>C$</Text>
+                  <TextInput
+                    value={offerPriceText}
+                    onChangeText={setOfferPriceText}
+                    placeholder={String(Math.round(suggestedPrice))}
+                    placeholderTextColor={CHAMBA.muted}
+                    keyboardType="decimal-pad"
+                    style={[styles.offerInput, textInputWebFocusStyle]}
+                    editable={!isSubmitting}
+                  />
+                </View>
+                {!offerValidation.valid && offerPriceText.trim().length > 0 ? (
+                  <Text style={styles.priceError}>{offerValidation.message}</Text>
+                ) : (
+                  <Text style={styles.priceNote}>
+                    Mínimo aceptable: {formatCurrency(suggestedMinimum)} (70% del sugerido).
+                    El pago se realiza directamente al técnico al finalizar.
+                  </Text>
+                )}
               </View>
             </View>
           </>
@@ -406,7 +460,7 @@ export const CreateJobFormScreen: React.FC = () => {
         visible={showSuccess}
         title="¡Solicitud en pendiente!"
         message={successMessage}
-        slogan="Estado: esperando técnico · Mis Solicitudes → Activas"
+        slogan="Estado: esperando técnico · Mis Solicitudes → Pendientes"
         onDismiss={handleSuccessDismiss}
         autoHideMs={4000}
       />
@@ -548,22 +602,49 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   priceBlock: {
-    paddingTop: 4,
+    paddingTop: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#E5E7EB',
+    gap: 8,
+  },
+  suggestedLine: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
   },
   priceLabel: {
     fontSize: 13,
     fontWeight: '600',
     color: '#6B7280',
-    marginBottom: 4,
   },
-  priceValue: {
-    fontSize: 28,
-    fontWeight: '800',
+  offerInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 14,
+    minHeight: 52,
+  },
+  currencyPrefix: {
+    fontSize: 18,
+    fontWeight: '700',
     color: DEEP_BLUE,
-    letterSpacing: -0.6,
-    marginBottom: 8,
+    marginRight: 8,
+  },
+  offerInput: {
+    flex: 1,
+    fontSize: 24,
+    fontWeight: '700',
+    color: DEEP_BLUE,
+    paddingVertical: 8,
+  },
+  priceError: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#DC2626',
+    lineHeight: 18,
   },
   priceNote: {
     fontSize: 13,

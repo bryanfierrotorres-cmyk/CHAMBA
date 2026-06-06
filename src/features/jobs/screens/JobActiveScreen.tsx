@@ -17,9 +17,8 @@ import {
   useAdvanceOperationalPhase,
 } from '../hooks/useJobs';
 import { JobOperationalStepper } from '@components/worker/JobOperationalStepper';
-import { JobQuickContactActions } from '@components/worker/JobQuickContactActions';
 import { JobChatEntryButton } from '@components/chat/JobChatEntryButton';
-import { isJobChatWritable } from '@features/chat/utils/chatHelpers';
+import { showJobChatEntry } from '@features/chat/utils/chatHelpers';
 import { JobBeforeAfterUpload } from '@components/jobs/JobBeforeAfterUpload';
 import { useAuthStore } from '@store/authStore';
 import {
@@ -292,8 +291,6 @@ export const JobActiveScreen: React.FC = () => {
     }
   }, [jobId, assignment, completeMut]);
 
-  const clientPhone = (job?.creator as { phone?: string | null } | undefined)?.phone ?? null;
-
   const handleOpenMap = useCallback(() => {
     if (!job?.location) return;
     void openJobLocationInMaps({
@@ -325,6 +322,7 @@ export const JobActiveScreen: React.FC = () => {
   }
 
   const showOperational = isActiveOperationalJob(job);
+  const isCompleted = job.status === 'completed';
   const canUploadPhotos =
   job.status === 'in_progress' || job.status === 'completed' || job.status === 'taken';
 
@@ -366,10 +364,10 @@ export const JobActiveScreen: React.FC = () => {
           {showOperational ? (
             <JobOperationalStepper
               job={job}
-              clientPhone={clientPhone}
               onAdvance={handleAdvance}
               onFinalize={handleComplete}
               isAdvancing={isAdvancing || isCompleting}
+              showQuickActions={false}
             />
           ) : (
             <View style={{ marginTop: SPACING.md }}>
@@ -391,22 +389,20 @@ export const JobActiveScreen: React.FC = () => {
         </Card>
 
         {/* ── Mensajes con cliente ── */}
-        {isJobChatWritable(job.status) && (
+        {showJobChatEntry(job.status) && (
           <JobChatEntryButton
             variant="worker"
             fullWidth
-            onPress={() => navigation.navigate('JobChat', { jobId })}
+            readOnly={isCompleted}
+            onPress={() => navigation.navigate('JobChat', { jobId, readOnly: isCompleted })}
           />
         )}
 
         {/* ── Quick Actions ── */}
+        {!isCompleted && (
         <View style={{ gap: SPACING.sm }}>
           <Text style={styles.sectionMicro}>ACCESOS RÁPIDOS</Text>
           <View style={{ flexDirection: 'row', gap: SPACING.sm, alignItems: 'center' }}>
-            <JobQuickContactActions
-              clientPhone={clientPhone}
-              jobTitle={job.title}
-            />
             <View style={{ flex: 1 }}>
               <QuickAction
                 icon="map"
@@ -416,6 +412,7 @@ export const JobActiveScreen: React.FC = () => {
             </View>
           </View>
         </View>
+        )}
 
         {canUploadPhotos && workerId && (
           <Card>

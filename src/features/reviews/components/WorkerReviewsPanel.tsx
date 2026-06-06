@@ -111,9 +111,39 @@ export const WorkerReviewsPanel: React.FC<WorkerReviewsPanelProps> = ({
     );
   }
 
-  // Cliente: una sola reseña por técnico — ocultar panel completo para liberar espacio
-  if (reviewerRole === 'client' && myReview) {
-    return null;
+  // Cliente: mostrar confirmación en lugar de ocultar el panel
+  if (reviewerRole === 'client' && myReview && !allowReview) {
+    return (
+      <View style={[styles.root, compact && styles.rootCompact]}>
+        <View style={styles.summaryRow}>
+          <StarRating
+            rating={summary.rating_avg}
+            totalReviews={summary.total_reviews}
+            size={compact ? 'sm' : 'md'}
+          />
+        </View>
+        <View style={styles.clientThankCard}>
+          <Text style={styles.clientThankTitle}>Tu calificación</Text>
+          <StarRating rating={coerceNumber(myReview.rating, 0)} showCount={false} size="md" />
+          <Text style={styles.reviewComment}>{myReview.comment}</Text>
+          <Text style={styles.reviewMeta}>
+            Publicada el {formatDate(myReview.created_at)}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (reviewerRole === 'client' && myReview && allowReview) {
+    return (
+      <View style={[styles.root, compact && styles.rootCompact]}>
+        <View style={styles.clientThankCard}>
+          <Text style={styles.clientThankTitle}>¡Gracias por calificar!</Text>
+          <StarRating rating={coerceNumber(myReview.rating, 0)} showCount={false} size="md" />
+          <Text style={styles.reviewComment}>{myReview.comment}</Text>
+        </View>
+      </View>
+    );
   }
 
   return (
@@ -278,5 +308,18 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.sm,
     textAlign: 'center',
     paddingVertical: SPACING.md,
+  },
+  clientThankCard: {
+    backgroundColor: COLORS.bg.elevated,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md,
+    gap: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border.subtle,
+  },
+  clientThankTitle: {
+    color: COLORS.text.primary,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: '800',
   },
 });

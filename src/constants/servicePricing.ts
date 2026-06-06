@@ -3,8 +3,8 @@ import {
   type JobCategory,
 } from '@constants/chambaCategories';
 
-/** Mínimo permitido respecto al precio sugerido (50%). */
-export const MIN_PRICE_RATIO = 0.5;
+/** Mínimo permitido respecto al precio sugerido (70% — modelo inDrive). */
+export const MIN_PRICE_RATIO = 0.7;
 
 export type PriceLookup = {
   getSuggestedPrice?: (slug: string) => number;
@@ -41,7 +41,7 @@ export const validateClientPrice = (
   if (amount < minimum) {
     return {
       valid: false,
-      message: `El presupuesto mínimo es C$${minimum.toLocaleString('es-NI')} (50% del precio sugerido de C$${suggested.toLocaleString('es-NI')})`,
+      message: `El presupuesto mínimo es C$${minimum.toLocaleString('es-NI')} (70% del precio sugerido de C$${suggested.toLocaleString('es-NI')})`,
     };
   }
 

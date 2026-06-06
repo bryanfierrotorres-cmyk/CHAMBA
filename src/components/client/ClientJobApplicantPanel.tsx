@@ -11,8 +11,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from '@components/Avatar';
 import { CHAMBA, CARD_STEP_SHADOW } from '@constants/chambaUI';
-import { formatRatingAvg, getCategoryLabel } from '@utils/formatters';
+import { getCategoryLabel } from '@utils/formatters';
 import { formatNicaPhoneDisplay } from '@utils/phoneNicaragua';
+import { summarizeWorkerTrust } from '@utils/workerTrustSummary';
 import {
   clientApproveWorkerApplication,
   clientRejectWorkerApplication,
@@ -150,6 +151,7 @@ export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = (
           .filter(Boolean)
           .map((c) => getCategoryLabel(c as string))
           .join(' · ');
+        const trust = summarizeWorkerTrust(app);
 
         return (
           <View key={app.assignment_id} style={styles.card}>
@@ -161,12 +163,19 @@ export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = (
                   <Text style={styles.meta}>{formatNicaPhoneDisplay(app.phone)}</Text>
                 ) : null}
                 {specs ? <Text style={styles.meta}>{specs}</Text> : null}
-                <View style={styles.ratingRow}>
-                  <Ionicons name="star" size={14} color="#F59E0B" />
-                  <Text style={styles.rating}>
-                    {formatRatingAvg(app.rating_avg)}
-                    {app.total_reviews ? ` (${app.total_reviews} reseñas)` : ''}
-                  </Text>
+                <View style={styles.badgeRow}>
+                  {trust.starLabel ? (
+                    <View style={styles.trustBadge}>
+                      <Text style={styles.trustBadgeText}>{trust.starLabel}</Text>
+                    </View>
+                  ) : null}
+                  {trust.jobsLabel ? (
+                    <View style={[styles.trustBadge, trust.isNew && styles.trustBadgeNew]}>
+                      <Text style={[styles.trustBadgeText, trust.isNew && styles.trustBadgeTextNew]}>
+                        {trust.jobsLabel}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
               </View>
               {!isPending && (
@@ -245,8 +254,32 @@ const styles = StyleSheet.create({
   cardInfo: { flex: 1, gap: 2 },
   name: { fontSize: 16, fontWeight: '800', color: CHAMBA.navy },
   meta: { fontSize: 12, color: CHAMBA.muted },
-  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-  rating: { fontSize: 12, fontWeight: '600', color: '#B45309' },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8,
+  },
+  trustBadge: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  trustBadgeNew: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#BFDBFE',
+  },
+  trustBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: CHAMBA.navy,
+  },
+  trustBadgeTextNew: {
+    color: '#1E40AF',
+  },
   statusPill: {
     paddingHorizontal: 8,
     paddingVertical: 4,

@@ -2,7 +2,11 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING } from '@constants/theme';
+import { CHAMBA } from '@constants/chambaUI';
 import { coerceNumber } from '@utils/formatters';
+
+const STAR_GOLD = '#F59E0B';
+const STAR_EMPTY = '#D1D5DB';
 
 interface StarRatingProps {
   rating?:       number | null;
@@ -14,7 +18,7 @@ interface StarRatingProps {
   onChange?:     (rating: number) => void;
 }
 
-const SIZE_MAP = { sm: 14, md: 18, lg: 22 } as const;
+const SIZE_MAP = { sm: 16, md: 20, lg: 28 } as const;
 
 export const StarRating: React.FC<StarRatingProps> = ({
   rating,
@@ -49,16 +53,16 @@ export const StarRating: React.FC<StarRatingProps> = ({
         <TouchableOpacity
           key={index}
           onPress={() => onChange?.(index + 1)}
-          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-          activeOpacity={0.7}
+          hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+          activeOpacity={0.75}
         >
-          <Ionicons name={iconName} size={starSize + 4} color="#FBBF24" />
+          <Ionicons name={iconName} size={starSize + 2} color={filled ? STAR_GOLD : STAR_EMPTY} />
         </TouchableOpacity>
       );
     }
 
     return (
-      <Ionicons key={index} name={iconName} size={starSize} color="#FBBF24" />
+      <Ionicons key={index} name={iconName} size={starSize} color={filled ? STAR_GOLD : STAR_EMPTY} />
     );
   };
 
@@ -66,7 +70,7 @@ export const StarRating: React.FC<StarRatingProps> = ({
     return (
       <View style={styles.row}>
         {Array.from({ length: 5 }).map((_, i) => (
-          <Ionicons key={i} name="star-outline" size={starSize} color={COLORS.border.strong} />
+          <Ionicons key={i} name="star-outline" size={starSize} color={STAR_EMPTY} />
         ))}
         <Text style={[styles.noRating, { fontSize: starSize * 0.75 }]}>Sin calificación</Text>
       </View>
@@ -108,16 +112,16 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   score: {
-    color: COLORS.text.primary,
+    color: CHAMBA.navy,
     fontWeight: '700',
     marginLeft: SPACING.xs,
   },
   count: {
-    color: COLORS.text.muted,
+    color: CHAMBA.muted,
     marginLeft: 2,
   },
   noRating: {
-    color: COLORS.text.muted,
+    color: CHAMBA.muted,
     marginLeft: SPACING.xs,
   },
 });

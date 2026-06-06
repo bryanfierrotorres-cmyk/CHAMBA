@@ -102,6 +102,7 @@ export interface JobWorkerApplication {
   category_2: string | null;
   rating_avg: number | string | null;
   total_reviews: number | null;
+  total_jobs_done?: number | null;
 }
 
 // ─── Jobs ─────────────────────────────────────────────────────────────────────

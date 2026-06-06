@@ -10,6 +10,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from '@components/Avatar';
 import { ClientServiceStatusTracker } from '@components/client/ClientServiceStatusTracker';
+import { JobChatEntryButton } from '@components/chat/JobChatEntryButton';
+import { showJobChatEntry } from '@features/chat/utils/chatHelpers';
 import { CARD_STEP_SHADOW, CHAMBA } from '@constants/chambaUI';
 import { CHAT_THEME } from '@features/chat/constants/chatTheme';
 import { formatCurrency, formatDate, getCategoryLabel } from '@utils/formatters';
@@ -46,8 +48,7 @@ export const ClientActiveServiceCard: React.FC<Props> = ({
   const isCompleted = job.status === 'completed';
   const isCancelled = job.status === 'cancelled';
   const showWorkerHero = !!worker && !isCancelled && job.status !== 'open';
-  const canChat = !!worker && !!onOpenChat && job.status !== 'open' && job.status !== 'cancelled';
-  const chatReadOnly = isCompleted;
+  const canChat = !!worker && !!onOpenChat && showJobChatEntry(job.status) && !isCancelled;
 
   const CardWrapper = isCompleted && onPressCompleted ? TouchableOpacity : View;
   const cardWrapperProps = isCompleted && onPressCompleted
@@ -108,7 +109,7 @@ export const ClientActiveServiceCard: React.FC<Props> = ({
               {canChat && (
                 <TouchableOpacity
                   style={styles.chatBtn}
-                  onPress={() => onOpenChat!(job.id, chatReadOnly)}
+                  onPress={() => onOpenChat!(job.id, false)}
                   activeOpacity={0.88}
                 >
                   <Ionicons name="chatbubbles" size={18} color={CHAT_THEME.clientAccent} />
@@ -116,6 +117,15 @@ export const ClientActiveServiceCard: React.FC<Props> = ({
                 </TouchableOpacity>
               )}
             </View>
+          )}
+
+          {isCompleted && canChat && (
+            <JobChatEntryButton
+              variant="client"
+              readOnly
+              fullWidth
+              onPress={() => onOpenChat!(job.id, true)}
+            />
           )}
         </View>
       )}

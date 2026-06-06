@@ -109,6 +109,7 @@ export const MapView: React.FC<MapViewProps> = ({
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
   const [loadError, setLoadError] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,6 +131,7 @@ export const MapView: React.FC<MapViewProps> = ({
           streetViewControl: false,
           fullscreenControl: false,
         });
+        if (!cancelled) setMapReady(true);
       })
       .catch(() => {
         if (!cancelled) setLoadError(true);
@@ -137,6 +139,7 @@ export const MapView: React.FC<MapViewProps> = ({
 
     return () => {
       cancelled = true;
+      setMapReady(false);
       markersRef.current.forEach((marker) => marker.setMap(null));
       markersRef.current = [];
       mapRef.current = null;
@@ -145,7 +148,7 @@ export const MapView: React.FC<MapViewProps> = ({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || loadError) return;
+    if (!map || loadError || !mapReady) return;
 
     void waitForGoogleMaps().then((maps) => {
       markersRef.current.forEach((marker) => marker.setMap(null));
@@ -173,7 +176,7 @@ export const MapView: React.FC<MapViewProps> = ({
         });
       });
     });
-  }, [children, loadError]);
+  }, [children, loadError, mapReady]);
 
   return (
     <View style={[styles.container, style]}>

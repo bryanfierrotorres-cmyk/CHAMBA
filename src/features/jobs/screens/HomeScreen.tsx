@@ -181,6 +181,13 @@ export const HomeScreen: React.FC = () => {
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useJobFeed('open', undefined, effectiveCategories);
 
+  // Precargar páginas adicionales para el radar (todos los marcadores en mapa).
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, data?.pages.length]);
+
   const queryJobs = useMemo(() => {
     const seen = new Map<string, Job>();
     for (const j of data?.pages.flatMap((p) => p.data) ?? []) {

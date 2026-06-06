@@ -16,22 +16,49 @@ import { ChambaSlidingToggle } from '@components/chamba/ChambaSlidingToggle';
 import { ClientActiveServiceCard } from '@components/client/ClientActiveServiceCard';
 import { useAuthStore } from '@store/authStore';
 import { useClientOrders } from '@features/client/hooks/useClientOrders';
-import { WorkerReviewsPanel } from '@features/reviews/components/WorkerReviewsPanel';
-import { useWorkerReviews } from '@features/reviews/hooks/useWorkerReviews';
+import { WorkerRatingPrompt } from '@components/reviews/WorkerRatingPrompt';
 import { ClientJobApplicantPanel } from '@components/client/ClientJobApplicantPanel';
 import { CARD_STEP_SHADOW } from '@constants/chambaUI';
 import type { ClientOrderJob, JobStatus, ClientOrdersStackParamList } from '@/types';
 
 type OrdersNav = NativeStackNavigationProp<ClientOrdersStackParamList, 'ClientOrdersList'>;
 
-type OrderFilter = 'activas' | 'historial';
+type OrderFilter = 'pendientes' | 'activas' | 'historial';
 
 const ORDER_FILTER_TABS = [
+  { id: 'pendientes' as const, label: 'Pendientes' },
   { id: 'activas' as const, label: 'Activas' },
   { id: 'historial' as const, label: 'Historial' },
 ];
 
-const ACTIVE_STATUSES = new Set<JobStatus>(['open', 'taken', 'in_progress']);
+const PENDING_STATUSES = new Set<JobStatus>(['open']);
+const ACTIVE_STATUSES = new Set<JobStatus>(['taken', 'in_progress']);
+const HISTORY_STATUSES = new Set<JobStatus>(['completed', 'cancelled']);
+
+const EMPTY_COPY: Record<OrderFilter, { title: string; subtitle: string }> = {
+  pendientes: {
+    title: 'Sin solicitudes pendientes',
+    subtitle: 'Publicá una chamba en Servicios y esperá postulaciones de técnicos.',
+  },
+  activas: {
+    title: 'Sin chambas en curso',
+    subtitle: 'Cuando elijas un técnico, el servicio aparecerá aquí.',
+  },
+  historial: {
+    title: 'Sin historial aún',
+    subtitle: 'Tus servicios completados o cancelados aparecerán aquí.',
+  },
+};
+
+const filterClientOrders = (jobs: ClientOrderJob[], filter: OrderFilter): ClientOrderJob[] => {
+  if (filter === 'pendientes') {
+    return jobs.filter((j) => PENDING_STATUSES.has(j.status));
+  }
+  if (filter === 'activas') {
+    return jobs.filter((j) => ACTIVE_STATUSES.has(j.status));
+  }
+  return jobs.filter((j) => HISTORY_STATUSES.has(j.status));
+};
 
 /** Calificación solo cuando el servicio está finalizado. */
 const canRateWorker = (job: ClientOrderJob): boolean =>
@@ -43,26 +70,16 @@ const ClientOrderReview: React.FC<{
   clientName: string;
 }> = ({ job, clientId, clientName }) => {
   const worker = job.assigned_worker;
-  const { reviews, isLoading } = useWorkerReviews(worker?.id);
-  const alreadyReviewed = reviews.some((r) => r.reviewer_id === clientId);
-
-  if (!worker || !canRateWorker(job) || isLoading || alreadyReviewed) {
-    return null;
-  }
+  if (!worker || !canRateWorker(job)) return null;
 
   return (
-    <View style={styles.reviewBox}>
-      <Text style={styles.reviewHeading}>¿Cómo fue tu experiencia?</Text>
-      <WorkerReviewsPanel
-        workerId={worker.id}
-        workerName={worker.full_name}
-        reviewerId={clientId}
-        reviewerRole="client"
-        reviewerName={clientName}
-        allowReview
-        compact
-      />
-    </View>
+    <WorkerRatingPrompt
+      workerId={worker.id}
+      workerName={worker.full_name}
+      reviewerId={clientId}
+      reviewerRole="client"
+      reviewerName={clientName}
+    />
   );
 };
 
@@ -102,7 +119,7 @@ export const ClientOrdersScreen: React.FC = () => {
   const navigation = useNavigation<OrdersNav>();
   const insets = useSafeAreaInsets();
   const profile = useAuthStore((s) => s.profile);
-  const [activeFilter, setActiveFilter] = useState<OrderFilter>('activas');
+  const [activeFilter, setActiveFilter] = useState<OrderFilter>('pendientes');
 
   const {
     data: jobs = [],
@@ -118,12 +135,12 @@ export const ClientOrdersScreen: React.FC = () => {
     }, [profile?.id, refetch]),
   );
 
-  const filteredJobs = useMemo((): ClientOrderJob[] => {
-    if (activeFilter === 'activas') {
-      return jobs.filter((j: ClientOrderJob) => ACTIVE_STATUSES.has(j.status));
-    }
-    return jobs.filter((j: ClientOrderJob) => j.status === 'completed' || j.status === 'cancelled');
-  }, [jobs, activeFilter]);
+  const filteredJobs = useMemo(
+    (): ClientOrderJob[] => filterClientOrders(jobs, activeFilter),
+    [jobs, activeFilter],
+  );
+
+  const emptyCopy = EMPTY_COPY[activeFilter];
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -142,6 +159,8 @@ export const ClientOrdersScreen: React.FC = () => {
         active={activeFilter}
         onChange={setActiveFilter}
         style={styles.orderFilterToggle}
+        cornerRadius={14}
+        activeFontWeight="600"
       />
 
       {ordersError ? (
@@ -172,14 +191,8 @@ export const ClientOrdersScreen: React.FC = () => {
               <View style={[styles.iconCircleRight, { backgroundColor: '#007AFF' }]}>
                 <Ionicons name="document-text-outline" size={22} color="#FFF" />
               </View>
-              <Text style={styles.emptyTitle}>
-                {activeFilter === 'activas' ? 'Sin solicitudes activas' : 'Sin historial aún'}
-              </Text>
-              <Text style={styles.emptySub}>
-                {activeFilter === 'activas'
-                  ? 'Ve a Servicios y solicitá tu primera chamba.'
-                  : 'Tus servicios completados aparecerán aquí.'}
-              </Text>
+              <Text style={styles.emptyTitle}>{emptyCopy.title}</Text>
+              <Text style={styles.emptySub}>{emptyCopy.subtitle}</Text>
             </View>
           ) : (
             filteredJobs.map((job) =>
@@ -239,19 +252,6 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   orderWrap: { marginBottom: 16, gap: 10 },
-
-  reviewBox: {
-    backgroundColor: '#FFF',
-    borderRadius: 18,
-    padding: 18,
-    ...CARD_STEP_SHADOW,
-  },
-  reviewHeading: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0F172A',
-    marginBottom: 12,
-  },
 
   emptyCard: {
     backgroundColor: '#FFF',
