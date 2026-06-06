@@ -5,10 +5,10 @@ import {
   TextInput,
   StyleSheet,
   Platform,
+  TouchableOpacity,
   type ViewStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { ChambaSlidingToggle } from '@components/chamba/ChambaSlidingToggle';
 import { CARD_STEP_SHADOW, CHAMBA, chambaStyles } from '@constants/chambaUI';
 import { textInputWebFocusStyle } from '@constants/textInputFocus';
 import type { UrgencyLevel } from '@/types';
@@ -30,6 +30,8 @@ export interface JobSchedulingSectionProps {
   onScheduledTimeChange: (value: string) => void;
   disabled?: boolean;
   style?: ViewStyle;
+  /** Oculta el título interno si el padre ya muestra encabezado de sección. */
+  hideTitle?: boolean;
 }
 
 const webDateInputStyle: React.CSSProperties = {
@@ -117,6 +119,45 @@ const ScheduleTimeField: React.FC<{
   );
 };
 
+const UrgencyPills: React.FC<{
+  active: UrgencyLevel;
+  onChange: (level: UrgencyLevel) => void;
+  disabled?: boolean;
+}> = ({ active, onChange, disabled }) => (
+  <View style={styles.pillRow}>
+    {URGENCY_OPTIONS.map((option) => {
+      const selected = active === option.id;
+      return (
+        <TouchableOpacity
+          key={option.id}
+          style={[styles.pill, selected && styles.pillActive]}
+          onPress={() => {
+            if (!disabled) onChange(option.id);
+          }}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityState={{ selected }}
+        >
+          <Ionicons
+            name={
+              option.id === 'hoy'
+                ? 'flash'
+                : option.id === 'manana'
+                  ? 'sunny-outline'
+                  : 'calendar-outline'
+            }
+            size={16}
+            color={selected ? '#FFF' : CHAMBA.blue}
+          />
+          <Text style={[styles.pillText, selected && styles.pillTextActive]}>
+            {option.label}
+          </Text>
+        </TouchableOpacity>
+      );
+    })}
+  </View>
+);
+
 export const JobSchedulingSection: React.FC<JobSchedulingSectionProps> = ({
   urgencyLevel,
   onUrgencyChange,
@@ -126,6 +167,7 @@ export const JobSchedulingSection: React.FC<JobSchedulingSectionProps> = ({
   onScheduledTimeChange,
   disabled = false,
   style,
+  hideTitle = false,
 }) => {
   const minDate = getLocalDateString(0);
   const activeHint = URGENCY_OPTIONS.find((o) => o.id === urgencyLevel)?.hint ?? '';
@@ -148,16 +190,17 @@ export const JobSchedulingSection: React.FC<JobSchedulingSectionProps> = ({
 
   return (
     <View style={[styles.wrap, style]}>
-      <Text style={chambaStyles.formLabel}>¿Cuándo lo necesitás?</Text>
-      <Text style={styles.sectionHint}>{activeHint}</Text>
+      {!hideTitle ? (
+        <>
+          <Text style={styles.mainTitle}>¿Cuándo lo necesitás?</Text>
+          <Text style={styles.sectionHint}>{activeHint}</Text>
+        </>
+      ) : null}
 
-      <ChambaSlidingToggle
-        options={URGENCY_OPTIONS.map((o) => ({ id: o.id, label: o.label }))}
+      <UrgencyPills
         active={urgencyLevel}
-        onChange={(id) => {
-          if (!disabled) onUrgencyChange(id);
-        }}
-        style={styles.toggle}
+        onChange={onUrgencyChange}
+        disabled={disabled}
       />
 
       <View style={styles.infoCard}>
@@ -268,16 +311,51 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: CHAMBA.border,
+    borderColor: '#BFDBFE',
     ...CARD_STEP_SHADOW,
+  },
+  mainTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: CHAMBA.navy,
+    marginBottom: 4,
+    letterSpacing: -0.2,
   },
   sectionHint: {
     fontSize: 13,
     color: CHAMBA.muted,
-    marginBottom: 12,
-    marginTop: 2,
+    marginBottom: 14,
   },
-  toggle: { marginBottom: 12 },
+  pillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: '#BFDBFE',
+    backgroundColor: '#F8FAFC',
+    minHeight: 44,
+  },
+  pillActive: {
+    backgroundColor: CHAMBA.blue,
+    borderColor: CHAMBA.blue,
+  },
+  pillText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: CHAMBA.navy,
+  },
+  pillTextActive: {
+    color: '#FFF',
+  },
   infoCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',

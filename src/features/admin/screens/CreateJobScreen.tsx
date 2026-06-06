@@ -345,6 +345,7 @@ export const CreateJobScreen: React.FC = () => {
           hint="Los técnicos ven urgencia, fecha y hora al evaluar la chamba"
         >
           <JobSchedulingSection
+            hideTitle
             urgencyLevel={schedulingFields.urgencyLevel}
             onUrgencyChange={schedulingFields.setUrgencyLevel}
             scheduledDate={schedulingFields.scheduledDate}
@@ -352,7 +353,6 @@ export const CreateJobScreen: React.FC = () => {
             scheduledTime={schedulingFields.scheduledTime}
             onScheduledTimeChange={schedulingFields.setScheduledTime}
             disabled={isPending}
-            style={{ marginBottom: 0, borderWidth: 0, shadowOpacity: 0, elevation: 0, padding: 0 }}
           />
         </ConsoleSection>
 
