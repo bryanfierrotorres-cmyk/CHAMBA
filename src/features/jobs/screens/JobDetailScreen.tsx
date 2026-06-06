@@ -7,7 +7,8 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import MapView, { Marker } from 'react-native-maps';
+import MapView from 'react-native-maps';
+import { ChambaMapMarker } from '@components/maps/ChambaMapMarker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@components/Button';
 import { StatusBadge } from '@components/Badge';
@@ -363,10 +364,10 @@ export const JobDetailScreen: React.FC = () => {
               }}
               scrollEnabled={false}
             >
-              <Marker
+              <ChambaMapMarker
                 coordinate={{ latitude: location!.lat, longitude: location!.lng }}
                 title={job.title}
-                pinColor={isAdmin ? CHAMBA.blue : COLORS.brand[500]}
+                categorySlug={job.category}
               />
             </MapView>
           )}

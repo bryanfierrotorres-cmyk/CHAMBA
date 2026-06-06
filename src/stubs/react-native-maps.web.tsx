@@ -4,6 +4,10 @@
  */
 import React, { useEffect, useRef, useState, isValidElement, Children } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import {
+  buildChambaMapMarkerIconUrl,
+  CHAMBA_MAP_MARKER_SIZE,
+} from '@components/maps/mapMarkerWebIcon';
 
 interface Region {
   latitude: number;
@@ -25,6 +29,7 @@ interface MarkerProps {
   title?: string;
   description?: string;
   pinColor?: string;
+  categorySlug?: string;
   children?: React.ReactNode;
 }
 
@@ -70,9 +75,23 @@ const collectMarkerProps = (children: React.ReactNode): MarkerProps[] => {
   const markers: MarkerProps[] = [];
   Children.forEach(children, (child) => {
     if (!isValidElement<MarkerProps>(child)) return;
-    if (child.type !== Marker) return;
-    if (!child.props.coordinate) return;
-    markers.push(child.props);
+
+    if (child.type === Marker) {
+      if (!child.props.coordinate) return;
+      markers.push(child.props);
+      return;
+    }
+
+    if ((child.type as { displayName?: string })?.displayName === 'ChambaMapMarker') {
+      const props = child.props as MarkerProps;
+      if (!props.coordinate) return;
+      markers.push({
+        coordinate: props.coordinate,
+        title: props.title,
+        description: props.description,
+        categorySlug: props.categorySlug,
+      });
+    }
   });
   return markers;
 };
@@ -135,10 +154,22 @@ export const MapView: React.FC<MapViewProps> = ({
           lat: props.coordinate!.latitude,
           lng: props.coordinate!.longitude,
         };
+        const iconUrl = buildChambaMapMarkerIconUrl(props.categorySlug);
         return new maps.Marker({
           map,
           position,
           title: props.title,
+          icon: {
+            url: iconUrl,
+            scaledSize: new maps.Size(
+              CHAMBA_MAP_MARKER_SIZE.width,
+              CHAMBA_MAP_MARKER_SIZE.height,
+            ),
+            anchor: new maps.Point(
+              CHAMBA_MAP_MARKER_SIZE.width / 2,
+              CHAMBA_MAP_MARKER_SIZE.height,
+            ),
+          },
         });
       });
     });

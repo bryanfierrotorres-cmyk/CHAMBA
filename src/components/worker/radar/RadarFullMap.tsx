@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import MapView from 'react-native-maps';
+import { ChambaMapMarker } from '@components/maps/ChambaMapMarker';
 import { formatCurrency } from '@utils/formatters';
 import { hasUsableJobCoordinates } from '@utils/shareJobLocation';
-import { RADAR_DEEP_BLUE } from './radarTheme';
 import type { Job } from '@/types';
 
 const MANAGUA_REGION = {
@@ -17,6 +17,7 @@ interface RadarPin {
   jobId: string;
   title: string;
   price: string;
+  categorySlug: string;
   latitude: number;
   longitude: number;
 }
@@ -58,6 +59,7 @@ export const RadarFullMap: React.FC<RadarFullMapProps> = ({ jobs }) => {
           jobId: job.id,
           title: job.title?.trim() || 'Solicitud',
           price: formatCurrency(job.worker_payout || job.pay_amount),
+          categorySlug: job.category,
           latitude: lat,
           longitude: lng,
         };
@@ -72,12 +74,12 @@ export const RadarFullMap: React.FC<RadarFullMapProps> = ({ jobs }) => {
     <View style={styles.container}>
       <MapView style={styles.map} initialRegion={region}>
         {pins.map((pin) => (
-          <Marker
+          <ChambaMapMarker
             key={pin.jobId}
             coordinate={{ latitude: pin.latitude, longitude: pin.longitude }}
             title={pin.title}
             description={pin.price}
-            pinColor={RADAR_DEEP_BLUE}
+            categorySlug={pin.categorySlug}
           />
         ))}
       </MapView>
