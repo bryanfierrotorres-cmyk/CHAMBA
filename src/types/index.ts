@@ -108,6 +108,9 @@ export interface JobWorkerApplication {
 
 export type JobStatus = 'open' | 'taken' | 'in_progress' | 'completed' | 'cancelled';
 
+/** Urgencia del servicio para decisión del técnico. */
+export type UrgencyLevel = 'hoy' | 'manana' | 'programado';
+
 /** Progreso operativo del técnico en campo (viaje → llegada → cierre). */
 export type WorkerOperationalPhase = 'accepted' | 'en_route' | 'arrived' | 'completed';
 
@@ -140,6 +143,9 @@ export interface Job {
   worker_payout: number;
   location: JobLocation;
   scheduled_at: string | null;
+  scheduled_date?: string | null;
+  scheduled_time?: string | null;
+  urgency_level?: UrgencyLevel;
   duration_hours: number;
   required_workers: number;
   slots_taken: number;

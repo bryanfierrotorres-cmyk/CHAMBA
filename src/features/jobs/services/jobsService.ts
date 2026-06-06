@@ -39,6 +39,8 @@ import {
 import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
 import type { UserProfile } from '@/types';
 import { assertClientJobPlatformReady } from '@services/clientJobPlatform';
+import { resolveJobScheduling } from '@utils/jobScheduling';
+import type { UrgencyLevel } from '@/types';
 import {
   MAX_CLIENT_ACTIVE_JOBS,
   MAX_WORKER_ACTIVE_COMMITMENTS,
@@ -939,6 +941,12 @@ interface CreateJobParams {
   lat: number;
   lng: number;
   scheduledAt?: string;
+  /** Fecha YYYY-MM-DD (opcional; default vía RPC). */
+  scheduledDate?: string | null;
+  /** Hora HH:mm o HH:mm:ss (opcional). */
+  scheduledTime?: string | null;
+  /** Urgencia: hoy | manana | programado (default 'hoy'). */
+  urgencyLevel?: UrgencyLevel;
   durationHours: number;
   requiredWorkers: number;
   mediaUrls?: string[];
@@ -974,6 +982,13 @@ export const createJob = async (params: CreateJobParams): Promise<Job> => {
   const platformFee   = parseFloat((params.payAmount * 0.05).toFixed(2));
   const workerPayout  = parseFloat((params.payAmount * 0.95).toFixed(2));
 
+  const scheduling = resolveJobScheduling({
+    urgencyLevel:  params.urgencyLevel,
+    scheduledDate: params.scheduledDate,
+    scheduledTime: params.scheduledTime,
+    scheduledAt:   params.scheduledAt,
+  });
+
   const rpcBase = {
     p_created_by:       params.createdBy,
     p_title:            params.title,
@@ -984,8 +999,11 @@ export const createJob = async (params: CreateJobParams): Promise<Job> => {
     p_lng:              params.lng,
     p_duration_hours:   params.durationHours,
     p_required_workers: params.requiredWorkers,
-    p_scheduled_at:     params.scheduledAt ?? null,
+    p_scheduled_at:     scheduling.scheduledAt,
     p_media_urls:       params.mediaUrls ?? [],
+    p_scheduled_date:   scheduling.scheduledDate,
+    p_scheduled_time:   scheduling.scheduledTime,
+    p_urgency_level:    scheduling.urgencyLevel,
   };
 
   let job: Job | null = null;
@@ -1043,7 +1061,11 @@ export const createJob = async (params: CreateJobParams): Promise<Job> => {
           address:          params.address,
           lat:              params.lat,
           lng:              params.lng,
-          scheduled_at:     params.scheduledAt ?? null,
+          scheduled_at:     scheduling.scheduledAt,
+          scheduled_date:   scheduling.scheduledDate,
+          scheduled_time:   scheduling.scheduledTime,
+          urgency_level:    scheduling.urgencyLevel,
+          operational_phase: 'pending',
           duration_hours:   params.durationHours,
           required_workers: params.requiredWorkers,
           media_urls:       params.mediaUrls ?? [],
