@@ -15,6 +15,7 @@ import { getSupabaseConfigError, supabase, onAuthStateChange } from '@services/s
 import { initializeStripe } from '@services/stripe';
 import { useAuthStore } from '@store/authStore';
 import { repairLocalAssignmentsStorage } from '@utils/localAssignments';
+import { configurePushNotificationHandler, syncPushTokenForUser } from '@utils/pushNotifications';
 import { StartupErrorScreen } from '@components/StartupErrorScreen';
 import { AppErrorBoundary } from '@components/AppErrorBoundary';
 import { usePreciosCatalogProbe } from '@features/catalog/hooks/usePreciosCatalogProbe';
@@ -65,8 +66,24 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 
 function AppBootstrap() {
   const { setSession, setHydrated, setLoading, fetchProfile, reset, loadFromStorage } = useAuthStore();
+  const profile = useAuthStore((s) => s.profile);
+  const session = useAuthStore((s) => s.session);
+  const isPhoneAuth = useAuthStore((s) => s.isPhoneAuth);
+  const isHydrated = useAuthStore((s) => s.isHydrated);
 
   useWebRootStyles();
+
+  useEffect(() => {
+    configurePushNotificationHandler();
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    if (!isHydrated || !profile?.id) return;
+    if (!session?.access_token && !isPhoneAuth) return;
+
+    void syncPushTokenForUser(profile.id);
+  }, [isHydrated, profile?.id, session?.access_token, isPhoneAuth]);
 
   useEffect(() => {
     void Font.loadAsync({

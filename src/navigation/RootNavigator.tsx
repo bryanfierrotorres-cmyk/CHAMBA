@@ -3,9 +3,7 @@ import { Platform } from 'react-native';
 import { NavigationContainer, type LinkingOptions, useNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuthStore }    from '@store/authStore';
-import { CONFIG } from '@constants/config';
 import { useProfileStore } from '@store/profileStore';
-import { registerForPushNotifications } from '@services/notifications';
 import { AuthNavigator }   from './AuthNavigator';
 import { WorkerNavigator } from './WorkerNavigator';
 import { AdminNavigator }  from './AdminNavigator';
@@ -42,9 +40,6 @@ export const RootNavigator: React.FC = () => {
     if (profile?.id && profile.role === 'worker') {
       loadProfile(profile.id);
       loadStats(profile.id);
-      registerForPushNotifications(profile.id).catch((err) => {
-        console.warn('[RootNavigator] push registration failed:', err);
-      });
     }
   }, [profile?.id, profile?.role]);
 
