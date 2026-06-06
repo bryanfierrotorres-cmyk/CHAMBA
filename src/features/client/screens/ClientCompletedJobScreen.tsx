@@ -29,6 +29,7 @@ import {
 } from '@utils/formatters';
 import { getCategoryVisual } from '@utils/categoryVisual';
 import { useReceiptGenerator } from '@features/client/hooks/useReceiptGenerator';
+import { ChambaReceiptCard } from '@components/client/ChambaReceiptCard';
 import type { ClientOrdersStackParamList } from '@/types';
 
 const DEEP_BLUE = '#1E293B';
@@ -48,7 +49,7 @@ export const ClientCompletedJobScreen: React.FC = () => {
   const { jobId } = useRoute<Route>().params;
   const navigation = useNavigation<Nav>();
   const profile = useAuthStore((s) => s.profile);
-  const { downloadReceipt, isGenerating } = useReceiptGenerator();
+  const { receiptCaptureRef, downloadReceipt, isGenerating } = useReceiptGenerator();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['client-job-summary', jobId, profile?.id],
@@ -84,18 +85,25 @@ export const ClientCompletedJobScreen: React.FC = () => {
   const finishedLabel = completed_at
     ? `${formatDate(completed_at)} · ${formatTime(completed_at)}`
     : formatDate(job.updated_at);
+  const finishedDateOnly = completed_at
+    ? formatDate(completed_at)
+    : formatDate(job.updated_at);
+
+  const receiptData = {
+    jobId: job.id,
+    jobTitle: title,
+    categoryLabel: getCategoryLabel(job.category),
+    payAmountLabel: formatCurrency(job.pay_amount),
+    completedAt: finishedLabel,
+    completedDateLabel: finishedDateOnly,
+    durationHours: job.duration_hours,
+    workerName: worker?.full_name ?? null,
+    clientName: profile?.full_name ?? null,
+    address: job.location?.address ?? null,
+  };
 
   const handleDownloadReceipt = () => {
-    void downloadReceipt({
-      jobId: job.id,
-      jobTitle: title,
-      categoryLabel: getCategoryLabel(job.category),
-      payAmountLabel: formatCurrency(job.pay_amount),
-      completedAt: finishedLabel,
-      workerName: worker?.full_name ?? null,
-      clientName: profile?.full_name ?? null,
-      address: job.location?.address ?? null,
-    });
+    void downloadReceipt(receiptData);
   };
 
   return (
@@ -110,6 +118,10 @@ export const ClientCompletedJobScreen: React.FC = () => {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
+        <View style={styles.receiptCaptureHost} pointerEvents="none">
+          <ChambaReceiptCard ref={receiptCaptureRef} data={receiptData} />
+        </View>
+
         <View style={styles.heroCard}>
           <View style={[styles.iconCircle, { backgroundColor: visual.color }]}>
             {visual.icon}
@@ -145,8 +157,8 @@ export const ClientCompletedJobScreen: React.FC = () => {
             <ActivityIndicator color="#FFFFFF" size="small" />
           ) : (
             <>
-              <Ionicons name="document-text-outline" size={20} color="#FFFFFF" />
-              <Text style={styles.receiptBtnText}>Descargar Recibo (PDF)</Text>
+              <Ionicons name="image-outline" size={20} color="#FFFFFF" />
+              <Text style={styles.receiptBtnText}>Descargar Recibo</Text>
             </>
           )}
         </TouchableOpacity>
@@ -247,6 +259,13 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   errorText: { color: '#B91C1C', fontSize: 14, padding: 20, textAlign: 'center' },
   scroll: { padding: 20, paddingBottom: 40, gap: 14 },
+
+  receiptCaptureHost: {
+    position: 'absolute',
+    left: -2000,
+    top: 0,
+    opacity: 1,
+  },
 
   heroCard: {
     backgroundColor: '#FFF',

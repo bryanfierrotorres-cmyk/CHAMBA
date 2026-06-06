@@ -1,30 +1,36 @@
-import { useCallback, useState } from 'react';
-import { Alert, Platform } from 'react-native';
-import * as Print from 'expo-print';
+import { useCallback, useRef, useState } from 'react';
+import { Alert, Platform, type View } from 'react-native';
+import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
-import { buildReceiptHtml } from '@features/client/utils/receiptHtml';
 import type { ReceiptData } from '@features/client/utils/receiptTypes';
 
 export const useReceiptGenerator = () => {
+  const receiptCaptureRef = useRef<View>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const downloadReceipt = useCallback(async (data: ReceiptData) => {
+  const downloadReceipt = useCallback(async (_data: ReceiptData) => {
+    const target = receiptCaptureRef.current;
+    if (!target) {
+      Alert.alert('Recibo', 'No se pudo preparar el comprobante. Intentá de nuevo.');
+      return;
+    }
+
     setIsGenerating(true);
     try {
-      const html = buildReceiptHtml(data);
-      const { uri } = await Print.printToFileAsync({
-        html,
-        width: 595,
-        height: 842,
+      await new Promise((resolve) => setTimeout(resolve, Platform.OS === 'web' ? 120 : 40));
+
+      const filename = `CHAMBA-recibo-${_data.jobId.slice(0, 8)}.png`;
+      const uri = await captureRef(target, {
+        format: 'png',
+        quality: 1,
+        result: Platform.OS === 'web' ? 'data-uri' : 'tmpfile',
       });
 
       if (Platform.OS === 'web') {
-        if (typeof window !== 'undefined') {
+        if (typeof document !== 'undefined') {
           const link = document.createElement('a');
           link.href = uri;
-          link.download = `CHAMBA-recibo-${data.jobId.slice(0, 8)}.pdf`;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
+          link.download = filename;
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
@@ -35,15 +41,15 @@ export const useReceiptGenerator = () => {
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
         await Sharing.shareAsync(uri, {
-          mimeType: 'application/pdf',
+          mimeType: 'image/png',
           dialogTitle: 'Guardar recibo CHAMBA',
-          UTI: 'com.adobe.pdf',
+          UTI: 'public.png',
         });
       } else {
-        await Print.printAsync({ html });
+        Alert.alert('Recibo', 'Imagen generada correctamente.');
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'No se pudo generar el recibo';
+      const message = err instanceof Error ? err.message : 'No se pudo generar la imagen';
       if (Platform.OS === 'web') {
         window.alert(message);
       } else {
@@ -54,5 +60,5 @@ export const useReceiptGenerator = () => {
     }
   }, []);
 
-  return { downloadReceipt, isGenerating };
+  return { receiptCaptureRef, downloadReceipt, isGenerating };
 };
