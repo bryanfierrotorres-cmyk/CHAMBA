@@ -201,7 +201,8 @@ export const HomeScreen: React.FC = () => {
   }, [catalog.serviceTypes, feedCategories]);
 
   const effectiveCategories = useMemo<JobCategory[] | undefined>(() => {
-    if (!profile?.is_approved) return [];
+    // Pendientes de aprobación: ver feed general (sin filtro) — solo lectura.
+    if (!profile?.is_approved) return undefined;
     if (selectedCategory) {
       if (!approvedCategories.includes(selectedCategory)) return [];
       return expandWorkerFeedCategories([selectedCategory]);

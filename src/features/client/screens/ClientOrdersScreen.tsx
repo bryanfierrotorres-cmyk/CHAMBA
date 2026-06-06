@@ -13,15 +13,13 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { ChambaSlidingToggle } from '@components/chamba/ChambaSlidingToggle';
+import { ClientActiveServiceCard } from '@components/client/ClientActiveServiceCard';
 import { useAuthStore } from '@store/authStore';
 import { useClientOrders } from '@features/client/hooks/useClientOrders';
 import { WorkerReviewsPanel } from '@features/reviews/components/WorkerReviewsPanel';
 import { useWorkerReviews } from '@features/reviews/hooks/useWorkerReviews';
-import { formatCurrency, formatDate, getCategoryLabel, getClientOrderStatusLabel } from '@utils/formatters';
-import { getCategoryVisual } from '@utils/categoryVisual';
 import { ClientJobApplicantPanel } from '@components/client/ClientJobApplicantPanel';
-import { JobChatEntryButton } from '@components/chat/JobChatEntryButton';
-import { showJobChatEntry } from '@features/chat/utils/chatHelpers';
+import { CARD_STEP_SHADOW } from '@constants/chambaUI';
 import type { ClientOrderJob, JobStatus, ClientOrdersStackParamList } from '@/types';
 
 type OrdersNav = NativeStackNavigationProp<ClientOrdersStackParamList, 'ClientOrdersList'>;
@@ -34,63 +32,11 @@ const ORDER_FILTER_TABS = [
 ];
 
 const ACTIVE_STATUSES = new Set<JobStatus>(['open', 'taken', 'in_progress']);
-const CARD_STEP_SHADOW = {
-  shadowColor: '#0F172A',
-  shadowOffset: { width: 0, height: 6 },
-  shadowOpacity: 0.06,
-  shadowRadius: 12,
-  elevation: 4,
-} as const;
 
-interface StatusBadge {
-  label: string;
-  container: object;
-  text: object;
-}
-
-const statusBadge = (job: ClientOrderJob): StatusBadge => {
-  const label = getClientOrderStatusLabel(job.status, job.operational_phase).toUpperCase();
-
-  switch (job.status) {
-    case 'taken':
-    case 'in_progress':
-      return {
-        label,
-        container: styles.badgeEnCurso,
-        text: styles.badgeTextEnCurso,
-      };
-    case 'open':
-      return {
-        label: label || 'EN PENDIENTE',
-        container: styles.badgePendiente,
-        text: styles.badgeTextPendiente,
-      };
-    case 'completed':
-      return {
-        label: 'COMPLETADO',
-        container: styles.badgeCompletado,
-        text: styles.badgeTextCompletado,
-      };
-    case 'cancelled':
-      return {
-        label: 'CANCELADO',
-        container: styles.badgeCancelado,
-        text: styles.badgeTextCancelado,
-      };
-    default:
-      return {
-        label: 'EN PROCESO',
-        container: styles.badgeEnCurso,
-        text: styles.badgeTextEnCurso,
-      };
-  }
-};
-
+/** Calificación solo cuando el servicio está finalizado. */
 const canRateWorker = (job: ClientOrderJob): boolean =>
-  !!job.assigned_worker &&
-  ['taken', 'in_progress', 'completed'].includes(job.status);
+  job.status === 'completed' && !!job.assigned_worker;
 
-/** Reseña del cliente: solo si aún no calificó (una vez por técnico). */
 const ClientOrderReview: React.FC<{
   job: ClientOrderJob;
   clientId: string;
@@ -106,6 +52,7 @@ const ClientOrderReview: React.FC<{
 
   return (
     <View style={styles.reviewBox}>
+      <Text style={styles.reviewHeading}>¿Cómo fue tu experiencia?</Text>
       <WorkerReviewsPanel
         workerId={worker.id}
         workerName={worker.full_name}
@@ -130,74 +77,26 @@ interface OrderCardProps {
 
 const OrderCard: React.FC<OrderCardProps> = ({
   job, clientId, clientName, onOpenCompleted, onApplicantDecision, onOpenChat,
-}) => {
-  const badge = statusBadge(job);
-  const visual = getCategoryVisual(job.category);
-  const title = job.title?.trim() || getCategoryLabel(job.category);
-  const isVariablePrice = job.status === 'open' && !job.pay_amount;
-  const isCompleted = job.status === 'completed';
-  const canChat =
-    showJobChatEntry(job.status) &&
-    !!job.assigned_worker_id &&
-    !!onOpenChat;
-  const chatReadOnly = job.status === 'completed';
+}) => (
+  <View style={styles.orderWrap}>
+    <ClientActiveServiceCard
+      job={job}
+      onOpenChat={onOpenChat}
+      onPressCompleted={onOpenCompleted}
+    />
 
-  const handleCardPress = () => {
-    if (isCompleted && onOpenCompleted) {
-      onOpenCompleted(job.id);
-    }
-  };
+    {job.status === 'open' && (
+      <ClientJobApplicantPanel
+        jobId={job.id}
+        clientId={clientId}
+        jobStatus={job.status}
+        onDecision={onApplicantDecision}
+      />
+    )}
 
-  return (
-    <View style={styles.orderWrap}>
-      <TouchableOpacity
-        style={styles.requestCard}
-        activeOpacity={0.88}
-        onPress={handleCardPress}
-        disabled={!isCompleted}
-      >
-        <View style={styles.cardContent}>
-          <View style={badge.container}>
-            <Text style={badge.text}>{badge.label}</Text>
-          </View>
-          <Text style={styles.cardTitle} numberOfLines={2}>{title}</Text>
-          <Text style={styles.cardSubtitle}>
-            {isCompleted ? 'Toca para ver resumen · ' : ''}{formatDate(job.created_at)}
-          </Text>
-          <Text style={isVariablePrice ? styles.cardPriceVariable : styles.cardPrice}>
-            {isVariablePrice ? 'Bajo cotización' : formatCurrency(job.pay_amount)}
-          </Text>
-        </View>
-        <View style={styles.cardTrailing}>
-          {canChat && (
-            <JobChatEntryButton
-              variant="client"
-              readOnly={chatReadOnly}
-              onPress={() => onOpenChat!(job.id, chatReadOnly)}
-            />
-          )}
-          <View style={[styles.iconCircleRight, { backgroundColor: visual.color }]}>
-            {visual.icon}
-          </View>
-          {isCompleted && (
-            <Ionicons name="chevron-forward" size={20} color="#94A3B8" style={{ marginTop: 8 }} />
-          )}
-        </View>
-      </TouchableOpacity>
-
-      {job.status === 'open' && (
-        <ClientJobApplicantPanel
-          jobId={job.id}
-          clientId={clientId}
-          jobStatus={job.status}
-          onDecision={onApplicantDecision}
-        />
-      )}
-
-      <ClientOrderReview job={job} clientId={clientId} clientName={clientName} />
-    </View>
-  );
-};
+    <ClientOrderReview job={job} clientId={clientId} clientName={clientName} />
+  </View>
+);
 
 export const ClientOrdersScreen: React.FC = () => {
   const navigation = useNavigation<OrdersNav>();
@@ -339,80 +238,19 @@ const styles = StyleSheet.create({
   scrollContainer: { paddingHorizontal: 20, paddingBottom: 100 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
-  orderWrap: { marginBottom: 14 },
-  requestCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 18,
-    padding: 18,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    ...CARD_STEP_SHADOW,
-  },
-  cardContent: { flex: 1, paddingRight: 8, minWidth: 0 },
-  cardTitle: { fontSize: 16, fontWeight: '600', color: '#0F172A', marginBottom: 2 },
-  cardSubtitle: { fontSize: 12, color: '#8A94A6', marginBottom: 8, fontWeight: '400' },
-  cardPrice: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
-  cardPriceVariable: { fontSize: 13, fontWeight: '500', color: '#8A94A6' },
-
-  cardTrailing: {
-    alignItems: 'center',
-    flexShrink: 0,
-    gap: 8,
-  },
-  iconCircleRight: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  badgeEnCurso: {
-    backgroundColor: '#E0F2FE',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-    marginBottom: 6,
-  },
-  badgeTextEnCurso: { fontSize: 9, fontWeight: '700', color: '#0369A1' },
-  badgePendiente: {
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-    marginBottom: 6,
-  },
-  badgeTextPendiente: { fontSize: 9, fontWeight: '700', color: '#B45309' },
-  badgeCompletado: {
-    backgroundColor: '#DCFCE7',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-    marginBottom: 6,
-  },
-  badgeTextCompletado: { fontSize: 9, fontWeight: '700', color: '#15803D' },
-  badgeCancelado: {
-    backgroundColor: '#FEE2E2',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-    marginBottom: 6,
-  },
-  badgeTextCancelado: { fontSize: 9, fontWeight: '700', color: '#B91C1C' },
+  orderWrap: { marginBottom: 16, gap: 10 },
 
   reviewBox: {
     backgroundColor: '#FFF',
-    borderBottomLeftRadius: 18,
-    borderBottomRightRadius: 18,
-    paddingHorizontal: 18,
-    paddingBottom: 16,
-    marginTop: -4,
+    borderRadius: 18,
+    padding: 18,
     ...CARD_STEP_SHADOW,
+  },
+  reviewHeading: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 12,
   },
 
   emptyCard: {
@@ -425,6 +263,13 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 16, fontWeight: '600', color: '#0F172A', textAlign: 'center' },
   emptySub: { fontSize: 13, color: '#8A94A6', textAlign: 'center', fontWeight: '400', lineHeight: 20 },
+  iconCircleRight: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   errorCard: {
     backgroundColor: '#FFF',
     borderRadius: 18,

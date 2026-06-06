@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -138,61 +138,48 @@ const ServiceCard: React.FC<{
 );
 
 export const TechServiceRadar: React.FC<TechServiceRadarProps> = ({ jobs, onOpenJob }) => {
-  const [isMapActive, setIsMapActive] = useState(false);
-
   const items = useMemo(() => jobs.map(jobToRadarItem), [jobs]);
   const pinCount = items.filter((i) => i.hasPin).length;
-
-  const handleActivate = useCallback(() => {
-    setIsMapActive(true);
-  }, []);
+  const isEmpty = jobs.length === 0;
 
   const renderServiceCard: ListRenderItem<RadarMapItem> = useCallback(
     ({ item }) => <ServiceCard item={item} onOpen={onOpenJob} />,
     [onOpenJob],
   );
 
-  if (jobs.length === 0) {
-    return null;
-  }
-
   return (
     <View style={styles.wrapper}>
       <View style={styles.radarShell}>
-        {isMapActive ? (
-          <>
-            <TechServiceRadarMap items={items} />
-            {pinCount === 0 && (
-              <View style={styles.mapOverlay} pointerEvents="none">
-                <Text style={styles.mapOverlayText}>
-                  Sin GPS en estas solicitudes — usá la dirección en cada tarjeta
-                </Text>
-              </View>
-            )}
-          </>
-        ) : (
-          <View style={styles.inactiveLayer}>
-            <TouchableOpacity
-              style={styles.activateBtn}
-              activeOpacity={0.85}
-              onPress={handleActivate}
-              accessibilityRole="button"
-              accessibilityLabel="Ver chambas en el mapa"
-            >
-              <Text style={styles.activateBtnText}>
-                VER {jobs.length} CHAMBA{jobs.length === 1 ? '' : 'S'} EN MAPA
-              </Text>
-            </TouchableOpacity>
-            <Text style={styles.activateHint}>
-              {pinCount > 0
-                ? `${pinCount} con ubicación GPS en el mapa`
-                : 'Toca para ver solicitudes (ubicación por dirección)'}
+        <TechServiceRadarMap items={items} />
+
+        {isEmpty && (
+          <View style={styles.emptyOverlay} pointerEvents="none">
+            <Text style={styles.emptyTitle}>Sin chambas abiertas</Text>
+            <Text style={styles.emptySub}>
+              Cuando haya solicitudes en tu zona, aparecerán aquí en el mapa
+            </Text>
+          </View>
+        )}
+
+        {!isEmpty && pinCount === 0 && (
+          <View style={styles.mapOverlay} pointerEvents="none">
+            <Text style={styles.mapOverlayText}>
+              Sin GPS en estas solicitudes — usá la dirección en cada tarjeta
+            </Text>
+          </View>
+        )}
+
+        {!isEmpty && (
+          <View style={styles.mapBadge} pointerEvents="none">
+            <Text style={styles.mapBadgeText}>
+              {jobs.length} chamba{jobs.length === 1 ? '' : 's'}
+              {pinCount > 0 ? ` · ${pinCount} en mapa` : ''}
             </Text>
           </View>
         )}
       </View>
 
-      {isMapActive && (
+      {!isEmpty && (
         <FlatList
           data={items}
           keyExtractor={(item) => item.jobId}
@@ -216,42 +203,48 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: '#1E1E22',
   },
-  inactiveLayer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    backgroundColor: '#1E1E22',
-  },
-  activateBtn: {
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.42)',
-    borderRadius: 999,
-    paddingVertical: 12,
-    paddingHorizontal: 22,
-    backgroundColor: 'transparent',
-  },
-  activateBtnText: {
-    color: '#F2F2F7',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    textAlign: 'center',
-  },
-  activateHint: {
-    marginTop: 10,
-    color: '#8E8E93',
-    fontSize: 12,
-    textAlign: 'center',
-    lineHeight: 17,
-  },
   map: {
     width: '100%',
     height: RADAR_HEIGHT,
   },
+  mapBadge: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    backgroundColor: 'rgba(15, 23, 42, 0.72)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  mapBadgeText: {
+    color: '#F8FAFC',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  emptyOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.62)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  emptyTitle: {
+    color: '#F8FAFC',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  emptySub: {
+    color: '#CBD5E1',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
   mapOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(30, 30, 34, 0.55)',
+    backgroundColor: 'rgba(30, 30, 34, 0.45)',
     alignItems: 'center',
     justifyContent: 'flex-end',
     padding: 12,
