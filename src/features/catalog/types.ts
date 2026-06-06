@@ -11,6 +11,8 @@ export interface ServiceType {
   id: string;
   category_id: string;
   category_slug: string;
+  /** Subgrupo opcional (p. ej. ac | jardineria bajo mantenimiento). */
+  subcategory_slug?: string | null;
   slug: string;
   name: string;
   description: string | null;

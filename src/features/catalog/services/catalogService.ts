@@ -2,6 +2,8 @@ import { supabase } from '@services/supabase';
 import {
   CONFIGURED_SERVICE_SEEDS,
   CONFIGURED_CATEGORY_SEEDS,
+  ALL_CONFIGURED_SERVICE_SLUGS,
+  REMOVED_SERVICE_SLUGS,
   getConfiguredServiceLabel,
   SERVICE_FALLBACK_PRICES,
   buildSeedCatalog,
@@ -14,18 +16,35 @@ const REMOTE_TIMEOUT_MS = 8_000;
 
 export const FALLBACK_CATALOG: ServiceCatalog = buildSeedCatalog();
 
-/** Asegura el catálogo canónico (servicesConfig) + tipos extra en BD. */
+/** Asegura el catálogo canónico (servicesConfig) sin slugs retirados. */
 const mergeCatalogWithFallback = (catalog: ServiceCatalog): ServiceCatalog => {
-  const remoteBySlug = new Map(catalog.serviceTypes.map((t) => [t.slug, t]));
+  const removed = new Set<string>(REMOVED_SERVICE_SLUGS);
+  const allowed = new Set<string>(ALL_CONFIGURED_SERVICE_SLUGS);
+  const remoteBySlug = new Map(
+    catalog.serviceTypes
+      .filter((t) => !removed.has(t.slug))
+      .map((t) => [t.slug, t]),
+  );
 
   const merged: ServiceType[] = CONFIGURED_SERVICE_SEEDS.map((def) => {
     const remote = remoteBySlug.get(def.slug);
-    if (remote) return remote;
+    if (remote) {
+      return {
+        ...remote,
+        category_slug: def.categorySlug,
+        subcategory_slug: def.subcategorySlug ?? null,
+        name: remote.name?.trim() ? remote.name : def.label,
+        description: remote.description ?? def.description,
+        icon: remote.icon ?? def.icon,
+        sort_order: def.sortOrder,
+      };
+    }
 
     return {
       id: `fallback-${def.slug}`,
       category_id: '',
       category_slug: def.categorySlug,
+      subcategory_slug: def.subcategorySlug ?? null,
       slug: def.slug,
       name: def.label,
       description: def.description,
@@ -37,24 +56,22 @@ const mergeCatalogWithFallback = (catalog: ServiceCatalog): ServiceCatalog => {
     };
   });
 
-  for (const t of catalog.serviceTypes) {
-    if (!merged.some((m) => m.slug === t.slug)) merged.push(t);
-  }
-
   merged.sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
 
+  const seedCategories = CONFIGURED_CATEGORY_SEEDS.map((c) => ({
+    id: `fallback-${c.slug}`,
+    slug: c.slug,
+    name: c.name,
+    icon: c.icon,
+    image_url: null,
+    sort_order: c.sort_order,
+  }));
+
+  const remoteCategories = catalog.categories.filter((c) => allowed.has(c.slug) || seedCategories.some((s) => s.slug === c.slug));
+
   return {
-    categories: catalog.categories.length > 0
-      ? catalog.categories
-      : CONFIGURED_CATEGORY_SEEDS.map((c) => ({
-          id: `fallback-${c.slug}`,
-          slug: c.slug,
-          name: c.name,
-          icon: c.icon,
-          image_url: null,
-          sort_order: c.sort_order,
-        })),
-    serviceTypes: merged,
+    categories: remoteCategories.length > 0 ? remoteCategories : seedCategories,
+    serviceTypes: merged.filter((t) => allowed.has(t.slug)),
   };
 };
 

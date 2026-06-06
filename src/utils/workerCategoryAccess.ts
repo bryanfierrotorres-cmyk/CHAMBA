@@ -15,9 +15,12 @@ type WorkerCategoryProfile = Pick<
   'is_approved' | 'category_1' | 'category_2' | 'category_1_approved' | 'category_2_approved'
 >;
 
-/** Especialidades legacy que abren un menú Express completo. */
+/** Slugs legacy → submenú Express equivalente. */
 const LEGACY_SPECIALTY_TO_SUBMENU: Partial<Record<string, ExpressSubmenu>> = {
   vehiculo_profundo: 'vehiculos',
+  vehiculo_exterior: 'vehiculos',
+  vehiculo_interior: 'vehiculos',
+  vehiculo_detallado: 'vehiculos',
 };
 
 const collectSubmenuSlugs = (submenu: ExpressSubmenu): string[] => {
@@ -32,15 +35,22 @@ const collectSubmenuSlugs = (submenu: ExpressSubmenu): string[] => {
 };
 
 const findSubmenuForSlug = (slug: string): ExpressSubmenu | null => {
+  const normalized = fromDbJobCategory(slug) ?? slug;
   for (const [menu, tiles] of Object.entries(EXPRESS_SUB_TILES) as [ExpressSubmenu, typeof EXPRESS_SUB_TILES.limpieza][]) {
-    if (tiles.some((t) => t.slug === slug || t.id === slug)) return menu;
+    if (tiles.some((t) => t.slug === normalized || t.id === normalized)) return menu;
   }
-  return LEGACY_SPECIALTY_TO_SUBMENU[slug] ?? null;
+  return LEGACY_SPECIALTY_TO_SUBMENU[normalized] ?? null;
 };
 
 const appendCatalogByCategorySlug = (out: Set<string>, categorySlug: string) => {
   for (const seed of CONFIGURED_SERVICE_SEEDS) {
     if (seed.categorySlug === categorySlug) out.add(seed.slug);
+  }
+};
+
+const appendCatalogBySubcategorySlug = (out: Set<string>, subcategorySlug: string) => {
+  for (const seed of CONFIGURED_SERVICE_SEEDS) {
+    if (seed.subcategorySlug === subcategorySlug) out.add(seed.slug);
   }
 };
 
@@ -63,7 +73,10 @@ export const getWorkerCategoryFamily = (slug: string | null | undefined): JobCat
   const enrichSubmenuFamily = (menu: ExpressSubmenu) => {
     collectSubmenuSlugs(menu).forEach((s) => out.add(s));
     if (menu === 'limpieza') appendCatalogByCategorySlug(out, 'limpieza');
-    if (menu === 'jardineria') appendCatalogSlugPrefix(out, 'jardineria');
+    if (menu === 'ac') appendCatalogBySubcategorySlug(out, 'ac');
+    if (menu === 'jardineria') appendCatalogBySubcategorySlug(out, 'jardineria');
+    if (menu === 'vehiculos') appendCatalogByCategorySlug(out, 'vehiculos');
+    if (menu === 'mascotas') appendCatalogByCategorySlug(out, 'mascotas');
   };
 
   const mainTile = EXPRESS_MAIN_TILES.find((t) => t.id === normalized || t.slug === normalized);
@@ -78,6 +91,12 @@ export const getWorkerCategoryFamily = (slug: string | null | undefined): JobCat
     return [...out] as JobCategory[];
   }
 
+  const seed = CONFIGURED_SERVICE_SEEDS.find((s) => s.slug === normalized);
+  if (seed?.categorySlug) {
+    appendCatalogByCategorySlug(out, seed.categorySlug);
+    if (seed.subcategorySlug) appendCatalogBySubcategorySlug(out, seed.subcategorySlug);
+  }
+
   if (normalized.includes('_')) {
     const prefix = normalized.split('_')[0];
     for (const s of ALL_CONFIGURED_SERVICE_SLUGS) {
@@ -86,8 +105,12 @@ export const getWorkerCategoryFamily = (slug: string | null | undefined): JobCat
   }
 
   if (normalized === 'jardineria' || normalized.startsWith('jardineria_')) {
-    appendCatalogSlugPrefix(out, 'jardineria');
+    appendCatalogBySubcategorySlug(out, 'jardineria');
     collectSubmenuSlugs('jardineria').forEach((s) => out.add(s));
+  }
+
+  if (normalized.startsWith('ac_')) {
+    appendCatalogBySubcategorySlug(out, 'ac');
   }
 
   return [...out] as JobCategory[];
@@ -103,9 +126,6 @@ export const expandWorkerFeedCategories = (specialties: JobCategory[]): JobCateg
 
 /**
  * Categorías que el colaborador puede ver en el feed.
- * - Requiere aprobación general del admin (`is_approved`).
- * - Categoría 1: visible si está definida y `category_1_approved`.
- * - Categoría 2: solo si `category_2_approved`.
  */
 export const getWorkerApprovedCategories = (
   profile: WorkerCategoryProfile | null | undefined,

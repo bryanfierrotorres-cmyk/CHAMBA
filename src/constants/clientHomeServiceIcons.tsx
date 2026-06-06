@@ -205,7 +205,6 @@ export const renderServiceIconBySlug = (slug: string): React.ReactNode => {
 
 export const renderEmpresaServiceIcon = (slug: string): React.ReactNode => {
   switch (slug) {
-    case 'vehiculo_profundo':
     case 'vehiculo_lavado_regular':
     case 'vehiculo_limpieza_profunda':
       return <Ionicons name="car-sport" size={SZ} color={WHITE} />;

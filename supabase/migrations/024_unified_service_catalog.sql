@@ -1,0 +1,79 @@
+-- Catálogo unificado: categorías, slugs retirados y reactivación de servicios empresa.
+
+INSERT INTO service_categories (slug, name, icon, sort_order) VALUES
+  ('limpieza',       'Limpieza y Desinfección',  '🧹', 1),
+  ('mantenimiento',  'Oficios y Mantenimiento',  '🔧', 2),
+  ('vehiculos',      'Car Wash',                 '🚗', 3),
+  ('especializados', 'Técnicos Especializados',  '⚡', 4),
+  ('mascotas',       'Cuidado de Mascotas',      '🐕', 5),
+  ('express',        'Servicios Express',        '🛵', 6),
+  ('empresa',        'Para tu Negocio',          '🏢', 7)
+ON CONFLICT (slug) DO UPDATE SET
+  name = EXCLUDED.name,
+  icon = EXCLUDED.icon,
+  sort_order = EXCLUDED.sort_order,
+  is_active = TRUE;
+
+-- Retirar slugs duplicados / fantasma
+UPDATE service_types SET is_active = FALSE
+WHERE slug IN (
+  'vehiculo_exterior',
+  'vehiculo_interior',
+  'vehiculo_profundo',
+  'vehiculo_detallado',
+  'pet_care'
+);
+
+-- Reactivar servicios empresa del catálogo unificado (014 los había desactivado)
+UPDATE service_types SET is_active = TRUE
+WHERE slug IN (
+  'alfombra_institucional',
+  'conserjeria_contrato',
+  'fumigacion',
+  'b2b_personal_operativo',
+  'b2b_mesero_barman',
+  'b2b_ayudante_cocina',
+  'b2b_apoyo_hogar',
+  'b2b_conserje_empresa',
+  'b2b_otro_servicio'
+);
+
+-- Mover conserjeria_ocasional a categoría limpieza
+UPDATE service_types st SET
+  category_id = c.id,
+  name = 'Limpieza de Casa'
+FROM service_categories c
+WHERE c.slug = 'limpieza'
+  AND st.slug = 'conserjeria_ocasional';
+
+-- Mover servicios AC y jardinería bajo mantenimiento (category_id)
+UPDATE service_types st SET category_id = c.id
+FROM service_categories c
+WHERE c.slug = 'mantenimiento'
+  AND st.slug IN (
+    'ac_limpieza_filtros',
+    'ac_mantenimiento',
+    'ac_revision',
+    'ac_recarga',
+    'jardineria_corte',
+    'jardineria_poda',
+    'jardineria_patio',
+    'jardineria'
+  );
+
+-- Mover mascotas
+UPDATE service_types st SET category_id = c.id
+FROM service_categories c
+WHERE c.slug = 'mascotas'
+  AND st.slug IN ('pet_bano', 'pet_paseo', 'pet_grooming', 'pet_personalizado');
+
+-- Mandados → express
+UPDATE service_types st SET category_id = c.id
+FROM service_categories c
+WHERE c.slug = 'express'
+  AND st.slug = 'mandados_express';
+
+-- Labels unificados (especializados)
+UPDATE service_types SET name = 'Plomería y Tuberías' WHERE slug = 'plomeria';
+UPDATE service_types SET name = 'Reparación de Línea Blanca' WHERE slug = 'linea_blanca';
+UPDATE service_types SET name = 'Paseo y ejercicio' WHERE slug = 'pet_paseo';

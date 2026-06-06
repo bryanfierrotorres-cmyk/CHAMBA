@@ -1,9 +1,20 @@
 /**
- * Catálogo canónico de servicios CHAMBA (alineado con migración 011).
+ * Catálogo canónico unificado CHAMBA — Cliente, Técnico y Admin.
  */
 import type { ServiceCatalog, ServiceType, ServiceCategory } from '@features/catalog/types';
 
-export type ExpressSubmenu = 'limpieza' | 'jardineria' | 'vehiculos' | 'ac' | 'mascotas';
+export type ExpressSubmenu = 'limpieza' | 'ac' | 'jardineria' | 'vehiculos' | 'mascotas';
+
+/** Slugs retirados del catálogo (solo alias legacy en chambaCategories). */
+export const REMOVED_SERVICE_SLUGS = [
+  'vehiculo_exterior',
+  'vehiculo_interior',
+  'vehiculo_profundo',
+  'vehiculo_detallado',
+  'pet_care',
+] as const;
+
+export type RemovedServiceSlug = (typeof REMOVED_SERVICE_SLUGS)[number];
 
 export interface ServiceSeedDef {
   slug: string;
@@ -11,59 +22,78 @@ export interface ServiceSeedDef {
   description: string;
   icon: string;
   categorySlug: string;
+  /** Subgrupo bajo Oficios y Mantenimiento (ac | jardineria). */
+  subcategorySlug?: string;
   suggestedPrice: number;
   sortOrder: number;
 }
 
 const SEEDS: ServiceSeedDef[] = [
+  // ── Limpieza y Desinfección ───────────────────────────────────────────────
   { slug: 'limpieza_sofas', categorySlug: 'limpieza', label: 'Profunda de Sofás', description: 'Tapicería, cuero y tela', icon: '🛋️', suggestedPrice: 1400, sortOrder: 1 },
   { slug: 'limpieza_banos', categorySlug: 'limpieza', label: 'Limpieza de Baños', description: 'Baños y sanitarios', icon: '🚿', suggestedPrice: 600, sortOrder: 2 },
-  { slug: 'conserjeria_ocasional', categorySlug: 'hogar', label: 'Limpieza de Casa', description: 'Limpieza general del hogar', icon: '🏠', suggestedPrice: 850, sortOrder: 3 },
-  { slug: 'limpieza_alfombra', categorySlug: 'limpieza', label: 'Limpieza de Alfombras', description: 'Alfombras residenciales', icon: '🧹', suggestedPrice: 500, sortOrder: 4 },
-  { slug: 'vehiculo_lavado_regular', categorySlug: 'vehiculos', label: 'Lavado regular', description: 'Lavado exterior e interior', icon: '🚗', suggestedPrice: 250, sortOrder: 10 },
-  { slug: 'vehiculo_limpieza_profunda', categorySlug: 'vehiculos', label: 'Limpieza profunda', description: 'Interior y exterior a fondo', icon: '✨', suggestedPrice: 500, sortOrder: 11 },
-  { slug: 'vehiculo_aceite_filtro', categorySlug: 'vehiculos', label: 'Aceite y filtro', description: 'Cambio de aceite y filtro', icon: '🔧', suggestedPrice: 450, sortOrder: 12 },
-  { slug: 'vehiculo_pulido_pasteado', categorySlug: 'vehiculos', label: 'Pulido o pasteado', description: 'Acabado premium', icon: '💎', suggestedPrice: 400, sortOrder: 13 },
-  { slug: 'vehiculo_exterior', categorySlug: 'vehiculos', label: 'Lavado exterior', description: 'Lavado exterior del vehículo', icon: '🚗', suggestedPrice: 120, sortOrder: 14 },
-  { slug: 'vehiculo_interior', categorySlug: 'vehiculos', label: 'Lavado interior', description: 'Aspirado y limpieza interior', icon: '🪑', suggestedPrice: 150, sortOrder: 15 },
-  { slug: 'vehiculo_profundo', categorySlug: 'vehiculos', label: 'Lavado completo', description: 'Interior y exterior', icon: '✨', suggestedPrice: 250, sortOrder: 16 },
-  { slug: 'vehiculo_detallado', categorySlug: 'vehiculos', label: 'Detallado y encerado', description: 'Acabado premium', icon: '💎', suggestedPrice: 400, sortOrder: 17 },
-  { slug: 'pet_bano', categorySlug: 'hogar', label: 'Baño e higiene', description: 'Baño para mascotas', icon: '🛁', suggestedPrice: 350, sortOrder: 24 },
-  { slug: 'pet_paseo', categorySlug: 'hogar', label: 'Paseo', description: 'Paseo y ejercicio', icon: '🐕', suggestedPrice: 200, sortOrder: 25 },
-  { slug: 'pet_grooming', categorySlug: 'hogar', label: 'Grooming', description: 'Estética y cuidado', icon: '✂️', suggestedPrice: 450, sortOrder: 26 },
-  { slug: 'pet_personalizado', categorySlug: 'hogar', label: 'Solicitud personalizada', description: 'Servicio a medida', icon: '📋', suggestedPrice: 250, sortOrder: 27 },
-  { slug: 'b2b_personal_operativo', categorySlug: 'empresa', label: 'Personal operativo', description: 'Carga y apoyo en tu local', icon: '📦', suggestedPrice: 900, sortOrder: 50 },
-  { slug: 'b2b_mesero_barman', categorySlug: 'empresa', label: 'Mesero / Barman', description: 'Atención por turno', icon: '🍽️', suggestedPrice: 1200, sortOrder: 51 },
-  { slug: 'b2b_ayudante_cocina', categorySlug: 'empresa', label: 'Ayudante de cocina', description: 'Apoyo en cocina', icon: '👨‍🍳', suggestedPrice: 1100, sortOrder: 52 },
-  { slug: 'b2b_apoyo_hogar', categorySlug: 'empresa', label: 'Apoyo del hogar', description: 'Orden y apoyo en espacios', icon: '🏠', suggestedPrice: 950, sortOrder: 53 },
-  { slug: 'b2b_conserje_empresa', categorySlug: 'empresa', label: 'Conserje', description: 'Limpieza de instalaciones', icon: '🧹', suggestedPrice: 1400, sortOrder: 54 },
-  { slug: 'b2b_otro_servicio', categorySlug: 'empresa', label: 'Otro servicio', description: 'Perfil específico', icon: '📋', suggestedPrice: 800, sortOrder: 55 },
-  { slug: 'ac_limpieza_filtros', categorySlug: 'hogar', label: 'Limpieza de filtros', description: 'Filtros y rejillas', icon: '❄️', suggestedPrice: 350, sortOrder: 14 },
-  { slug: 'ac_mantenimiento', categorySlug: 'hogar', label: 'Mantenimiento preventivo', description: 'Mantenimiento de equipo', icon: '🔧', suggestedPrice: 500, sortOrder: 15 },
-  { slug: 'ac_revision', categorySlug: 'hogar', label: 'Revisión e instalación', description: 'Diagnóstico e instalación', icon: '📋', suggestedPrice: 700, sortOrder: 16 },
-  { slug: 'ac_recarga', categorySlug: 'hogar', label: 'Recarga de gas', description: 'Gas refrigerante', icon: '💨', suggestedPrice: 900, sortOrder: 17 },
-  { slug: 'jardineria_corte', categorySlug: 'hogar', label: 'Corte de grama', description: 'Césped y nivelación', icon: '🌱', suggestedPrice: 300, sortOrder: 18 },
-  { slug: 'jardineria_poda', categorySlug: 'hogar', label: 'Poda de arbustos', description: 'Arbustos y setos', icon: '✂️', suggestedPrice: 450, sortOrder: 19 },
-  { slug: 'jardineria_patio', categorySlug: 'hogar', label: 'Limpieza de patio', description: 'Patio y áreas verdes', icon: '🏡', suggestedPrice: 550, sortOrder: 20 },
-  { slug: 'jardineria', categorySlug: 'hogar', label: 'Riego y mantenimiento', description: 'Jardín', icon: '🌿', suggestedPrice: 400, sortOrder: 21 },
-  { slug: 'pet_care', categorySlug: 'hogar', label: 'Servicio para mascota', description: 'Baño y cuidado', icon: '🐕', suggestedPrice: 250, sortOrder: 22 },
-  { slug: 'mandados_express', categorySlug: 'hogar', label: 'Mandados Express', description: 'Recados rápidos', icon: '🛵', suggestedPrice: 100, sortOrder: 23 },
-  { slug: 'electricista', categorySlug: 'especializados', label: 'Electricista', description: 'Cableado y paneles', icon: '⚡', suggestedPrice: 500, sortOrder: 30 },
-  { slug: 'plomeria', categorySlug: 'especializados', label: 'Plomería', description: 'Fugas y drenajes', icon: '🔧', suggestedPrice: 500, sortOrder: 31 },
-  { slug: 'linea_blanca', categorySlug: 'especializados', label: 'Línea blanca', description: 'Refrigeradoras y lavadoras', icon: '🧊', suggestedPrice: 500, sortOrder: 32 },
-  { slug: 'alfombra_institucional', categorySlug: 'limpieza', label: 'Alfombra institucional', description: 'Oficinas y comercios', icon: '🏢', suggestedPrice: 1800, sortOrder: 40 },
-  { slug: 'fumigacion', categorySlug: 'limpieza', label: 'Fumigación', description: 'Control de plagas', icon: '🪲', suggestedPrice: 1200, sortOrder: 41 },
-  { slug: 'conserjeria_contrato', categorySlug: 'hogar', label: 'Conserjería por contrato', description: 'Servicio mensual', icon: '📋', suggestedPrice: 2500, sortOrder: 42 },
+  { slug: 'limpieza_alfombra', categorySlug: 'limpieza', label: 'Limpieza de Alfombras', description: 'Alfombras residenciales', icon: '🧹', suggestedPrice: 500, sortOrder: 3 },
+  { slug: 'conserjeria_ocasional', categorySlug: 'limpieza', label: 'Limpieza de Casa', description: 'Limpieza general del hogar', icon: '🏠', suggestedPrice: 850, sortOrder: 4 },
+
+  // ── Oficios y Mantenimiento › AC ──────────────────────────────────────────
+  { slug: 'ac_limpieza_filtros', categorySlug: 'mantenimiento', subcategorySlug: 'ac', label: 'Limpieza de filtros', description: 'Filtros y rejillas', icon: '❄️', suggestedPrice: 350, sortOrder: 10 },
+  { slug: 'ac_mantenimiento', categorySlug: 'mantenimiento', subcategorySlug: 'ac', label: 'Mantenimiento preventivo', description: 'Mantenimiento de equipo', icon: '🔧', suggestedPrice: 500, sortOrder: 11 },
+  { slug: 'ac_revision', categorySlug: 'mantenimiento', subcategorySlug: 'ac', label: 'Revisión e instalación', description: 'Diagnóstico e instalación', icon: '📋', suggestedPrice: 700, sortOrder: 12 },
+  { slug: 'ac_recarga', categorySlug: 'mantenimiento', subcategorySlug: 'ac', label: 'Recarga de gas', description: 'Gas refrigerante', icon: '💨', suggestedPrice: 900, sortOrder: 13 },
+
+  // ── Oficios y Mantenimiento › Jardinería ──────────────────────────────────
+  { slug: 'jardineria_corte', categorySlug: 'mantenimiento', subcategorySlug: 'jardineria', label: 'Corte de grama', description: 'Césped y nivelación', icon: '🌱', suggestedPrice: 300, sortOrder: 20 },
+  { slug: 'jardineria_poda', categorySlug: 'mantenimiento', subcategorySlug: 'jardineria', label: 'Poda de arbustos', description: 'Arbustos y setos', icon: '✂️', suggestedPrice: 450, sortOrder: 21 },
+  { slug: 'jardineria_patio', categorySlug: 'mantenimiento', subcategorySlug: 'jardineria', label: 'Limpieza de patio', description: 'Patio y áreas verdes', icon: '🏡', suggestedPrice: 550, sortOrder: 22 },
+  { slug: 'jardineria', categorySlug: 'mantenimiento', subcategorySlug: 'jardineria', label: 'Riego y mantenimiento', description: 'Jardín', icon: '🌿', suggestedPrice: 400, sortOrder: 23 },
+
+  // ── Car Wash ────────────────────────────────────────────────────────────────
+  { slug: 'vehiculo_lavado_regular', categorySlug: 'vehiculos', label: 'Lavado regular', description: 'Lavado exterior e interior', icon: '🚗', suggestedPrice: 250, sortOrder: 30 },
+  { slug: 'vehiculo_limpieza_profunda', categorySlug: 'vehiculos', label: 'Limpieza profunda', description: 'Interior y exterior a fondo', icon: '✨', suggestedPrice: 500, sortOrder: 31 },
+  { slug: 'vehiculo_aceite_filtro', categorySlug: 'vehiculos', label: 'Aceite y filtro', description: 'Cambio de aceite y filtro', icon: '🔧', suggestedPrice: 450, sortOrder: 32 },
+  { slug: 'vehiculo_pulido_pasteado', categorySlug: 'vehiculos', label: 'Pulido o pasteado', description: 'Acabado premium', icon: '💎', suggestedPrice: 400, sortOrder: 33 },
+
+  // ── Técnicos Especializados ─────────────────────────────────────────────────
+  { slug: 'electricista', categorySlug: 'especializados', label: 'Electricista', description: 'Cableado y paneles', icon: '⚡', suggestedPrice: 500, sortOrder: 40 },
+  { slug: 'plomeria', categorySlug: 'especializados', label: 'Plomería y Tuberías', description: 'Fugas y drenajes', icon: '🔧', suggestedPrice: 500, sortOrder: 41 },
+  { slug: 'linea_blanca', categorySlug: 'especializados', label: 'Reparación de Línea Blanca', description: 'Refrigeradoras y lavadoras', icon: '🧊', suggestedPrice: 500, sortOrder: 42 },
+
+  // ── Cuidado de Mascotas ─────────────────────────────────────────────────────
+  { slug: 'pet_bano', categorySlug: 'mascotas', label: 'Baño e higiene', description: 'Baño para mascotas', icon: '🛁', suggestedPrice: 350, sortOrder: 50 },
+  { slug: 'pet_paseo', categorySlug: 'mascotas', label: 'Paseo y ejercicio', description: 'Paseo y ejercicio', icon: '🐕', suggestedPrice: 200, sortOrder: 51 },
+  { slug: 'pet_grooming', categorySlug: 'mascotas', label: 'Grooming', description: 'Estética y cuidado', icon: '✂️', suggestedPrice: 450, sortOrder: 52 },
+  { slug: 'pet_personalizado', categorySlug: 'mascotas', label: 'Solicitud personalizada', description: 'Servicio a medida', icon: '📋', suggestedPrice: 250, sortOrder: 53 },
+
+  // ── Servicios Express ───────────────────────────────────────────────────────
+  { slug: 'mandados_express', categorySlug: 'express', label: 'Mandados Express', description: 'Recados rápidos', icon: '🛵', suggestedPrice: 100, sortOrder: 60 },
+
+  // ── Para tu Negocio ─────────────────────────────────────────────────────────
+  { slug: 'alfombra_institucional', categorySlug: 'empresa', label: 'Alfombra institucional', description: 'Oficinas y comercios', icon: '🏢', suggestedPrice: 1800, sortOrder: 70 },
+  { slug: 'conserjeria_contrato', categorySlug: 'empresa', label: 'Conserjería por contrato', description: 'Servicio mensual', icon: '📋', suggestedPrice: 2500, sortOrder: 71 },
+  { slug: 'fumigacion', categorySlug: 'empresa', label: 'Fumigación', description: 'Control de plagas', icon: '🪲', suggestedPrice: 1200, sortOrder: 72 },
+  { slug: 'b2b_personal_operativo', categorySlug: 'empresa', label: 'Personal operativo', description: 'Carga y apoyo en tu local', icon: '📦', suggestedPrice: 900, sortOrder: 73 },
+  { slug: 'b2b_mesero_barman', categorySlug: 'empresa', label: 'Mesero / Barman', description: 'Atención por turno', icon: '🍽️', suggestedPrice: 1200, sortOrder: 74 },
+  { slug: 'b2b_ayudante_cocina', categorySlug: 'empresa', label: 'Ayudante de cocina', description: 'Apoyo en cocina', icon: '👨‍🍳', suggestedPrice: 1100, sortOrder: 75 },
+  { slug: 'b2b_apoyo_hogar', categorySlug: 'empresa', label: 'Apoyo del hogar', description: 'Orden y apoyo en espacios', icon: '🏠', suggestedPrice: 950, sortOrder: 76 },
+  { slug: 'b2b_conserje_empresa', categorySlug: 'empresa', label: 'Conserje', description: 'Limpieza de instalaciones', icon: '🧹', suggestedPrice: 1400, sortOrder: 77 },
+  { slug: 'b2b_otro_servicio', categorySlug: 'empresa', label: 'Otro servicio', description: 'Perfil específico', icon: '📋', suggestedPrice: 800, sortOrder: 78 },
 ];
 
 export const CONFIGURED_SERVICE_SEEDS = SEEDS;
 
 export const CONFIGURED_CATEGORY_SEEDS = [
-  { slug: 'limpieza', name: 'Limpieza', icon: '🧹', sort_order: 1 },
-  { slug: 'hogar', name: 'Hogar', icon: '🏠', sort_order: 2 },
-  { slug: 'vehiculos', name: 'Vehículos', icon: '🚗', sort_order: 3 },
-  { slug: 'especializados', name: 'Especializados', icon: '🔧', sort_order: 4 },
-  { slug: 'empresa', name: 'Para tu negocio', icon: '🏢', sort_order: 5 },
+  { slug: 'limpieza', name: 'Limpieza y Desinfección', icon: '🧹', sort_order: 1 },
+  { slug: 'mantenimiento', name: 'Oficios y Mantenimiento', icon: '🔧', sort_order: 2 },
+  { slug: 'vehiculos', name: 'Car Wash', icon: '🚗', sort_order: 3 },
+  { slug: 'especializados', name: 'Técnicos Especializados', icon: '⚡', sort_order: 4 },
+  { slug: 'mascotas', name: 'Cuidado de Mascotas', icon: '🐕', sort_order: 5 },
+  { slug: 'express', name: 'Servicios Express', icon: '🛵', sort_order: 6 },
+  { slug: 'empresa', name: 'Para tu Negocio', icon: '🏢', sort_order: 7 },
+] as const;
+
+export const CONFIGURED_SUBCATEGORY_SEEDS = [
+  { slug: 'ac', parentSlug: 'mantenimiento', name: 'Mantenimiento AC', icon: '❄️', sort_order: 1 },
+  { slug: 'jardineria', parentSlug: 'mantenimiento', name: 'Jardinería', icon: '🌿', sort_order: 2 },
 ] as const;
 
 export const ALL_CONFIGURED_SERVICE_SLUGS = SEEDS.map((s) => s.slug);
@@ -72,7 +102,8 @@ export const DEFAULT_SERVICE_SLUG = 'limpieza_sofas';
 
 const B2B_SLUGS = new Set(['alfombra_institucional', 'conserjeria_contrato', 'fumigacion']);
 
-export const isExpressServiceSlug = (slug: string): boolean => !B2B_SLUGS.has(slug);
+export const isExpressServiceSlug = (slug: string): boolean =>
+  !B2B_SLUGS.has(slug) && !slug.startsWith('b2b_');
 
 export const SERVICE_FALLBACK_PRICES: Record<string, number> = Object.fromEntries(
   SEEDS.map((s) => [s.slug, s.suggestedPrice]),
@@ -81,48 +112,101 @@ export const SERVICE_FALLBACK_PRICES: Record<string, number> = Object.fromEntrie
 export const getConfiguredServiceLabel = (slug: string): string | undefined =>
   SEEDS.find((s) => s.slug === slug)?.label;
 
-const CATEGORY_LABELS: Record<string, string> = {
-  limpieza: 'Limpieza',
-  hogar: 'Hogar y Express',
-  vehiculos: 'Vehículos',
-  especializados: 'Especializados',
-  empresa: 'Para tu negocio',
+export const getConfiguredServiceSeed = (slug: string): ServiceSeedDef | undefined =>
+  SEEDS.find((s) => s.slug === slug);
+
+export const getSpecializedServiceSeeds = (): ServiceSeedDef[] =>
+  SEEDS.filter((s) => s.categorySlug === 'especializados');
+
+const CATEGORY_LABELS: Record<string, string> = Object.fromEntries(
+  CONFIGURED_CATEGORY_SEEDS.map((c) => [c.slug, c.name]),
+);
+
+const SUBCATEGORY_LABELS: Record<string, string> = Object.fromEntries(
+  CONFIGURED_SUBCATEGORY_SEEDS.map((s) => [s.slug, s.name]),
+);
+
+export interface CatalogGroup {
+  group: {
+    id: string;
+    icon: string;
+    label: string;
+    parentLabel?: string;
+  };
+  types: ServiceType[];
+}
+
+const resolveGroupMeta = (
+  categorySlug: string,
+  subcategorySlug?: string | null,
+): { id: string; icon: string; label: string; parentLabel?: string } => {
+  if (categorySlug === 'mantenimiento' && subcategorySlug) {
+    const sub = CONFIGURED_SUBCATEGORY_SEEDS.find((s) => s.slug === subcategorySlug);
+    return {
+      id: `${categorySlug}:${subcategorySlug}`,
+      icon: sub?.icon ?? '🔧',
+      label: SUBCATEGORY_LABELS[subcategorySlug] ?? subcategorySlug,
+      parentLabel: CATEGORY_LABELS.mantenimiento,
+    };
+  }
+
+  const cat = CONFIGURED_CATEGORY_SEEDS.find((c) => c.slug === categorySlug);
+  return {
+    id: categorySlug,
+    icon: cat?.icon ?? '📋',
+    label: CATEGORY_LABELS[categorySlug] ?? categorySlug,
+  };
 };
 
 export const sortServiceTypesByConfig = (types: ServiceType[]): ServiceType[] =>
   [...types].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
 
-export const buildGroupedServiceTypes = (
-  types: ServiceType[],
-): Array<{ group: { id: string; icon: string; label: string }; types: ServiceType[] }> => {
-  const byCat = new Map<string, ServiceType[]>();
-  for (const t of types) {
-    const key = t.category_slug || 'otros';
-    if (!byCat.has(key)) byCat.set(key, []);
-    byCat.get(key)!.push(t);
+/** Agrupa servicios según la jerarquía unificada (incluye subcategorías de mantenimiento). */
+export const buildGroupedServiceTypes = (types: ServiceType[]): CatalogGroup[] => {
+  const allowed = new Set(ALL_CONFIGURED_SERVICE_SLUGS);
+  const filtered = types.filter((t) => allowed.has(t.slug));
+
+  const byGroup = new Map<string, ServiceType[]>();
+  const groupMeta = new Map<string, CatalogGroup['group']>();
+
+  for (const type of filtered) {
+    const seed = getConfiguredServiceSeed(type.slug);
+    const categorySlug = seed?.categorySlug ?? type.category_slug;
+    const subcategorySlug = seed?.subcategorySlug ?? type.subcategory_slug ?? null;
+    const meta = resolveGroupMeta(categorySlug, subcategorySlug);
+
+    if (!byGroup.has(meta.id)) {
+      byGroup.set(meta.id, []);
+      groupMeta.set(meta.id, meta);
+    }
+    byGroup.get(meta.id)!.push(type);
   }
 
-  const order = ['limpieza', 'hogar', 'vehiculos', 'especializados'];
-  const groups: Array<{ group: { id: string; icon: string; label: string }; types: ServiceType[] }> = [];
+  const order = [
+    'limpieza',
+    'mantenimiento:ac',
+    'mantenimiento:jardineria',
+    'vehiculos',
+    'especializados',
+    'mascotas',
+    'express',
+    'empresa',
+  ];
 
-  for (const catSlug of order) {
-    const list = byCat.get(catSlug);
+  const groups: CatalogGroup[] = [];
+  for (const id of order) {
+    const list = byGroup.get(id);
     if (!list?.length) continue;
-    const cat = CONFIGURED_CATEGORY_SEEDS.find((c) => c.slug === catSlug);
     groups.push({
-      group: {
-        id: catSlug,
-        icon: cat?.icon ?? '📋',
-        label: CATEGORY_LABELS[catSlug] ?? catSlug,
-      },
+      group: groupMeta.get(id)!,
       types: sortServiceTypesByConfig(list),
     });
-    byCat.delete(catSlug);
+    byGroup.delete(id);
   }
 
-  for (const [catSlug, list] of byCat) {
+  for (const [id, list] of byGroup) {
     groups.push({
-      group: { id: catSlug, icon: '📋', label: catSlug },
+      group: groupMeta.get(id) ?? { id, icon: '📋', label: id },
       types: sortServiceTypesByConfig(list),
     });
   }
@@ -144,6 +228,7 @@ export const buildSeedCatalog = (): ServiceCatalog => {
     id: `seed-${def.slug}`,
     category_id: `seed-${def.categorySlug}`,
     category_slug: def.categorySlug,
+    subcategory_slug: def.subcategorySlug ?? null,
     slug: def.slug,
     name: def.label,
     description: def.description,

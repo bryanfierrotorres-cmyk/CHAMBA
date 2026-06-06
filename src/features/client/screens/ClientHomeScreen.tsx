@@ -42,6 +42,7 @@ import {
   EXPRESS_SUB_TILES,
   EXPRESS_SUBMENU_META,
   EMPRESA_PREMIUM_ORDER,
+  CLIENT_SPECIALIZED_SERVICES,
   type ExpressTileDef,
 } from '@constants/clientHomeExpress';
 import { ClientHomeHeroCarousel } from '@components/client/ClientHomeHeroCarousel';
@@ -59,27 +60,6 @@ type ActiveTab = 'hogar' | 'empresa';
 const CYAN = CHAMBA.cyan;
 const ICON_BG = '#E0F2FE';
 const BLUE = CHAMBA.blue;
-
-const SPECIALIZED = [
-  {
-    id: 'electricista',
-    title: 'Electricista',
-    subtitle: 'Cortocircuitos, paneles y cableado general',
-    slug: 'electricista',
-  },
-  {
-    id: 'plomeria',
-    title: 'Plomería y Tuberías',
-    subtitle: 'Fugas ocultas, sanitarios y drenajes',
-    slug: 'plomeria',
-  },
-  {
-    id: 'linea_blanca',
-    title: 'Reparación de Línea Blanca',
-    subtitle: 'Refrigeradoras, lavadoras y cocinas',
-    slug: 'linea_blanca',
-  },
-] as const;
 
 const premiumSortIndex = (slug: string): number => {
   const i = EMPRESA_PREMIUM_ORDER.indexOf(slug as (typeof EMPRESA_PREMIUM_ORDER)[number]);
@@ -118,8 +98,8 @@ export const ClientHomeScreen: React.FC = () => {
 
   const filteredSpecialized = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return SPECIALIZED;
-    return SPECIALIZED.filter(
+    if (!q) return CLIENT_SPECIALIZED_SERVICES;
+    return CLIENT_SPECIALIZED_SERVICES.filter(
       (s) =>
         s.title.toLowerCase().includes(q) ||
         s.subtitle.toLowerCase().includes(q),
@@ -309,11 +289,11 @@ export const ClientHomeScreen: React.FC = () => {
                 return (
                   <ChambaServiceOptionRow
                     key={item.id}
-                    title={item.name}
+                    title={catalog.getLabel(item.slug) || item.name}
                     subtitle={item.description ?? 'Personal capacitado para tu negocio'}
                     iconColor={getServiceIconBg(item.slug, item.slug)}
                     icon={renderEmpresaServiceIcon(item.slug)}
-                    onPress={() => handlePress(item.slug, item.name)}
+                    onPress={() => handlePress(item.slug, catalog.getLabel(item.slug) || item.name)}
                     badge="ALTA DEMANDA"
                     priceLine={`Desde ${formatCurrency(price)}/día`}
                   />

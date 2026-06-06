@@ -1,13 +1,14 @@
 /**
- * Fuente única de verdad — 8 categorías oficiales de CHAMBA.
- * Cliente, Colaborador y Administrador deben usar estos mismos IDs.
+ * Categorías legacy de CHAMBA — alias de slugs antiguos hacia el catálogo unificado.
  */
+import { getConfiguredServiceLabel } from '@constants/servicesConfig';
+
 export const CHAMBA_CATEGORY_IDS = [
   'limpieza_sofas',
   'limpieza_alfombra',
   'alfombra_institucional',
   'fumigacion',
-  'vehiculo_profundo',
+  'vehiculo_limpieza_profunda',
   'conserjeria_ocasional',
   'conserjeria_contrato',
   'jardineria',
@@ -23,24 +24,36 @@ export const CLIENT_CATEGORY_MAP: Record<ClientCategory, JobCategory> = Object.f
   CHAMBA_CATEGORY_IDS.map((id) => [id, id]),
 ) as Record<ClientCategory, JobCategory>;
 
+/** Slugs retirados → reemplazo canónico (jobs históricos). */
+export const LEGACY_SLUG_ALIASES: Record<string, JobCategory> = {
+  vehiculo_profundo: 'vehiculo_limpieza_profunda',
+  vehiculo_exterior: 'vehiculo_lavado_regular',
+  vehiculo_interior: 'vehiculo_lavado_regular',
+  vehiculo_detallado: 'vehiculo_pulido_pasteado',
+  pet_care: 'pet_bano',
+  sofas: 'limpieza_sofas',
+  alfombra: 'limpieza_alfombra',
+  vehiculos: 'vehiculo_limpieza_profunda',
+};
+
 export const CATEGORY_LABELS: Record<JobCategory, string> = {
-  limpieza_sofas:          'Limpieza de Sofás',
-  limpieza_alfombra:       'Limpieza de Alfombra',
-  alfombra_institucional:  'Limpieza de Alfombra Institucional',
+  limpieza_sofas:          'Profunda de Sofás',
+  limpieza_alfombra:       'Limpieza de Alfombras',
+  alfombra_institucional:  'Alfombra institucional',
   fumigacion:              'Fumigación',
-  vehiculo_profundo:       'Limpieza Profunda y Detallado de Vehículo',
-  conserjeria_ocasional:   'Conserjería Ocasional',
-  conserjeria_contrato:    'Conserjería por Contrato',
-  jardineria:              'Jardinería',
+  vehiculo_limpieza_profunda: 'Limpieza profunda',
+  conserjeria_ocasional:   'Limpieza de Casa',
+  conserjeria_contrato:    'Conserjería por contrato',
+  jardineria:              'Riego y mantenimiento',
 };
 
 export const CATEGORY_EMOJIS: Record<JobCategory, string> = {
   limpieza_sofas:          '🛋️',
-  limpieza_alfombra:       '🏠',
+  limpieza_alfombra:       '🧹',
   alfombra_institucional:  '🏢',
   fumigacion:              '🪲',
-  vehiculo_profundo:       '🚗',
-  conserjeria_ocasional:   '⏰',
+  vehiculo_limpieza_profunda: '🚗',
+  conserjeria_ocasional:   '🏠',
   conserjeria_contrato:    '📋',
   jardineria:              '🌿',
 };
@@ -63,15 +76,12 @@ export const isJobCategory = (value: string): value is JobCategory =>
 /** Precios de respaldo si el catálogo remoto no está disponible. */
 export const SUGGESTED_PRICES_FALLBACK: Record<string, number> = {
   limpieza_sofas:          1400,
-  limpieza_alfombra:       950,
+  limpieza_alfombra:       500,
+  limpieza_banos:          600,
   alfombra_institucional:  1800,
   fumigacion:              1200,
-  vehiculo_profundo:       900,
-  vehiculo_exterior:       120,
-  vehiculo_interior:       150,
-  vehiculo_detallado:      400,
-  vehiculo_lavado_regular: 250,
   vehiculo_limpieza_profunda: 500,
+  vehiculo_lavado_regular: 250,
   vehiculo_aceite_filtro:  450,
   vehiculo_pulido_pasteado: 400,
   b2b_personal_operativo:  900,
@@ -90,25 +100,25 @@ export const SUGGESTED_PRICES_FALLBACK: Record<string, number> = {
   ac_mantenimiento:        500,
   ac_revision:             700,
   ac_recarga:              900,
-  pet_care:                250,
   pet_bano:                350,
   pet_paseo:               200,
-  pet_cuidado_casa:        450,
   pet_grooming:            450,
   pet_personalizado:       250,
   mandados_express:        100,
+  electricista:            500,
+  plomeria:                500,
+  linea_blanca:            500,
 };
 
 /**
  * Valores del enum `job_category` en Supabase remoto (mezcla legacy + nuevos).
- * Escritura: siempre usar estos valores al insertar/actualizar.
  */
 export const DB_JOB_CATEGORY: Record<JobCategory, string> = {
   limpieza_sofas:          'sofas',
   limpieza_alfombra:       'alfombra',
   alfombra_institucional:  'alfombra_institucional',
   fumigacion:              'fumigacion',
-  vehiculo_profundo:       'vehiculos',
+  vehiculo_limpieza_profunda: 'vehiculos',
   conserjeria_ocasional:   'conserjeria_ocasional',
   conserjeria_contrato:    'conserjeria_contrato',
   jardineria:              'jardineria',
@@ -118,11 +128,12 @@ export const DB_JOB_CATEGORY: Record<JobCategory, string> = {
 const LEGACY_DB_TO_APP: Record<string, JobCategory> = {
   sofas:     'limpieza_sofas',
   alfombra:  'limpieza_alfombra',
-  vehiculos: 'vehiculo_profundo',
+  vehiculos: 'vehiculo_limpieza_profunda',
   limpieza:  'limpieza_alfombra',
   ...Object.fromEntries(
     Object.entries(DB_JOB_CATEGORY).map(([app, db]) => [db, app as JobCategory]),
   ) as Record<string, JobCategory>,
+  ...LEGACY_SLUG_ALIASES,
 };
 
 /** Convierte ID de app → enum Postgres. */
@@ -132,26 +143,41 @@ export const toDbJobCategory = (category: JobCategory | string): string =>
 /** Convierte enum Postgres → ID de app (si aplica). */
 export const fromDbJobCategory = (dbCategory: string | null | undefined): JobCategory | null => {
   if (!dbCategory) return null;
+  if (LEGACY_SLUG_ALIASES[dbCategory]) return LEGACY_SLUG_ALIASES[dbCategory];
   if (isJobCategory(dbCategory)) return dbCategory;
   return LEGACY_DB_TO_APP[dbCategory] ?? dbCategory;
 };
 
+/** Etiqueta legible — prioriza catálogo canónico. */
+export const getLegacyCategoryLabel = (slug: string): string =>
+  getConfiguredServiceLabel(slug)
+  ?? CATEGORY_LABELS[slug as JobCategory]
+  ?? slug;
+
 /** Valores DB a consultar (incluye alias legados y sub-servicios Express). */
 export const toDbJobCategoryQueryValues = (category: JobCategory | string): string[] => {
-  const primary = toDbJobCategory(category);
+  const normalized = fromDbJobCategory(category) ?? category;
+  const primary = toDbJobCategory(normalized);
   const legacyAliases: Record<string, string[]> = {
     limpieza:               ['limpieza_sofas', 'limpieza_banos', 'limpieza_alfombra', 'conserjeria_ocasional', 'sofas', 'alfombra'],
     limpieza_sofas:         ['sofas', 'limpieza_banos', 'conserjeria_ocasional', 'limpieza_alfombra', 'fumigacion', 'alfombra_institucional'],
     limpieza_alfombra:      ['alfombra', 'limpieza'],
     limpieza_banos:         ['limpieza_banos'],
     conserjeria_ocasional:  ['conserjeria_ocasional'],
-    vehiculo_profundo:      ['vehiculos'],
+    vehiculo_limpieza_profunda: ['vehiculos', 'vehiculo_limpieza_profunda'],
+    vehiculo_lavado_regular: ['vehiculo_lavado_regular', 'vehiculos'],
     jardineria:             ['jardineria_corte', 'jardineria_poda', 'jardineria_patio'],
   };
-  const extras = legacyAliases[category as JobCategory] ?? [];
-  const out = new Set<string>([primary, ...extras]);
-  if (String(category).startsWith('jardineria_')) {
+  const extras = legacyAliases[normalized as JobCategory] ?? [];
+  const out = new Set<string>([primary, String(normalized), ...extras]);
+  if (String(normalized).startsWith('jardineria_')) {
     out.add('jardineria');
+  }
+  if (String(normalized).startsWith('ac_')) {
+    out.add('ac_limpieza_filtros');
+  }
+  if (String(normalized).startsWith('pet_')) {
+    out.add('pet_bano');
   }
   return [...out];
 };
