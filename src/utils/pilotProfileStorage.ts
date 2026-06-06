@@ -8,8 +8,16 @@ const CATALOG_STORAGE_KEY = 'CHAMBA_SERVICE_CATALOG_V1';
 const ASSIGNMENTS_STORAGE_KEY = 'CHAMBA_WORKER_ASSIGNMENTS';
 
 const isQuotaError = (err: unknown): boolean => {
+  if (err && typeof err === 'object' && 'name' in err && (err as { name: string }).name === 'QuotaExceededError') {
+    return true;
+  }
   const msg = err instanceof Error ? err.message : String(err);
-  return msg.includes('quota') || msg.includes('Quota') || msg.includes('exceeded');
+  return (
+    msg.includes('quota')
+    || msg.includes('Quota')
+    || msg.includes('exceeded')
+    || msg.includes('QUOTA_EXCEEDED')
+  );
 };
 
 /** No persistir data-URI (base64) — ocupan MB y rompen localStorage en web. */
@@ -33,15 +41,12 @@ export const compactProfileForStorage = (profile: UserProfile): UserProfile => (
 /** Libera espacio en localStorage (misma origin — datos de otros usuarios de prueba). */
 export const freeChambaBrowserStorage = async (): Promise<void> => {
   await repairLocalAssignmentsStorage();
-  try {
-    await AsyncStorage.removeItem(CATALOG_STORAGE_KEY);
-  } catch {
-    // ignorar
-  }
-  try {
-    await AsyncStorage.removeItem(ASSIGNMENTS_STORAGE_KEY);
-  } catch {
-    // ignorar
+  for (const key of [CATALOG_STORAGE_KEY, ASSIGNMENTS_STORAGE_KEY, PILOT_STORAGE_KEY]) {
+    try {
+      await AsyncStorage.removeItem(key);
+    } catch {
+      // ignorar
+    }
   }
 };
 
