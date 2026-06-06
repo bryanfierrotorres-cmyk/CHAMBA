@@ -3,6 +3,7 @@ import {
   View,
   Text,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   Animated,
   KeyboardAvoidingView,
@@ -21,12 +22,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { ChambaSlidingToggle } from '@components/chamba/ChambaSlidingToggle';
 import { useAuthStore } from '@store/authStore';
 import { FONT_SIZE, SPACING } from '@constants/theme';
-import { CARD_STEP_SHADOW, CHAMBA, TOUCH_TARGET_MIN } from '@constants/chambaUI';
+import { CARD_STEP_SHADOW, CHAMBA } from '@constants/chambaUI';
 import { textInputWebFocusStyle } from '@constants/textInputFocus';
 import { formatNicaPhone, isValidNicaPhone } from '@utils/phoneNicaragua';
 import type { AuthStackParamList, UserRole } from '@/types';
 
-type LoginNav = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
+const LOGIN_PRIMARY = '#1E293B';
+const LOGIN_PRIMARY_PRESSED = '#334155';
 
 const LOGIN_BG = require('../../../../assets/login-hero-bg.png');
 
@@ -259,7 +261,7 @@ export const LoginScreen: React.FC = () => {
             ]}
           >
             <LinearGradient
-              colors={['#0D9488', '#0284C7']}
+              colors={[LOGIN_PRIMARY, LOGIN_PRIMARY]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={styles.cardAccent}
@@ -267,13 +269,10 @@ export const LoginScreen: React.FC = () => {
 
             <View style={styles.cardHeader}>
               <View style={styles.cardHeaderIcon}>
-                <Ionicons name="log-in-outline" size={22} color={CHAMBA.teal} />
+                <Ionicons name="log-in-outline" size={22} color={LOGIN_PRIMARY} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardTitle}>Ingresá tus datos</Text>
-                <Text style={styles.cardSub}>
-                  Sin contraseña ni correo — entrá con tu celular
-                </Text>
               </View>
             </View>
 
@@ -318,7 +317,7 @@ export const LoginScreen: React.FC = () => {
                 {!!phoneErr ? (
                   <Text style={fieldStyles.errorText}>{phoneErr}</Text>
                 ) : (
-                  <Text style={fieldStyles.hint}>8 dígitos · Nicaragua</Text>
+                  <Text style={fieldStyles.hint}>Nicaragua</Text>
                 )}
               </View>
 
@@ -328,6 +327,8 @@ export const LoginScreen: React.FC = () => {
                   options={ROLE_TOGGLE_OPTIONS}
                   active={role}
                   onChange={setRole}
+                  cornerRadius={12}
+                  activeFontWeight="600"
                 />
                 <Animated.Text style={[styles.roleHint, { opacity: roleHintOp }]}>
                   {roleHint}
@@ -342,28 +343,39 @@ export const LoginScreen: React.FC = () => {
               </View>
             )}
 
-            <TouchableOpacity
+            <Pressable
               onPress={handleSubmit}
               disabled={isBusy}
-              activeOpacity={0.88}
-              style={[styles.submitWrap, isBusy && styles.submitDisabled]}
+              accessibilityRole="button"
+              accessibilityLabel="Entrar a CHAMBA"
             >
-              <LinearGradient
-                colors={['#0D9488', '#0284C7']}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={styles.submitBtn}
-              >
-                {pendingAction === 'chamba' ? (
-                  <ActivityIndicator color="#FFF" />
-                ) : (
-                  <>
-                    <Ionicons name="flash" size={20} color="#FFF" />
-                    <Text style={styles.submitBtnText}>Entrar a CHAMBA</Text>
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
+              {({ pressed }) => (
+                <View
+                  style={[
+                    styles.submitBtn,
+                    {
+                      backgroundColor:
+                        pressed && !isBusy ? LOGIN_PRIMARY_PRESSED : LOGIN_PRIMARY,
+                    },
+                    isBusy && styles.submitDisabled,
+                  ]}
+                >
+                  {pendingAction === 'chamba' ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name="flash"
+                        size={18}
+                        color="#FFFFFF"
+                        style={styles.submitBtnIcon}
+                      />
+                      <Text style={styles.submitBtnText}>Entrar a CHAMBA</Text>
+                    </>
+                  )}
+                </View>
+              )}
+            </Pressable>
 
             <TouchableOpacity
               style={styles.registerRow}
@@ -606,7 +618,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: '#F0FDFA',
+    backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -614,12 +626,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
     color: CHAMBA.navy,
-  },
-  cardSub: {
-    fontSize: 13,
-    color: CHAMBA.muted,
-    marginTop: 2,
-    lineHeight: 18,
   },
   fields: { gap: 16 },
   roleHint: {
@@ -641,18 +647,35 @@ const styles = StyleSheet.create({
     borderColor: '#FECACA',
   },
   errorText: { flex: 1, color: '#991B1B', fontSize: FONT_SIZE.sm, lineHeight: 20 },
-  submitWrap: { borderRadius: 16, overflow: 'hidden', marginTop: SPACING.sm },
-  submitDisabled: { opacity: 0.75 },
   submitBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    minHeight: TOUCH_TARGET_MIN,
+    alignSelf: 'stretch',
+    width: '100%',
     height: 56,
-    borderRadius: 16,
+    borderRadius: 12,
+    backgroundColor: LOGIN_PRIMARY,
+    marginVertical: 12,
+    shadowColor: LOGIN_PRIMARY,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
+    ...(Platform.OS === 'web'
+      ? ({ cursor: 'pointer', userSelect: 'none' } as Record<string, string>)
+      : {}),
   },
-  submitBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  submitDisabled: { opacity: 0.75 },
+  submitBtnIcon: {
+    marginRight: 8,
+  },
+  submitBtnText: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
   registerRow: {
     flexDirection: 'row',
     justifyContent: 'center',
