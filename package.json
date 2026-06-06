@@ -30,6 +30,7 @@
     "db:apply-chat": "node scripts/apply-migration-023-chat.mjs",
     "db:apply-unified-catalog": "node scripts/apply-migration-024-unified-catalog.mjs",
     "db:apply-precios-catalogo": "node scripts/apply-migration-027-precios-catalogo.mjs",
+    "db:apply-push-notify": "node scripts/apply-migration-031-push-notify.mjs",
     "db:apply-admin-publish-precios": "node scripts/apply-migration-028-admin-publish-precios.mjs",
     "db:apply-jobs-scheduling": "node scripts/apply-migration-030-jobs-scheduling.mjs",
     "db:apply-operational-phase": "node scripts/apply-migration-029-operational-phase.mjs",

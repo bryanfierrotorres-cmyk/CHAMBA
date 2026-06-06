@@ -1,101 +1,159 @@
 /**
- * Triggered via Supabase Database Webhook or client invoke when a new job is inserted.
- * Sends push notification to approved workers whose specialty matches the job category.
+ * Disparada por Database Webhook (INSERT en jobs) o invoke desde createJob.
+ * Filtra técnicos aprobados con fcm_token y delega el envío a send-push-notification.
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.1';
+import type { DbWebhookPayload, JobInsertRecord } from '../_shared/jobNotifyTypes.ts';
+import { workerCoversJobCategory } from '../_shared/workerCategoryMatch.ts';
+import { buildNewJobNotificationBody } from '../_shared/jobServiceLabel.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+const corsHeaders: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, apikey, content-type, x-supabase-event-signature',
 };
 
-const CATEGORY_LABELS: Record<string, string> = {
-  limpieza_sofas:          'Limpieza de Sofás',
-  limpieza_alfombra:       'Limpieza de Alfombra',
-  alfombra_institucional:  'Limpieza de Alfombra Institucional',
-  fumigacion:              'Fumigación',
-  vehiculo_profundo:       'Limpieza Profunda y Detallado de Vehículo',
-  conserjeria_ocasional:   'Conserjería Ocasional',
-  conserjeria_contrato:    'Conserjería por Contrato',
-  jardineria:              'Jardinería',
+const PUSH_TITLE = '¡Nueva chamba disponible!';
+
+const parseWebhookPayload = (raw: unknown): DbWebhookPayload | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const body = raw as Record<string, unknown>;
+
+  if (body.record && typeof body.record === 'object') {
+    return body as DbWebhookPayload;
+  }
+
+  const nested = body.payload;
+  if (nested && typeof nested === 'object' && (nested as DbWebhookPayload).record) {
+    return nested as DbWebhookPayload;
+  }
+
+  return null;
 };
 
-function workerMatchesCategory(
-  worker: {
-    category_1: string | null;
-    category_2: string | null;
-    category_1_approved: boolean | null;
-    category_2_approved: boolean | null;
-  },
-  jobCategory: string,
-): boolean {
-  if (worker.category_1 === jobCategory && worker.category_1_approved) return true;
-  if (worker.category_2 === jobCategory && worker.category_2_approved) return true;
-  return false;
-}
+const isOpenJobInsert = (payload: DbWebhookPayload, job: JobInsertRecord): boolean => {
+  if (payload.type && payload.type !== 'INSERT') return false;
+  if (payload.table && payload.table !== 'jobs') return false;
+  const status = (job.status ?? 'open').toLowerCase();
+  return status === 'open';
+};
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-  );
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    if (!supabaseUrl || !serviceRoleKey) {
+      throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+    }
 
-  const payload = await req.json();
-  const job     = payload.record;
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const rawBody: unknown = await req.json();
+    const payload = parseWebhookPayload(rawBody);
 
-  if (!job || payload.type !== 'INSERT') {
-    return new Response('Not a job insert', { status: 200 });
-  }
+    if (!payload?.record?.id) {
+      return new Response(JSON.stringify({ skipped: true, reason: 'not_a_job_insert' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-  const jobCategory = job.category as string;
+    const job = payload.record;
 
-  const { data: workers, error } = await supabase
-    .from('profiles')
-    .select('id, category_1, category_2, category_2_approved, fcm_token')
-    .eq('role', 'worker')
-    .eq('is_approved', true)
-    .not('fcm_token', 'is', null);
+    if (!isOpenJobInsert(payload, job)) {
+      return new Response(JSON.stringify({ skipped: true, reason: 'not_open_insert' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-  if (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
+    const jobCategory = (job.category ?? '').trim();
+    if (!jobCategory) {
+      return new Response(JSON.stringify({ skipped: true, reason: 'missing_category' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { data: workers, error: workersError } = await supabase
+      .from('profiles')
+      .select(
+        'id, category_1, category_2, category_1_approved, category_2_approved, fcm_token',
+      )
+      .eq('role', 'worker')
+      .eq('is_approved', true)
+      .not('fcm_token', 'is', null);
+
+    if (workersError) {
+      throw new Error(workersError.message);
+    }
+
+    const matchingWorkers = (workers ?? []).filter((worker) =>
+      workerCoversJobCategory(worker, jobCategory)
+    );
+
+    if (matchingWorkers.length === 0) {
+      return new Response(
+        JSON.stringify({ notified: 0, category: jobCategory, reason: 'no_matching_workers' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    let remoteLabel: string | null = null;
+    const { data: serviceType } = await supabase
+      .from('service_types')
+      .select('name')
+      .eq('slug', jobCategory)
+      .maybeSingle();
+
+    if (serviceType && typeof serviceType.name === 'string') {
+      remoteLabel = serviceType.name;
+    }
+
+    const body = buildNewJobNotificationBody(jobCategory, job.title, remoteLabel);
+    const workerIds = matchingWorkers.map((w) => w.id);
+
+    const { data: sendResult, error: sendError } = await supabase.functions.invoke(
+      'send-push-notification',
+      {
+        body: {
+          user_ids: workerIds,
+          title: PUSH_TITLE,
+          body,
+          type: 'new_job',
+          data: {
+            job_id: job.id,
+            category: jobCategory,
+            screen: 'JobList',
+          },
+        },
+      },
+    );
+
+    if (sendError) {
+      throw new Error(sendError.message);
+    }
+
+    return new Response(
+      JSON.stringify({
+        notified: workerIds.length,
+        category: jobCategory,
+        title: PUSH_TITLE,
+        body,
+        sendResult,
+      }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'unknown_error';
+    console.error('[notify-new-job]', message);
+    return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
-
-  const matchingWorkers = (workers ?? []).filter((w) =>
-    workerMatchesCategory(w, jobCategory)
-  );
-
-  const workerIds = matchingWorkers.map((w) => w.id);
-
-  if (!workerIds.length) {
-    return new Response(
-      JSON.stringify({ notified: 0, category: jobCategory }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-    );
-  }
-
-  const categoryLabel = CATEGORY_LABELS[jobCategory] ?? jobCategory;
-  const payFormatted  = `C$${Number(job.pay_amount).toLocaleString('es-NI')}`;
-
-  await supabase.functions.invoke('send-push-notification', {
-    body: {
-      user_ids: workerIds,
-      title:    '⚡ Nueva chamba en tu rubro',
-      body:     `${categoryLabel}: ${job.title} — ${payFormatted}`,
-      type:     'new_job',
-      data:     { job_id: job.id, category: jobCategory, screen: 'JobDetail' },
-    },
-  });
-
-  return new Response(
-    JSON.stringify({ notified: workerIds.length, category: jobCategory }),
-    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-  );
 });
