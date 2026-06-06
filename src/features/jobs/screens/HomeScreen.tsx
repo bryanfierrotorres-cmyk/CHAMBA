@@ -1,8 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
-  View, Text, FlatList, RefreshControl, ActivityIndicator,
-  TouchableOpacity, Animated, StyleSheet, Platform, TextInput,
+  View, Text, Animated, StyleSheet,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -11,18 +10,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { JobCard } from '../components/JobCard';
-import { EmptyState } from '@components/EmptyState';
-import { WorkerTopBar } from '@components/worker/WorkerTopBar';
-import { TechServiceRadar } from '@components/worker/TechServiceRadar';
-import { RadarServiceFilters } from '@components/worker/RadarServiceFilters';
+import { RadarFullMap } from '@components/worker/radar/RadarFullMap';
+import { FloatingRadarHeader } from '@components/worker/radar/FloatingRadarHeader';
+import { FloatingRadarFilters } from '@components/worker/radar/FloatingRadarFilters';
+import { JobBottomSheet } from '@components/worker/radar/JobBottomSheet';
+import { RADAR_BORDER, RADAR_DEEP_BLUE, RADAR_MUTED } from '@components/worker/radar/radarTheme';
 import { useJobFeed, JOB_KEYS, useAcceptJob } from '../hooks/useJobs';
 import { useAuthStore } from '@store/authStore';
 import { useProfileStore } from '@store/profileStore';
 import { useJobStore } from '@store/jobStore';
-import { WORKER_COLORS as COLORS, M3, BORDER_RADIUS, FONT_SIZE, SPACING } from '@constants/workerTheme';
-import { stitchTypography, stitchLayout, CARD_ELEVATION } from '@constants/stitchStyles';
-import { textInputWebFocusStyle } from '@constants/textInputFocus';
-import { getCategoryLabel, formatCurrency } from '@utils/formatters';
+import { FONT_SIZE, SPACING } from '@constants/workerTheme';
+import { CARD_ELEVATION } from '@constants/stitchStyles';
 import { sortServiceTypesByConfig } from '@constants/servicesConfig';
 import { useCatalog } from '@features/catalog/hooks/useCatalog';
 import type { ServiceType } from '@features/catalog/types';
@@ -41,18 +39,19 @@ type StackNav = NativeStackNavigationProp<JobStackParamList, 'JobList'>;
 
 type CategoryItem = { value: string; label: string };
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
+const FLOATING_HEADER_HEIGHT = 68;
+const FILTERS_GAP = 10;
 
 type ToastType = 'success' | 'error';
 interface ToastData { type: ToastType; message: string; }
 
 const useToast = () => {
   const [visible, setVisible] = useState(false);
-  const [data, setData]       = useState<ToastData>({ type: 'success', message: '' });
-  const translateY             = useRef(new Animated.Value(-120)).current;
-  const timerRef               = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [data, setData] = useState<ToastData>({ type: 'success', message: '' });
+  const translateY = useRef(new Animated.Value(-120)).current;
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => { return () => { if (timerRef.current) clearTimeout(timerRef.current); }; }, []);
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
   const show = useCallback((toast: ToastData, duration = 3200) => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -68,21 +67,9 @@ const useToast = () => {
   return { visible, data, translateY, show };
 };
 
-// ─── Online status pill ───────────────────────────────────────────────────────
-
-const OnlinePill: React.FC<{ online: boolean }> = ({ online }) => (
-  <View style={[stitchLayout.statusPillOnline, !online && styles.offlinePill]}>
-    <View style={[styles.onlineDot, !online && styles.offlineDot]} />
-    <Text style={[stitchLayout.statusPillText, !online && styles.offlineText]}>
-      {online ? 'En Línea' : 'Offline'}
-    </Text>
-  </View>
-);
-
-// ─── Feed Item ────────────────────────────────────────────────────────────────
-
 interface FeedItemProps {
-  job: Job; isApproved: boolean;
+  job: Job;
+  isApproved: boolean;
   acceptingJobId: string | null;
   acceptedJobIds: Set<string>;
   processJobIds: Set<string>;
@@ -93,6 +80,7 @@ interface FeedItemProps {
   onAccept: (job: Job) => Promise<void>;
   onInProcess: (job: Job) => void;
 }
+
 const FeedItem: React.FC<FeedItemProps> = ({
   job, isApproved, acceptingJobId, acceptedJobIds, processJobIds, awaitingClientChoice,
   acceptBlocked, acceptBlockedMessage,
@@ -113,39 +101,14 @@ const FeedItem: React.FC<FeedItemProps> = ({
   />
 );
 
-// ─── Search bar ───────────────────────────────────────────────────────────────
-
-const SearchBar: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => (
-  <View style={styles.searchWrap}>
-    <Ionicons name="search-outline" size={20} color={COLORS.text.muted} />
-    <TextInput
-      value={value}
-      onChangeText={onChange}
-      placeholder="¿Qué servicio buscas hoy?"
-      placeholderTextColor={COLORS.text.muted}
-      style={[styles.searchInput, textInputWebFocusStyle]}
-      returnKeyType="search"
-    />
-    {value.length > 0 && (
-      <TouchableOpacity onPress={() => onChange('')}>
-        <Ionicons name="close-circle" size={18} color={COLORS.text.muted} />
-      </TouchableOpacity>
-    )}
-  </View>
-);
-
-// ─── Featured Banner — removed (Stitch radar feed) ─────────────────────────────
-
-// ─── Main Screen ──────────────────────────────────────────────────────────────
-
 export const HomeScreen: React.FC = () => {
-  const navigation    = useNavigation<StackNav>();
-  const insets        = useSafeAreaInsets();
-  const profile       = useAuthStore((s) => s.profile);
+  const navigation = useNavigation<StackNav>();
+  const insets = useSafeAreaInsets();
+  const profile = useAuthStore((s) => s.profile);
   const workerProfile = useProfileStore((s) => s.workerProfile);
   const { jobs: storeJobs } = useJobStore();
-  const queryClient   = useQueryClient();
-  const toast         = useToast();
+  const queryClient = useQueryClient();
+  const toast = useToast();
   const { mutateAsync: acceptMut } = useAcceptJob();
   const workerLimit = useWorkerCommitmentLimit();
 
@@ -157,12 +120,11 @@ export const HomeScreen: React.FC = () => {
   );
 
   const [selectedCategory, setSelectedCategory] = useState<JobCategory | null>(null);
-  const [acceptingJobId, setAcceptingJobId]      = useState<string | null>(null);
-  const [acceptedJobIds, setAcceptedJobIds]      = useState<Set<string>>(new Set());
-  const [processJobIds, setProcessJobIds]        = useState<Set<string>>(new Set());
+  const [acceptingJobId, setAcceptingJobId] = useState<string | null>(null);
+  const [acceptedJobIds, setAcceptedJobIds] = useState<Set<string>>(new Set());
+  const [processJobIds, setProcessJobIds] = useState<Set<string>>(new Set());
   const [removedFromFeedIds, setRemovedFromFeedIds] = useState<Set<string>>(new Set());
   const [pendingApplicationIds, setPendingApplicationIds] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery]            = useState('');
   const acceptingRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -201,20 +163,17 @@ export const HomeScreen: React.FC = () => {
   }, [catalog.serviceTypes, feedCategories]);
 
   const effectiveCategories = useMemo<JobCategory[] | undefined>(() => {
-    // Pendientes de aprobación: ver feed general (sin filtro) — solo lectura.
     if (!profile?.is_approved) return undefined;
     if (selectedCategory) {
       if (!approvedCategories.includes(selectedCategory)) return [];
       return expandWorkerFeedCategories([selectedCategory]);
     }
-    // Sin filtro chip: todas las especialidades + sub-servicios Express
     return feedCategories.length > 0 ? feedCategories : undefined;
   }, [selectedCategory, approvedCategories, feedCategories, profile?.is_approved]);
 
   const { data, isLoading, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useJobFeed('open', undefined, effectiveCategories);
 
-  // ── Realtime bridge (deduplicado por id) ─────────────────────────────────
   const queryJobs = useMemo(() => {
     const seen = new Map<string, Job>();
     for (const j of data?.pages.flatMap((p) => p.data) ?? []) {
@@ -223,7 +182,7 @@ export const HomeScreen: React.FC = () => {
     return Array.from(seen.values());
   }, [data]);
 
-  const storeMap  = useMemo(() => new Map(storeJobs.map((j) => [j.id, j])), [storeJobs]);
+  const storeMap = useMemo(() => new Map(storeJobs.map((j) => [j.id, j])), [storeJobs]);
 
   const feedJobs = useMemo(() => {
     const filterByCategory = effectiveCategories && effectiveCategories.length > 0;
@@ -242,16 +201,19 @@ export const HomeScreen: React.FC = () => {
       byId.set(raw.id, storeMap.get(raw.id) ?? raw);
     }
 
-    let all = Array.from(byId.values()).filter(
+    return Array.from(byId.values()).filter(
       (j) => j.status === 'open' || acceptedJobIds.has(j.id) || processJobIds.has(j.id),
     ).filter((j) => !removedFromFeedIds.has(j.id));
-
-    if (!searchQuery.trim()) return all;
-    const q = searchQuery.toLowerCase();
-    return all.filter(
-      (j) => j.title?.toLowerCase().includes(q) || j.description?.toLowerCase().includes(q),
-    );
-  }, [queryJobs, storeMap, storeJobs, acceptedJobIds, processJobIds, removedFromFeedIds, effectiveCategories, searchQuery, profile]);
+  }, [
+    queryJobs,
+    storeMap,
+    storeJobs,
+    acceptedJobIds,
+    processJobIds,
+    removedFromFeedIds,
+    effectiveCategories,
+    profile,
+  ]);
 
   const handleAccept = useCallback(async (job: Job) => {
     if (!profile?.id || !profile.is_approved) return;
@@ -327,29 +289,100 @@ export const HomeScreen: React.FC = () => {
     if (hasNextPage && !isFetchingNextPage) fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  const isApproved   = !!profile?.is_approved;
+  const isApproved = !!profile?.is_approved;
   const availability = workerProfile?.availability_status ?? 'offline';
-  const isOnline     = availability === 'available';
+  const isOnline = availability === 'available';
+
+  const filtersTopOffset =
+    insets.top + 8 + FLOATING_HEADER_HEIGHT + FILTERS_GAP;
+
+  const sheetListHeader = (
+    <>
+      {!isApproved && (
+        <View style={styles.pendingBanner}>
+          <Ionicons name="time-outline" size={14} color={RADAR_MUTED} />
+          <Text style={styles.pendingText}>
+            Cuenta pendiente de aprobación — solo puedes ver las solicitudes
+          </Text>
+        </View>
+      )}
+      {isApproved && !workerLimit.isLoading && workerLimit.atLimit && (
+        <View style={styles.limitBanner}>
+          <Ionicons name="information-circle-outline" size={16} color={RADAR_DEEP_BLUE} />
+          <Text style={styles.limitBannerText}>
+            {workerLimit.message} Los trabajos siguen visibles en el radar.
+          </Text>
+        </View>
+      )}
+    </>
+  );
+
+  const renderJob = useCallback((job: Job) => (
+    <FeedItem
+      job={job}
+      isApproved={isApproved}
+      acceptingJobId={acceptingJobId}
+      acceptedJobIds={acceptedJobIds}
+      processJobIds={processJobIds}
+      awaitingClientChoice={pendingApplicationIds.has(job.id)}
+      acceptBlocked={
+        !workerLimit.isLoading
+        && workerLimit.atLimit
+        && !pendingApplicationIds.has(job.id)
+      }
+      acceptBlockedMessage={workerLimit.message}
+      onPressDetail={() => navigation.navigate('JobDetail', { jobId: job.id })}
+      onAccept={handleAccept}
+      onInProcess={handleInProcess}
+    />
+  ), [
+    isApproved,
+    acceptingJobId,
+    acceptedJobIds,
+    processJobIds,
+    pendingApplicationIds,
+    workerLimit.isLoading,
+    workerLimit.atLimit,
+    workerLimit.message,
+    navigation,
+    handleAccept,
+    handleInProcess,
+  ]);
+
+  const emptySubtitle = selectedCategory
+    ? `No hay solicitudes de ${catalog.getLabel(selectedCategory)} ahora.`
+    : 'No hay trabajos disponibles en este momento.';
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
+    <View style={styles.root}>
+      <RadarFullMap jobs={feedJobs} />
 
-      <WorkerTopBar
+      <FloatingRadarHeader
+        topInset={insets.top}
         avatarUri={profile?.avatar_url}
-        avatarName={profile?.full_name ?? 'CHAMBA'}
+        fullName={profile?.full_name}
+        isOnline={isOnline}
       />
 
-      {/* ── Toast (absolute) ──────────────────────────────────────── */}
+      {filterChips.length > 0 && (
+        <FloatingRadarFilters
+          topOffset={filtersTopOffset}
+          items={filterChips.map((c) => ({ slug: c.value, label: c.label }))}
+          selectedSlug={selectedCategory}
+          onSelect={(slug) => setSelectedCategory(slug as JobCategory | null)}
+        />
+      )}
+
       {toast.visible && (
         <Animated.View
-          style={[styles.toast, { transform: [{ translateY: toast.translateY }] }]}
+          style={[styles.toast, { top: insets.top + 8, transform: [{ translateY: toast.translateY }] }]}
           pointerEvents="none"
         >
           <View style={[styles.toastInner, toast.data.type === 'error' && styles.toastError]}>
             <Ionicons
               name={toast.data.type === 'success' ? 'checkmark-circle' : 'warning-outline'}
               size={22}
-              color={toast.data.type === 'success' ? COLORS.brand[400] : COLORS.error}
+              color={toast.data.type === 'success' ? RADAR_DEEP_BLUE : '#DC2626'}
             />
             <Text style={[styles.toastText, toast.data.type === 'error' && styles.toastTextError]}>
               {toast.data.message}
@@ -358,185 +391,89 @@ export const HomeScreen: React.FC = () => {
         </Animated.View>
       )}
 
-      {/* ── Feed FlatList ─────────────────────────────────────────── */}
-      <FlatList
-        data={feedJobs}
-        keyExtractor={(j) => j.id}
-        contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl refreshing={false} onRefresh={refetch} tintColor={COLORS.brand[500]} />
-        }
+      <JobBottomSheet
+        jobs={feedJobs}
+        isLoading={isLoading}
+        isFetchingNextPage={isFetchingNextPage}
+        onRefresh={refetch}
         onEndReached={handleEndReached}
-        onEndReachedThreshold={0.3}
-        renderItem={({ item }) => (
-          <FeedItem
-            job={item}
-            isApproved={isApproved}
-            acceptingJobId={acceptingJobId}
-            acceptedJobIds={acceptedJobIds}
-            processJobIds={processJobIds}
-            awaitingClientChoice={pendingApplicationIds.has(item.id)}
-            acceptBlocked={
-              !workerLimit.isLoading
-              && workerLimit.atLimit
-              && !pendingApplicationIds.has(item.id)
-            }
-            acceptBlockedMessage={workerLimit.message}
-            onPressDetail={() => navigation.navigate('JobDetail', { jobId: item.id })}
-            onAccept={handleAccept}
-            onInProcess={handleInProcess}
-          />
-        )}
-        ListHeaderComponent={
-          <>
-            <TechServiceRadar
-              jobs={feedJobs}
-              onOpenJob={(jobId) => navigation.navigate('JobDetail', { jobId })}
-            />
-
-            {/* Radar Activo header */}
-            <View style={styles.radarHeader}>
-              <View>
-                <Text style={stitchTypography.headlineLg}>Radar Activo</Text>
-                <View style={styles.radarSubRow}>
-                  <Ionicons name="navigate-circle-outline" size={16} color={M3.secondary} />
-                  <Text style={stitchTypography.bodySm}>Buscando en tu zona...</Text>
-                </View>
-              </View>
-              <OnlinePill online={isOnline} />
-            </View>
-
-            <SearchBar value={searchQuery} onChange={setSearchQuery} />
-
-            {!isApproved && (
-              <View style={styles.pendingBanner}>
-                <Ionicons name="time-outline" size={14} color={M3.tertiary} />
-                <Text style={styles.pendingText}>
-                  Cuenta pendiente de aprobación — solo puedes ver las chambas
-                </Text>
-              </View>
-            )}
-
-            {isApproved && !workerLimit.isLoading && workerLimit.atLimit && (
-              <View style={styles.limitBanner}>
-                <Ionicons name="information-circle-outline" size={16} color={M3.primary} />
-                <Text style={styles.limitBannerText}>
-                  {workerLimit.message} Los trabajos siguen visibles en el radar.
-                </Text>
-              </View>
-            )}
-
-            {filterChips.length > 0 && (
-              <RadarServiceFilters
-                items={filterChips.map((c) => ({ slug: c.value, label: c.label }))}
-                selectedSlug={selectedCategory}
-                onSelect={(slug) => setSelectedCategory(slug as JobCategory | null)}
-              />
-            )}
-
-            {isLoading && (
-              <View style={styles.loadingWrap}>
-                <ActivityIndicator size="large" color={M3.primary} />
-              </View>
-            )}
-          </>
-        }
-        ListFooterComponent={
-          isFetchingNextPage
-            ? <ActivityIndicator color={COLORS.brand[500]} style={{ marginVertical: SPACING.md }} />
-            : null
-        }
-        ListEmptyComponent={
-          isLoading ? null : (
-            <EmptyState
-              icon="briefcase-outline"
-              title="No hay chambas"
-              subtitle={
-                selectedCategory
-                  ? `No hay chambas de ${catalog.getLabel(selectedCategory)} disponibles ahora.`
-                  : 'No hay trabajos disponibles en este momento. ¡Vuelve pronto!'
-              }
-              actionLabel="Actualizar"
-              onAction={refetch}
-            />
-          )
-        }
+        listHeader={sheetListHeader}
+        renderJob={renderJob}
+        emptyTitle="No hay solicitudes"
+        emptySubtitle={emptySubtitle}
       />
     </View>
   );
 };
 
-// ─── Styles — Material 3 (Stitch worker) ─────────────────────────────────────
+/** Alias semántico — radar operativo del técnico. */
+export const TechnicalRadarScreen = HomeScreen;
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: M3.background },
-
-  radarHeader: {
-    flexDirection:  'row',
-    alignItems:     'flex-end',
-    justifyContent: 'space-between',
-    marginTop:      SPACING.sm,
-    marginBottom:   SPACING.md,
+  root: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
   },
-  radarSubRow: {
-    flexDirection: 'row',
-    alignItems:    'center',
-    gap:           4,
-    marginTop:     4,
+  toast: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    zIndex: 30,
   },
-  onlineDot: {
-    width: 8, height: 8, borderRadius: 4, backgroundColor: M3.secondary,
-  },
-  offlinePill: { backgroundColor: M3.surfaceContainerHigh },
-  offlineDot:  { backgroundColor: M3.outline },
-  offlineText: { color: M3.onSurfaceVariant },
-
-  toast: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 999 },
   toastInner: {
-    margin: SPACING.md,
-    backgroundColor: M3.surfaceContainerLowest,
-    borderRadius: BORDER_RADIUS.lg,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
     padding: SPACING.md,
-    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
-    borderWidth: 1, borderColor: M3.outlineVariant,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    borderWidth: 1,
+    borderColor: RADAR_BORDER,
     ...CARD_ELEVATION,
   },
-  toastError: { backgroundColor: M3.errorContainer, borderColor: M3.error },
-  toastText: { color: M3.onBackground, fontSize: FONT_SIZE.sm, fontWeight: '700', flex: 1 },
-  toastTextError: { color: M3.onErrorContainer },
-
-  listContent: { paddingHorizontal: SPACING.md, paddingBottom: 100, flexGrow: 1 },
-
-  searchWrap: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
-    backgroundColor: M3.surfaceContainerLowest,
-    borderRadius: 12, height: 48,
-    marginBottom: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    borderWidth: 1, borderColor: M3.outlineVariant,
-    ...CARD_ELEVATION,
+  toastError: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
   },
-  searchInput: { flex: 1, color: M3.onBackground, fontSize: FONT_SIZE.md },
-
+  toastText: {
+    color: '#111827',
+    fontSize: FONT_SIZE.sm,
+    fontWeight: '700',
+    flex: 1,
+  },
+  toastTextError: {
+    color: '#991B1B',
+  },
   pendingBanner: {
-    backgroundColor: M3.tertiaryFixed, borderRadius: 12,
-    padding: SPACING.sm, marginBottom: SPACING.md,
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    borderWidth: 1, borderColor: M3.tertiaryFixedDim,
-  },
-  pendingText: { color: M3.onTertiaryFixedVariant, fontSize: FONT_SIZE.xs, flex: 1 },
-  limitBanner: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: '#FFFBEB',
     borderRadius: 12,
     padding: SPACING.sm,
-    marginBottom: SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  pendingText: {
+    color: '#92400E',
+    fontSize: FONT_SIZE.xs,
+    flex: 1,
+    lineHeight: 17,
+  },
+  limitBanner: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: SPACING.sm,
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: RADAR_BORDER,
   },
-  limitBannerText: { color: '#1E40AF', fontSize: FONT_SIZE.xs, flex: 1, lineHeight: 18 },
-
-  loadingWrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: SPACING['2xl'] },
+  limitBannerText: {
+    color: RADAR_DEEP_BLUE,
+    fontSize: FONT_SIZE.xs,
+    flex: 1,
+    lineHeight: 18,
+  },
 });
