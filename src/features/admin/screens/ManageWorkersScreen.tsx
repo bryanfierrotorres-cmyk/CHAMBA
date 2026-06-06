@@ -30,7 +30,7 @@ import { CARD_STEP_SHADOW, CHAMBA, chambaStyles } from '@constants/chambaUI';
 import { getWorkerCategoryFamily } from '@utils/workerCategoryAccess';
 import { getConfiguredServiceLabel } from '@constants/servicesConfig';
 
-type FilterMode = 'all' | 'pending' | 'approved';
+type FilterMode = 'pending' | 'active' | 'all';
 type TeamMode = 'workers' | 'clients';
 
 // ─── Worker detail modal ──────────────────────────────────────────────────────
@@ -293,7 +293,7 @@ export const ManageWorkersScreen: React.FC = () => {
   const insets        = useSafeAreaInsets();
   const adminProfile  = useAuthStore((s) => s.profile);
   const [teamMode, setTeamMode]         = useState<TeamMode>('workers');
-  const [filter, setFilter]             = useState<FilterMode>('all');
+  const [filter, setFilter]             = useState<FilterMode>('pending');
   const [selected, setSelected]         = useState<UserProfile | null>(null);
   const [approvingId, setApprovingId]   = useState<string | null>(null);
   const [approvingCat2Id, setAC2Id]     = useState<string | null>(null);
@@ -341,25 +341,47 @@ export const ManageWorkersScreen: React.FC = () => {
   });
 
   const filtered = users.filter((w) => {
-    if (filter === 'pending')  return !w.is_approved;
-    if (filter === 'approved') return w.is_approved;
+    if (teamMode === 'clients') {
+      if (filter === 'pending') return !w.is_approved;
+      if (filter === 'active') return w.is_approved;
+      return true;
+    }
+    if (filter === 'pending') return !w.is_approved;
+    if (filter === 'active') return w.is_approved && w.worker_status === 'active';
     return true;
   });
 
-  const pendingCount  = users.filter((w) => !w.is_approved).length;
-  const approvedCount = users.filter((w) => w.is_approved).length;
+  const pendingWorkers = (workersData ?? []).filter((w) => !w.is_approved);
+  const activeWorkers = (workersData ?? []).filter(
+    (w) => w.is_approved && w.worker_status === 'active',
+  );
+  const pendingCount  = teamMode === 'workers'
+    ? pendingWorkers.length
+    : (clientsData ?? []).filter((c) => !c.is_approved).length;
+  const activeCount = teamMode === 'workers'
+    ? activeWorkers.length
+    : (clientsData ?? []).filter((c) => c.is_approved).length;
   const clientsPending = (clientsData ?? []).filter((c) => !c.is_approved).length;
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <View style={chambaStyles.screenHeader}>
-        <Text style={chambaStyles.screenTitle}>Equipo y clientes</Text>
+        <Text style={chambaStyles.screenTitle}>Control de técnicos</Text>
         <Text style={chambaStyles.screenSubtitle}>
           {teamMode === 'workers'
-            ? 'Gestión de técnicos y verificaciones'
+            ? 'Aprobá pendientes y gestioná el estado operativo (sin editar perfiles)'
             : 'Aprobación de cuentas de clientes'}
         </Text>
       </View>
+
+      {teamMode === 'workers' && pendingWorkers.length > 0 ? (
+        <View style={styles.pendingBanner}>
+          <Ionicons name="time" size={18} color="#B45309" />
+          <Text style={styles.pendingBannerText}>
+            {pendingWorkers.length} técnico{pendingWorkers.length === 1 ? '' : 's'} pendiente{pendingWorkers.length === 1 ? '' : 's'} de aprobación
+          </Text>
+        </View>
+      ) : null}
 
       <View style={{ paddingHorizontal: 20, gap: 12, marginBottom: 4 }}>
         <ChambaGradientTabs
@@ -370,15 +392,15 @@ export const ManageWorkersScreen: React.FC = () => {
           active={teamMode}
           onChange={(id) => {
             setTeamMode(id as TeamMode);
-            setFilter('all');
+            setFilter(id === 'workers' ? 'pending' : 'all');
             setSelected(null);
           }}
         />
         <ChambaGradientTabs
           tabs={[
-            { id: 'all', label: 'Todos', badge: users.length },
-            { id: 'pending', label: 'Pendientes', badge: pendingCount },
-            { id: 'approved', label: 'Verificados', badge: approvedCount },
+            { id: 'pending', label: 'Pendientes', badge: pendingCount || undefined },
+            { id: 'active', label: teamMode === 'workers' ? 'Activos' : 'Aprobados', badge: activeCount || undefined },
+            { id: 'all', label: 'Todos', badge: users.length || undefined },
           ]}
           active={filter}
           onChange={setFilter}
@@ -506,32 +528,62 @@ const WorkerRow: React.FC<{
 
       <View style={styles.toggleDivider} />
 
-      <View style={styles.toggleRow}>
-        <View style={styles.toggleIconWrap}>
-          <Ionicons
-            name={worker.is_approved ? 'checkmark-circle' : 'pause-circle'}
-            size={20}
-            color={worker.is_approved ? '#34C759' : CHAMBA.muted}
+      {!isClient ? (
+        <View style={styles.actionRow}>
+          {!worker.is_approved ? (
+            <TouchableOpacity
+              style={styles.approveBtn}
+              onPress={() => onToggle(true)}
+              disabled={toggling}
+              activeOpacity={0.85}
+            >
+              {toggling
+                ? <ActivityIndicator size="small" color="#FFF" />
+                : (
+                  <>
+                    <Ionicons name="checkmark-circle" size={16} color="#FFF" />
+                    <Text style={styles.approveBtnText}>Aprobar técnico</Text>
+                  </>
+                )}
+            </TouchableOpacity>
+          ) : (
+            <>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.toggleLabel}>Operando en el radar</Text>
+                <Text style={styles.toggleHint}>Perfil de solo lectura — solo estado operativo</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.suspendBtn}
+                onPress={() => onToggle(false)}
+                disabled={toggling}
+                activeOpacity={0.85}
+              >
+                {toggling
+                  ? <ActivityIndicator size="small" color="#B45309" />
+                  : (
+                    <>
+                      <Ionicons name="pause-circle" size={16} color="#B45309" />
+                      <Text style={styles.suspendBtnText}>Suspender</Text>
+                    </>
+                  )}
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      ) : (
+        <View style={styles.actionRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toggleLabel}>
+              {worker.is_approved ? 'Cliente aprobado' : 'Pendiente de aprobación'}
+            </Text>
+          </View>
+          <StitchToggle
+            value={worker.is_approved}
+            onValueChange={onToggle}
+            loading={toggling}
           />
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.toggleLabel}>
-            {worker.is_approved
-              ? (isClient ? 'Aprobado — puede usar CHAMBA' : 'Verificado — operando')
-              : (isClient ? 'Pendiente de aprobación' : 'Suspendido del radar')}
-          </Text>
-          <Text style={styles.toggleHint}>
-            {worker.is_approved
-              ? (isClient ? 'El cliente puede solicitar servicios' : 'El técnico puede aceptar chambas')
-              : (isClient ? 'Activa para habilitar la app de servicios' : 'Toggle para reactivar acceso')}
-          </Text>
-        </View>
-        <StitchToggle
-          value={worker.is_approved}
-          onValueChange={onToggle}
-          loading={toggling}
-        />
-      </View>
+      )}
     </View>
   );
 };
@@ -540,6 +592,23 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: CHAMBA.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   listContent: { paddingHorizontal: 20, flexGrow: 1 },
+  pendingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#FEF3C7',
+  },
+  pendingBannerText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#92400E',
+  },
   workerCard: {
     backgroundColor: CHAMBA.white,
     borderRadius: 18,
@@ -557,7 +626,7 @@ const styles = StyleSheet.create({
   workerMeta: { fontSize: 12, color: CHAMBA.muted, marginTop: 2, fontWeight: '400' },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 8 },
   toggleDivider: { height: 1, backgroundColor: '#E2E8F0' },
-  toggleRow: {
+  actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -565,14 +634,29 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     backgroundColor: '#F8FAFC',
   },
-  toggleIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 14,
-    backgroundColor: '#EFF2F9',
+  approveBtn: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#34C759',
+    borderRadius: 12,
+    paddingVertical: 12,
   },
+  approveBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
+  suspendBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+  },
+  suspendBtnText: { color: '#B45309', fontSize: 13, fontWeight: '700' },
   toggleLabel: { fontSize: 13, fontWeight: '600', color: CHAMBA.navy },
   toggleHint: { fontSize: 11, color: CHAMBA.muted, marginTop: 1, fontWeight: '400' },
   emptyTitle: { fontSize: 16, fontWeight: '600', color: CHAMBA.navy, textAlign: 'center' },

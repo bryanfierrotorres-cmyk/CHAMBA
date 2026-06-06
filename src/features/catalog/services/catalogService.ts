@@ -10,6 +10,11 @@ import {
 } from '@constants/servicesConfig';
 import { getLocalCatalog, saveLocalCatalog } from '@utils/localCatalog';
 import { withTimeout } from '@utils/withTimeout';
+import {
+  resolveSuggestedPrice,
+  resolveMinPriceRatio,
+  type PreciosCatalogoMap,
+} from './preciosCatalogService';
 import type { ServiceCatalog, ServiceCategory, ServiceType } from '../types';
 
 const REMOTE_TIMEOUT_MS = 8_000;
@@ -208,7 +213,27 @@ export const fetchCatalog = async (): Promise<ServiceCatalog> => {
   return mergeCatalogWithFallback(local);
 };
 
-export const buildCatalogLookups = (catalog: ServiceCatalog) => {
+/** Aplica overlay de precios dinámicos (precios_catalogo) sin mutar el catálogo remoto. */
+export const applyPreciosToCatalog = (
+  catalog: ServiceCatalog,
+  dbPrecios?: PreciosCatalogoMap | null,
+): ServiceCatalog => {
+  if (!dbPrecios?.size) return catalog;
+
+  return {
+    ...catalog,
+    serviceTypes: catalog.serviceTypes.map((t) => ({
+      ...t,
+      suggested_price: resolveSuggestedPrice(t.slug, dbPrecios, t.suggested_price),
+      min_price_ratio: resolveMinPriceRatio(t.slug, dbPrecios, t.min_price_ratio),
+    })),
+  };
+};
+
+export const buildCatalogLookups = (
+  catalog: ServiceCatalog,
+  dbPrecios?: PreciosCatalogoMap | null,
+) => {
   const typeBySlug = new Map<string, ServiceType>();
   const labelBySlug = new Map<string, string>();
   const emojiBySlug = new Map<string, string>();
@@ -219,18 +244,34 @@ export const buildCatalogLookups = (catalog: ServiceCatalog) => {
     typeBySlug.set(t.slug, t);
     labelBySlug.set(t.slug, t.name);
     emojiBySlug.set(t.slug, t.icon);
-    priceBySlug.set(t.slug, t.suggested_price);
-    minRatioBySlug.set(t.slug, t.min_price_ratio);
+    priceBySlug.set(
+      t.slug,
+      resolveSuggestedPrice(t.slug, dbPrecios, t.suggested_price),
+    );
+    minRatioBySlug.set(
+      t.slug,
+      resolveMinPriceRatio(t.slug, dbPrecios, t.min_price_ratio),
+    );
   }
 
   for (const def of CONFIGURED_SERVICE_SEEDS) {
     if (!labelBySlug.has(def.slug)) labelBySlug.set(def.slug, def.label);
     if (!emojiBySlug.has(def.slug)) emojiBySlug.set(def.slug, def.icon);
-    if (!priceBySlug.has(def.slug)) priceBySlug.set(def.slug, def.suggestedPrice);
+    if (!priceBySlug.has(def.slug)) {
+      priceBySlug.set(
+        def.slug,
+        resolveSuggestedPrice(def.slug, dbPrecios, def.suggestedPrice),
+      );
+    }
+    if (!minRatioBySlug.has(def.slug)) {
+      minRatioBySlug.set(def.slug, resolveMinPriceRatio(def.slug, dbPrecios, 0.5));
+    }
   }
 
   for (const [slug, price] of Object.entries(SERVICE_FALLBACK_PRICES)) {
-    if (!priceBySlug.has(slug)) priceBySlug.set(slug, price);
+    if (!priceBySlug.has(slug)) {
+      priceBySlug.set(slug, resolveSuggestedPrice(slug, dbPrecios, price));
+    }
   }
 
   for (const slug of Object.keys(SERVICE_FALLBACK_PRICES)) {

@@ -17,6 +17,13 @@ import { useAuthStore } from '@store/authStore';
 import { repairLocalAssignmentsStorage } from '@utils/localAssignments';
 import { StartupErrorScreen } from '@components/StartupErrorScreen';
 import { AppErrorBoundary } from '@components/AppErrorBoundary';
+import { usePreciosCatalogProbe } from '@features/catalog/hooks/usePreciosCatalogProbe';
+
+function PreciosCatalogProbeRunner() {
+  usePreciosCatalogProbe();
+  return null;
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -117,7 +124,7 @@ function AppBootstrap() {
             if (restored.role === 'worker') {
               const { applyPilotProfile } = await import('@utils/pilotAccess');
               const { ensureProfileInDb } = await import('@utils/profileSync');
-              restored = applyPilotProfile({ ...restored, id: session.user.id });
+              restored = applyPilotProfile(restored);
               await ensureProfileInDb(restored);
             }
             useAuthStore.getState().setProfile(restored);
@@ -174,6 +181,7 @@ function AppBootstrap() {
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
+          {__DEV__ ? <PreciosCatalogProbeRunner /> : null}
           <StatusBar style="light" backgroundColor="transparent" translucent />
           <RootNavigator />
         </QueryClientProvider>

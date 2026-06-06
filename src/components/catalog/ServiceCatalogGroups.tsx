@@ -7,6 +7,7 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useCatalog } from '@features/catalog/hooks/useCatalog';
@@ -22,6 +23,11 @@ interface ServiceCatalogGroupsProps {
   compact?: boolean;
   /** Lista colapsable — pensada para el perfil del administrador. */
   accordion?: boolean;
+  /** Modo admin: input editable de precio sugerido por servicio. */
+  editablePrices?: boolean;
+  priceValues?: Record<string, string>;
+  onPriceChange?: (slug: string, value: string) => void;
+  modifiedSlugs?: Set<string>;
 }
 
 type AccordionSection = {
@@ -73,8 +79,23 @@ const ServiceRow: React.FC<{
   isHighlight: boolean;
   indented?: boolean;
   isLast?: boolean;
-}> = ({ st, compact, isHighlight, indented, isLast }) => {
+  editablePrices?: boolean;
+  priceValue?: string;
+  onPriceChange?: (slug: string, value: string) => void;
+  isModified?: boolean;
+}> = ({
+  st,
+  compact,
+  isHighlight,
+  indented,
+  isLast,
+  editablePrices,
+  priceValue,
+  onPriceChange,
+  isModified,
+}) => {
   const price = Number(st.suggested_price) || 0;
+  const displayPrice = priceValue ?? (price > 0 ? String(Math.round(price)) : '');
 
   return (
     <View
@@ -83,6 +104,7 @@ const ServiceRow: React.FC<{
         compact && styles.rowCompact,
         indented && styles.rowIndented,
         isHighlight && styles.rowHighlight,
+        isModified && styles.rowModified,
         indented && !isLast && styles.rowIndentedDivider,
         indented && isLast && styles.rowIndentedLast,
       ]}
@@ -95,12 +117,28 @@ const ServiceRow: React.FC<{
         ) : null}
       </View>
       <View style={styles.rowRight}>
-        {price > 0 && (
+        {editablePrices ? (
+          <View style={styles.priceEditWrap}>
+            <Text style={styles.priceEditPrefix}>C$</Text>
+            <TextInput
+              style={styles.priceEditInput}
+              value={displayPrice}
+              onChangeText={(text) => onPriceChange?.(st.slug, text.replace(/[^\d.]/g, ''))}
+              keyboardType="numeric"
+              placeholder="0"
+              placeholderTextColor="#94A3B8"
+              selectTextOnFocus
+            />
+          </View>
+        ) : price > 0 ? (
           <Text style={styles.rowPrice}>{formatCurrency(price)}</Text>
-        )}
-        {isHighlight && (
+        ) : null}
+        {isHighlight && !editablePrices ? (
           <Ionicons name="checkmark-circle" size={18} color="#15803D" />
-        )}
+        ) : null}
+        {isModified && editablePrices ? (
+          <View style={styles.modifiedDot} />
+        ) : null}
       </View>
     </View>
   );
@@ -110,7 +148,19 @@ const AccordionCatalog: React.FC<{
   grouped: CatalogGroup[];
   compact: boolean;
   highlight: Set<string>;
-}> = ({ grouped, compact, highlight }) => {
+  editablePrices?: boolean;
+  priceValues?: Record<string, string>;
+  onPriceChange?: (slug: string, value: string) => void;
+  modifiedSlugs?: Set<string>;
+}> = ({
+  grouped,
+  compact,
+  highlight,
+  editablePrices,
+  priceValues,
+  onPriceChange,
+  modifiedSlugs,
+}) => {
   const sections = useMemo(() => buildAccordionSections(grouped), [grouped]);
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
 
@@ -188,6 +238,10 @@ const AccordionCatalog: React.FC<{
                           isHighlight={highlight.has(st.slug)}
                           indented
                           isLast={isLastType}
+                          editablePrices={editablePrices}
+                          priceValue={priceValues?.[st.slug]}
+                          onPriceChange={onPriceChange}
+                          isModified={modifiedSlugs?.has(st.slug)}
                         />
                       );
                     })}
@@ -206,7 +260,19 @@ const FlatCatalog: React.FC<{
   grouped: CatalogGroup[];
   compact: boolean;
   highlight: Set<string>;
-}> = ({ grouped, compact, highlight }) => (
+  editablePrices?: boolean;
+  priceValues?: Record<string, string>;
+  onPriceChange?: (slug: string, value: string) => void;
+  modifiedSlugs?: Set<string>;
+}> = ({
+  grouped,
+  compact,
+  highlight,
+  editablePrices,
+  priceValues,
+  onPriceChange,
+  modifiedSlugs,
+}) => (
   <View style={styles.wrap}>
     {grouped.map(({ group, types }) => (
       <View key={group.id} style={styles.group}>
@@ -221,6 +287,10 @@ const FlatCatalog: React.FC<{
               st={st}
               compact={compact}
               isHighlight={highlight.has(st.slug)}
+              editablePrices={editablePrices}
+              priceValue={priceValues?.[st.slug]}
+              onPriceChange={onPriceChange}
+              isModified={modifiedSlugs?.has(st.slug)}
             />
           );
         })}
@@ -236,6 +306,10 @@ export const ServiceCatalogGroups: React.FC<ServiceCatalogGroupsProps> = ({
   highlightSlugs = [],
   compact = false,
   accordion = false,
+  editablePrices = false,
+  priceValues,
+  onPriceChange,
+  modifiedSlugs,
 }) => {
   const { serviceTypes, isError } = useCatalog();
   const grouped = useMemo(() => {
@@ -257,11 +331,25 @@ export const ServiceCatalogGroups: React.FC<ServiceCatalogGroupsProps> = ({
     );
   }
 
-  if (accordion) {
-    return <AccordionCatalog grouped={grouped} compact={compact} highlight={highlight} />;
+  const priceProps = {
+    editablePrices,
+    priceValues,
+    onPriceChange,
+    modifiedSlugs,
+  };
+
+  if (accordion || editablePrices) {
+    return (
+      <AccordionCatalog
+        grouped={grouped}
+        compact={compact}
+        highlight={highlight}
+        {...priceProps}
+      />
+    );
   }
 
-  return <FlatCatalog grouped={grouped} compact={compact} highlight={highlight} />;
+  return <FlatCatalog grouped={grouped} compact={compact} highlight={highlight} {...priceProps} />;
 };
 
 const styles = StyleSheet.create({
@@ -387,5 +475,41 @@ const styles = StyleSheet.create({
   rowIndentedLast: {
     borderBottomWidth: 0,
     marginBottom: 4,
+  },
+  rowModified: {
+    backgroundColor: '#FFFBEB',
+  },
+  priceEditWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: CHAMBA.white,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    minWidth: 92,
+  },
+  priceEditPrefix: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: CHAMBA.muted,
+    marginRight: 4,
+  },
+  priceEditInput: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: CHAMBA.navy,
+    paddingVertical: 6,
+    minWidth: 48,
+    textAlign: 'right',
+    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
+  } as const,
+  modifiedDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#F59E0B',
+    marginTop: 4,
   },
 });

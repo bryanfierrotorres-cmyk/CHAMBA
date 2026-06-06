@@ -1,0 +1,149 @@
+-- CHAMBA 027 — Precios dinámicos del catálogo (Torre de Control / Fase A)
+-- Tabla separada del catálogo visual; lectura pública, escritura solo admin vía RLS + RPC.
+
+SET statement_timeout = '120s';
+
+CREATE TABLE IF NOT EXISTS precios_catalogo (
+  service_slug    TEXT PRIMARY KEY,
+  suggested_price NUMERIC(10, 2) NOT NULL CHECK (suggested_price >= 0),
+  min_price_ratio NUMERIC(4, 3) NOT NULL DEFAULT 0.5
+    CHECK (min_price_ratio > 0 AND min_price_ratio <= 1),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_by      UUID REFERENCES profiles(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_precios_catalogo_updated
+  ON precios_catalogo (updated_at DESC);
+
+COMMENT ON TABLE precios_catalogo IS
+  'Precios sugeridos editables por admin; servicesConfig.ts es fallback si no hay fila.';
+
+ALTER TABLE precios_catalogo ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "precios: public read" ON precios_catalogo;
+CREATE POLICY "precios: public read"
+  ON precios_catalogo FOR SELECT
+  USING (true);
+
+DROP POLICY IF EXISTS "precios: admin write" ON precios_catalogo;
+CREATE POLICY "precios: admin write"
+  ON precios_catalogo FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM profiles p
+      WHERE p.id = auth.uid() AND p.role::text = 'admin'
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM profiles p
+      WHERE p.id = auth.uid() AND p.role::text = 'admin'
+    )
+  );
+
+-- Lectura única: array JSON de todos los precios dinámicos.
+CREATE OR REPLACE FUNCTION get_precios_catalogo()
+RETURNS JSONB
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT COALESCE(
+    jsonb_agg(
+      jsonb_build_object(
+        'service_slug', service_slug,
+        'suggested_price', suggested_price,
+        'min_price_ratio', min_price_ratio,
+        'updated_at', updated_at
+      )
+      ORDER BY service_slug
+    ),
+    '[]'::jsonb
+  )
+  FROM precios_catalogo;
+$$;
+
+GRANT EXECUTE ON FUNCTION get_precios_catalogo() TO anon, authenticated;
+
+-- Escritura batch: valida rol admin antes de cualquier upsert.
+CREATE OR REPLACE FUNCTION admin_upsert_precios_batch(
+  p_admin_id UUID,
+  p_rows     JSONB
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_row   JSONB;
+  v_slug  TEXT;
+  v_price NUMERIC;
+  v_ratio NUMERIC;
+  v_count INT := 0;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM profiles
+    WHERE id = p_admin_id AND role::text = 'admin'
+  ) THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Solo administradores');
+  END IF;
+
+  IF p_rows IS NULL OR jsonb_typeof(p_rows) <> 'array' THEN
+    RETURN jsonb_build_object('success', false, 'error', 'p_rows debe ser un array JSON');
+  END IF;
+
+  IF jsonb_array_length(p_rows) = 0 THEN
+    RETURN jsonb_build_object('success', false, 'error', 'p_rows no puede estar vacío');
+  END IF;
+
+  FOR v_row IN SELECT value FROM jsonb_array_elements(p_rows)
+  LOOP
+    v_slug := lower(trim(v_row->>'service_slug'));
+    v_price := NULLIF(trim(v_row->>'suggested_price'), '')::NUMERIC;
+    v_ratio := COALESCE(
+      NULLIF(trim(v_row->>'min_price_ratio'), '')::NUMERIC,
+      0.5
+    );
+
+    IF v_slug IS NULL OR v_slug = '' THEN
+      RETURN jsonb_build_object('success', false, 'error', 'service_slug requerido en cada fila');
+    END IF;
+
+    IF v_price IS NULL OR v_price < 0 THEN
+      RETURN jsonb_build_object(
+        'success', false,
+        'error', format('Precio inválido para slug: %s', v_slug)
+      );
+    END IF;
+
+    IF v_ratio <= 0 OR v_ratio > 1 THEN
+      RETURN jsonb_build_object(
+        'success', false,
+        'error', format('min_price_ratio inválido para slug: %s', v_slug)
+      );
+    END IF;
+
+    INSERT INTO precios_catalogo (
+      service_slug, suggested_price, min_price_ratio, updated_by, updated_at
+    ) VALUES (
+      v_slug, v_price, v_ratio, p_admin_id, now()
+    )
+    ON CONFLICT (service_slug) DO UPDATE SET
+      suggested_price = EXCLUDED.suggested_price,
+      min_price_ratio = EXCLUDED.min_price_ratio,
+      updated_by      = EXCLUDED.updated_by,
+      updated_at      = now();
+
+    v_count := v_count + 1;
+  END LOOP;
+
+  RETURN jsonb_build_object('success', true, 'updated', v_count);
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION admin_upsert_precios_batch(UUID, JSONB) TO anon, authenticated;
