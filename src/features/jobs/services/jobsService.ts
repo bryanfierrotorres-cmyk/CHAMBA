@@ -1251,9 +1251,9 @@ export const fetchClientOrders = async (clientId: string): Promise<ClientOrderJo
   await assertClientJobPlatformReady();
 
   const { data: { session } } = await supabase.auth.getSession();
-  const ids = Array.from(
-    new Set([clientId, session?.user?.id].filter((id): id is string => !!id)),
-  );
+  const authId = session?.user?.id;
+  const ids =
+    authId && authId !== clientId ? [clientId, authId] : [clientId];
 
   const byId = new Map<string, ClientOrderJob>();
   for (const id of ids) {

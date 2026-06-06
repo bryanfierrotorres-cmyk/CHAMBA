@@ -581,6 +581,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       let profile: UserProfile;
 
       const remoteByPhone = await fetchProfileByPhone(cleanPhone).catch(() => null);
+      const profileFromRemote = !!remoteByPhone;
 
       if (remoteByPhone) {
         if (role !== remoteByPhone.role && remoteByPhone.role !== 'admin') {
@@ -688,26 +689,34 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         profile = applyPilotProfile(profile);
       }
 
-      try {
-        profile = await syncProfileWithDatabase(profile);
-      } catch {
-        // Mantener perfil local si Supabase no responde
-      }
+      if (!profileFromRemote) {
+        try {
+          profile = await syncProfileWithDatabase(profile);
+        } catch {
+          // Mantener perfil local si Supabase no responde
+        }
 
-      if (profile.role === 'worker') {
-        profile = applyPilotProfile(profile);
+        if (profile.role === 'worker') {
+          profile = applyPilotProfile(profile);
+        }
       }
-
-      const session = await ensurePhoneAuthSession(profile);
 
       await safePersistPilotProfile(profile);
       set({
         profile,
-        session,
-        isPhoneAuth: !session,
+        session: null,
+        isPhoneAuth: true,
         isLoading: false,
         error: null,
       });
+
+      void ensurePhoneAuthSession(profile)
+        .then(async (session) => {
+          if (session) {
+            set({ session, isPhoneAuth: false });
+          }
+        })
+        .catch(() => undefined);
     } catch (err: any) {
       const msg = err.message ?? 'Error al iniciar sesión';
       set({ error: msg, isLoading: false });
@@ -721,15 +730,30 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const raw = await AsyncStorage.getItem(PILOT_STORAGE_KEY);
       if (!raw) return false;
       let profile = JSON.parse(raw) as UserProfile;
-      profile = await syncProfileWithDatabase(profile);
       if (profile.role === 'admin') {
         profile = { ...profile, role: 'admin', is_approved: true };
       } else if (profile.role === 'worker') {
         profile = applyPilotProfile(profile);
       }
-      const session = await ensurePhoneAuthSession(profile);
-      await safePersistPilotProfile(profile);
-      set({ profile, session, isPhoneAuth: !session });
+
+      set({ profile, session: null, isPhoneAuth: true });
+
+      void (async () => {
+        try {
+          profile = await syncProfileWithDatabase(profile);
+          if (profile.role === 'admin') {
+            profile = { ...profile, role: 'admin', is_approved: true };
+          } else if (profile.role === 'worker') {
+            profile = applyPilotProfile(profile);
+          }
+          const session = await ensurePhoneAuthSession(profile);
+          await safePersistPilotProfile(profile);
+          set({ profile, session, isPhoneAuth: !session });
+        } catch {
+          // Perfil local ya hidratado arriba
+        }
+      })();
+
       return true;
     } catch {
       return false;

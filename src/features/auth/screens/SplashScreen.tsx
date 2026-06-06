@@ -73,15 +73,15 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish, authReady 
     const timer = setTimeout(() => {
       animationDone.current = true;
       tryFinish();
-    }, 2400);
+    }, 1000);
 
-    // Fallback: no bloquear más de 5s aunque auth no responda
+    // Fallback: no bloquear más de 3.5s aunque auth no responda
     const failsafe = setTimeout(() => {
       if (!finished.current) {
         finished.current = true;
         onFinish();
       }
-    }, 5000);
+    }, 3500);
 
     return () => {
       clearTimeout(timer);

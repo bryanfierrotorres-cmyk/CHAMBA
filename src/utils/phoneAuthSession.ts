@@ -15,11 +15,9 @@ export const resolvePhoneAuthEmail = (profile: UserProfile): string => {
   return pilotPhoneEmail(normalizePhone(profile.phone));
 };
 
-/**
- * Abre sesión Supabase Auth para que auth.uid() coincida con RLS (feed técnico, jobs cliente).
- * Requiere usuario Auth creado con el mismo id que profiles (npm run db:reset-two-users).
- */
-export const ensurePhoneAuthSession = async (
+let inflightSession: { profileId: string; promise: Promise<Session | null> } | null = null;
+
+const ensurePhoneAuthSessionInner = async (
   profile: UserProfile,
 ): Promise<Session | null> => {
   const email = resolvePhoneAuthEmail(profile);
@@ -60,6 +58,26 @@ export const ensurePhoneAuthSession = async (
   }
 
   return data.session;
+};
+
+/**
+ * Abre sesión Supabase Auth para que auth.uid() coincida con RLS (feed técnico, jobs cliente).
+ * Requiere usuario Auth creado con el mismo id que profiles (npm run db:reset-two-users).
+ */
+export const ensurePhoneAuthSession = async (
+  profile: UserProfile,
+): Promise<Session | null> => {
+  if (inflightSession?.profileId === profile.id) {
+    return inflightSession.promise;
+  }
+
+  const promise = ensurePhoneAuthSessionInner(profile);
+  inflightSession = { profileId: profile.id, promise };
+  try {
+    return await promise;
+  } finally {
+    if (inflightSession?.promise === promise) inflightSession = null;
+  }
 };
 
 /** Cierra sesión Auth si no coincide con el perfil (evita feed vacío por RLS). */

@@ -87,7 +87,7 @@ function AppBootstrap() {
         setLoading(false);
         setHydrated(true);
       }
-    }, 6000);
+    }, 4500);
 
     const bootstrap = async () => {
       try {

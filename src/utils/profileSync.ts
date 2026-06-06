@@ -1,4 +1,3 @@
-import { safePersistPilotProfile } from '@utils/pilotProfileStorage';
 import { supabase } from '@services/supabase';
 import { CONFIG } from '@constants/config';
 import { pilotPhoneEmail } from '@constants/pilot';
@@ -41,6 +40,17 @@ export const toDbRole = (role: UserRole): UserRole =>
 export const namesMatch = (a: string, b: string): boolean =>
   a.trim().toLowerCase() === b.trim().toLowerCase();
 
+const PROFILE_PHONE_CACHE_MS = 45_000;
+const profileByPhoneCache = new Map<
+  string,
+  { at: number; profile: UserProfile | null }
+>();
+
+export const invalidateProfilePhoneCache = (phone?: string): void => {
+  if (phone) profileByPhoneCache.delete(normalizePhone(phone));
+  else profileByPhoneCache.clear();
+};
+
 /** Busca perfil en BD por teléfono (RPC SECURITY DEFINER o SELECT directo). */
 export const fetchProfileByPhone = async (
   phone: string,
@@ -48,13 +58,22 @@ export const fetchProfileByPhone = async (
   const normalized = normalizePhone(phone);
   if (!normalized) return null;
 
+  const cached = profileByPhoneCache.get(normalized);
+  if (cached && Date.now() - cached.at < PROFILE_PHONE_CACHE_MS) {
+    return cached.profile;
+  }
+
   try {
     const { data, error } = await supabase.rpc('get_profile_by_phone', {
       p_phone: normalized,
     });
     if (!error && data) {
       const row = typeof data === 'string' ? JSON.parse(data) : data;
-      if (row?.id) return row as UserProfile;
+      if (row?.id) {
+        const profile = row as UserProfile;
+        profileByPhoneCache.set(normalized, { at: Date.now(), profile });
+        return profile;
+      }
     }
   } catch {
     // RPC puede no existir aún en Supabase remoto
@@ -66,7 +85,11 @@ export const fetchProfileByPhone = async (
       .select('*')
       .eq('phone', normalized)
       .maybeSingle();
-    if (!error && data) return data as UserProfile;
+    if (!error && data) {
+      const profile = data as UserProfile;
+      profileByPhoneCache.set(normalized, { at: Date.now(), profile });
+      return profile;
+    }
   } catch {
     // RLS puede bloquear SELECT anónimo
   }
@@ -79,12 +102,17 @@ export const fetchProfileByPhone = async (
         .select('*')
         .eq('phone', formatted)
         .maybeSingle();
-      if (!error && data) return data as UserProfile;
+      if (!error && data) {
+        const profile = data as UserProfile;
+        profileByPhoneCache.set(normalized, { at: Date.now(), profile });
+        return profile;
+      }
     } catch {
       // ignorar
     }
   }
 
+  profileByPhoneCache.set(normalized, { at: Date.now(), profile: null });
   return null;
 };
 

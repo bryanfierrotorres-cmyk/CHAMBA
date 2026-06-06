@@ -69,7 +69,7 @@ export function useWorkerCommitmentLimit() {
     enabled: !!workerId && profile?.role === 'worker',
     staleTime: 3_000,
     refetchInterval: 8_000,
-    refetchOnMount: 'always',
+    refetchOnMount: true,
     refetchOnWindowFocus: true,
   });
 

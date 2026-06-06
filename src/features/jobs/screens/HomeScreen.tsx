@@ -34,9 +34,6 @@ import {
 } from '@utils/workerCategoryAccess';
 import { useAssignmentsStore } from '@store/assignmentsStore';
 import { getLocalAssignments } from '@utils/localAssignments';
-import { syncProfileWithDatabase } from '@utils/profileSync';
-import { applyPilotProfile } from '@utils/pilotAccess';
-import { clearMismatchedAuthSession } from '@utils/phoneAuthSession';
 import { useWorkerCommitmentLimit } from '@features/jobs/hooks/useJobActiveLimits';
 import type { Job, JobCategory, JobStackParamList, WorkerTabParamList } from '@/types';
 
@@ -215,26 +212,6 @@ export const HomeScreen: React.FC = () => {
 
   const { data, isLoading, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useJobFeed('open', undefined, effectiveCategories);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (profile?.role !== 'worker' || !profile.phone) return;
-      void (async () => {
-        const synced = await syncProfileWithDatabase(profile);
-        await clearMismatchedAuthSession(synced);
-        const next = synced.role === 'worker' ? applyPilotProfile(synced) : synced;
-        if (
-          next.id !== profile.id ||
-          next.is_approved !== profile.is_approved ||
-          next.category_1 !== profile.category_1 ||
-          next.category_2 !== profile.category_2
-        ) {
-          useAuthStore.getState().setProfile(next);
-        }
-        void refetch();
-      })();
-    }, [profile?.id, profile?.phone, profile?.role, refetch]),
-  );
 
   // ── Realtime bridge (deduplicado por id) ─────────────────────────────────
   const queryJobs = useMemo(() => {
