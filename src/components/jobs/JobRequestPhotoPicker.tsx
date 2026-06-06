@@ -16,12 +16,15 @@ interface Props {
   photoUri: string | null;
   onPhotoChange: (uri: string | null) => void;
   disabled?: boolean;
+  /** Estilo compacto para wizard — solo botón "Agregar foto". */
+  variant?: 'default' | 'minimal';
 }
 
 export const JobRequestPhotoPicker: React.FC<Props> = ({
   photoUri,
   onPhotoChange,
   disabled = false,
+  variant = 'default',
 }) => {
   const [picking, setPicking] = useState(false);
 
@@ -49,16 +52,22 @@ export const JobRequestPhotoPicker: React.FC<Props> = ({
     }
   };
 
+  const isMinimal = variant === 'minimal';
+
   return (
-    <View style={styles.wrap}>
-      <Text style={chambaStyles.formLabel}>Foto del servicio (opcional)</Text>
-      <Text style={styles.hint}>
-        Ayuda al técnico a ver el estado o la magnitud del trabajo antes de aceptar.
-      </Text>
+    <View style={[styles.wrap, isMinimal && styles.wrapMinimal]}>
+      {!isMinimal ? (
+        <>
+          <Text style={chambaStyles.formLabel}>Foto del servicio (opcional)</Text>
+          <Text style={styles.hint}>
+            Ayuda al técnico a ver el estado o la magnitud del trabajo antes de aceptar.
+          </Text>
+        </>
+      ) : null}
 
       {photoUri ? (
-        <View style={styles.previewWrap}>
-          <Image source={{ uri: photoUri }} style={styles.preview} resizeMode="cover" />
+        <View style={[styles.previewWrap, isMinimal && styles.previewMinimal]}>
+          <Image source={{ uri: photoUri }} style={[styles.preview, isMinimal && styles.previewSmall]} resizeMode="cover" />
           <View style={styles.previewActions}>
             <TouchableOpacity
               style={styles.actionBtn}
@@ -82,13 +91,18 @@ export const JobRequestPhotoPicker: React.FC<Props> = ({
         </View>
       ) : (
         <TouchableOpacity
-          style={styles.addBtn}
+          style={[styles.addBtn, isMinimal && styles.addBtnMinimal]}
           onPress={pickPhoto}
           disabled={disabled || picking}
           activeOpacity={0.85}
         >
           {picking ? (
             <ActivityIndicator color={CHAMBA.blue} />
+          ) : isMinimal ? (
+            <>
+              <Ionicons name="image-outline" size={18} color="#1E293B" />
+              <Text style={styles.addBtnMinimalText}>Agregar foto</Text>
+            </>
           ) : (
             <>
               <View style={styles.addIconWrap}>
@@ -176,4 +190,26 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   removeText: { color: '#DC2626' },
+  wrapMinimal: { marginBottom: 0, marginTop: 4 },
+  addBtnMinimal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderStyle: 'solid',
+    backgroundColor: '#F9FAFB',
+    ...CARD_STEP_SHADOW,
+  },
+  addBtnMinimalText: {
+    color: '#1E293B',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  previewMinimal: { marginTop: 8 },
+  previewSmall: { height: 140 },
 });

@@ -49,8 +49,31 @@ const TAB_CONFIG: Record<TabRoute, { label: string; iconOutline: keyof typeof Io
   Profile:      { label: 'Profile',  iconOutline: 'person-outline' },
 };
 
+type NavRoute = {
+  name: string;
+  state?: {
+    index: number;
+    routes: NavRoute[];
+  };
+};
+
+function getFocusedNestedRouteName(route: NavRoute): string | undefined {
+  if (!route.state?.routes?.length) return route.name;
+  const idx = route.state.index ?? 0;
+  const nested = route.state.routes[idx];
+  if (!nested) return route.name;
+  const deeper = getFocusedNestedRouteName(nested);
+  return deeper ?? nested.name;
+}
+
 const ClientTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) => {
   const insets = useSafeAreaInsets();
+  const activeTab = state.routes[state.index];
+  const nestedRoute = getFocusedNestedRouteName(activeTab);
+
+  if (nestedRoute === 'CreateJobForm') {
+    return null;
+  }
 
   return (
     <View style={[tabStyles.wrap, webFixedTabBarStyle, { paddingBottom: Math.max(insets.bottom, 10) }]}>

@@ -32,6 +32,10 @@ export interface JobSchedulingSectionProps {
   style?: ViewStyle;
   /** Oculta el título interno si el padre ya muestra encabezado de sección. */
   hideTitle?: boolean;
+  /** Sin tarjeta exterior — para embeber en wizard. */
+  embedded?: boolean;
+  /** Color del pill activo (default: CHAMBA.blue). */
+  accentColor?: string;
 }
 
 const webDateInputStyle: React.CSSProperties = {
@@ -123,14 +127,18 @@ const UrgencyPills: React.FC<{
   active: UrgencyLevel;
   onChange: (level: UrgencyLevel) => void;
   disabled?: boolean;
-}> = ({ active, onChange, disabled }) => (
+  accentColor: string;
+}> = ({ active, onChange, disabled, accentColor }) => (
   <View style={styles.pillRow}>
     {URGENCY_OPTIONS.map((option) => {
       const selected = active === option.id;
       return (
         <TouchableOpacity
           key={option.id}
-          style={[styles.pill, selected && styles.pillActive]}
+          style={[
+            styles.pill,
+            selected && { backgroundColor: accentColor, borderColor: accentColor },
+          ]}
           onPress={() => {
             if (!disabled) onChange(option.id);
           }}
@@ -147,7 +155,7 @@ const UrgencyPills: React.FC<{
                   : 'calendar-outline'
             }
             size={16}
-            color={selected ? '#FFF' : CHAMBA.blue}
+            color={selected ? '#FFF' : accentColor}
           />
           <Text style={[styles.pillText, selected && styles.pillTextActive]}>
             {option.label}
@@ -168,6 +176,8 @@ export const JobSchedulingSection: React.FC<JobSchedulingSectionProps> = ({
   disabled = false,
   style,
   hideTitle = false,
+  embedded = false,
+  accentColor = CHAMBA.blue,
 }) => {
   const minDate = getLocalDateString(0);
   const activeHint = URGENCY_OPTIONS.find((o) => o.id === urgencyLevel)?.hint ?? '';
@@ -189,7 +199,7 @@ export const JobSchedulingSection: React.FC<JobSchedulingSectionProps> = ({
   }, [urgencyLevel, scheduledDate]);
 
   return (
-    <View style={[styles.wrap, style]}>
+    <View style={[embedded ? styles.wrapEmbedded : styles.wrap, style]}>
       {!hideTitle ? (
         <>
           <Text style={styles.mainTitle}>¿Cuándo lo necesitás?</Text>
@@ -201,6 +211,7 @@ export const JobSchedulingSection: React.FC<JobSchedulingSectionProps> = ({
         active={urgencyLevel}
         onChange={onUrgencyChange}
         disabled={disabled}
+        accentColor={accentColor}
       />
 
       <View style={styles.infoCard}>
@@ -313,6 +324,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#BFDBFE',
     ...CARD_STEP_SHADOW,
+  },
+  wrapEmbedded: {
+    marginBottom: 0,
   },
   mainTitle: {
     fontSize: 16,

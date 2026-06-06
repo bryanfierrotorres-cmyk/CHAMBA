@@ -23,6 +23,8 @@ interface ClientJobLocationSectionProps {
   lng: number | null;
   onCoordsChange: (lat: number | null, lng: number | null) => void;
   disabled?: boolean;
+  /** Oculta título y hint — el padre muestra encabezado de tarjeta. */
+  hideHeader?: boolean;
 }
 
 export const ClientJobLocationSection: React.FC<ClientJobLocationSectionProps> = ({
@@ -32,6 +34,7 @@ export const ClientJobLocationSection: React.FC<ClientJobLocationSectionProps> =
   lng,
   onCoordsChange,
   disabled = false,
+  hideHeader = false,
 }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,11 +68,15 @@ export const ClientJobLocationSection: React.FC<ClientJobLocationSectionProps> =
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.sectionLabel}>Dónde se realizará el servicio</Text>
-      <Text style={styles.sectionHint}>
-        Escribí la dirección o referencia del lugar (obligatorio). El GPS es opcional — útil si
-        estás en el sitio; si pedís el servicio para otra casa o negocio, solo la dirección alcanza.
-      </Text>
+      {!hideHeader ? (
+        <>
+          <Text style={styles.sectionLabel}>Dónde se realizará el servicio</Text>
+          <Text style={styles.sectionHint}>
+            Escribí la dirección o referencia del lugar (obligatorio). El GPS es opcional — útil si
+            estás en el sitio; si pedís el servicio para otra casa o negocio, solo la dirección alcanza.
+          </Text>
+        </>
+      ) : null}
 
       <ChambaFormField
         label="Dirección o referencia"

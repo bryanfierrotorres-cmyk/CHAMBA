@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,8 +8,10 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  TextInput,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -32,22 +34,15 @@ import {
 } from '@components/jobs/JobSchedulingSection';
 import { ClientJobLocationSection } from '@components/client/ClientJobLocationSection';
 import { jobCoordinatesForCreate } from '@utils/shareJobLocation';
-import { isExpressServiceSlug } from '@constants/servicesConfig';
 import { ScreenBackButton } from '@components/navigation/ScreenBackButton';
 import { ChambaPublishSuccess } from '@components/chamba/ChambaPublishSuccess';
-import { ChambaFormField } from '@components/chamba/ChambaFormField';
 import {
   CARD_STEP_SHADOW,
   CHAMBA,
-  GRADIENT_TOGGLE,
   TOUCH_TARGET_MIN,
   chambaStyles,
 } from '@constants/chambaUI';
-import {
-  getServiceIconBg,
-  renderServiceIconBySlug,
-} from '@constants/clientHomeServiceIcons';
-import { validateClientPrice } from '@constants/servicePricing';
+import { textInputWebFocusStyle } from '@constants/textInputFocus';
 import { formatCurrency } from '@utils/formatters';
 import { useCatalog } from '@features/catalog/hooks/useCatalog';
 import { useClientPublishLimit } from '@features/jobs/hooks/useJobActiveLimits';
@@ -56,10 +51,19 @@ import type { ClientStackParamList } from '@/types';
 type Nav = NativeStackNavigationProp<ClientStackParamList, 'CreateJobForm'>;
 type Route = RouteProp<ClientStackParamList, 'CreateJobForm'>;
 
+const DEEP_BLUE = '#1E293B';
+const SCREEN_BG = '#F9FAFB';
+const TOTAL_STEPS = 2;
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
 export const CreateJobFormScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ScrollView>(null);
   const profile = useAuthStore((s) => s.profile);
   const queryClient = useQueryClient();
   const publishLimit = useClientPublishLimit();
@@ -69,59 +73,49 @@ export const CreateJobFormScreen: React.FC = () => {
   const serviceLabel = route.params.serviceLabel;
   const catalog = useCatalog();
   const label = catalog.getLabel(serviceTypeSlug) || serviceLabel;
-  const priceLookup = {
-    getSuggestedPrice: catalog.getSuggestedPrice,
-    getMinPrice: catalog.getMinPrice,
-  };
-
   const suggestedPrice = catalog.getSuggestedPrice(serviceTypeSlug);
-  const minimumPrice = catalog.getMinPrice(serviceTypeSlug);
-  const iconBg = getServiceIconBg(serviceTypeSlug, serviceTypeSlug);
 
-  const [title, setTitle] = useState(`Solicitud: ${serviceLabel}`);
+  const [currentStep, setCurrentStep] = useState(1);
   const [description, setDescription] = useState('');
   const [address, setAddress] = useState('');
   const [serviceLat, setServiceLat] = useState<number | null>(null);
   const [serviceLng, setServiceLng] = useState<number | null>(null);
-  const [budget, setBudget] = useState(String(suggestedPrice));
-  const [durationHours, setDurationHours] = useState('2');
-  const [requiredWorkers, setRequiredWorkers] = useState('1');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [budgetError, setBudgetError] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [requestPhotoUri, setRequestPhotoUri] = useState<string | null>(null);
   const schedulingFields = useJobSchedulingFields();
 
-  const showRequestPhoto = isExpressServiceSlug(serviceTypeSlug);
-  const isPetCustomRequest = serviceTypeSlug === 'pet_personalizado';
+  const autoTitle = label.trim() || serviceLabel;
 
-  const budgetAmount = Number(budget);
-  const priceValidation = useMemo(
-    () =>
-      budget.trim()
-        ? validateClientPrice(serviceTypeSlug, budgetAmount, priceLookup)
-        : { valid: false, message: '' },
-    [serviceTypeSlug, budget, budgetAmount, catalog],
-  );
+  const isStep1Valid =
+    description.trim().length > 0 && schedulingFields.isScheduleValid;
 
   const canSubmit =
-    title.trim() &&
-    description.trim() &&
-    address.trim() &&
-    priceValidation.valid &&
-    schedulingFields.isScheduleValid &&
+    isStep1Valid &&
+    address.trim().length > 0 &&
     !publishLimit.atLimit;
 
-  const handleBudgetChange = (value: string) => {
-    const cleaned = value.replace(/[^\d.]/g, '');
-    setBudget(cleaned);
-    if (!cleaned.trim()) {
-      setBudgetError(null);
+  const animateStepChange = useCallback((nextStep: number) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setCurrentStep(nextStep);
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, []);
+
+  const handleNextStep = () => {
+    if (!isStep1Valid) {
+      const msg =
+        schedulingFields.scheduleError ??
+        'Contanos qué necesitás y elegí cuándo lo querés.';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Completá el paso 1', msg);
       return;
     }
-    const result = validateClientPrice(serviceTypeSlug, Number(cleaned), priceLookup);
-    setBudgetError(result.valid ? null : result.message);
+    animateStepChange(2);
+  };
+
+  const handleBackToStep1 = () => {
+    animateStepChange(1);
   };
 
   const handleSubmit = async () => {
@@ -131,14 +125,6 @@ export const CreateJobFormScreen: React.FC = () => {
       const msg = publishLimit.message;
       if (Platform.OS === 'web') window.alert(msg);
       else Alert.alert('Límite de solicitudes', msg);
-      return;
-    }
-
-    const priceCheck = validateClientPrice(serviceTypeSlug, budgetAmount, priceLookup);
-    if (!priceCheck.valid) {
-      setBudgetError(priceCheck.message);
-      if (Platform.OS === 'web') window.alert(priceCheck.message);
-      else Alert.alert('Presupuesto inválido', priceCheck.message);
       return;
     }
 
@@ -155,7 +141,7 @@ export const CreateJobFormScreen: React.FC = () => {
       const creatorId = await resolveClientIdForJobs(profile);
 
       let mediaUrls: string[] | undefined;
-      if (showRequestPhoto && requestPhotoUri) {
+      if (requestPhotoUri) {
         const photoUrl = await uploadJobRequestPhoto(creatorId, requestPhotoUri);
         mediaUrls = [photoUrl];
       }
@@ -163,15 +149,15 @@ export const CreateJobFormScreen: React.FC = () => {
       const coords = jobCoordinatesForCreate(serviceLat, serviceLng);
 
       await createJob({
-        title: title.trim(),
+        title: autoTitle,
         description: description.trim(),
         category: serviceTypeSlug,
-        payAmount: budgetAmount,
+        payAmount: suggestedPrice,
         address: address.trim(),
         lat: coords.lat,
         lng: coords.lng,
-        durationHours: Number(durationHours) || 2,
-        requiredWorkers: Number(requiredWorkers) || 1,
+        durationHours: 2,
+        requiredWorkers: 1,
         createdBy: creatorId,
         mediaUrls,
         urgencyLevel: schedulingFields.schedulingPayload.urgencyLevel,
@@ -231,26 +217,41 @@ export const CreateJobFormScreen: React.FC = () => {
     }
   }, [navigation]);
 
+  const progressWidth = `${(currentStep / TOTAL_STEPS) * 100}%` as `${number}%`;
   const submitEnabled = canSubmit && !isSubmitting;
+  const nextEnabled = isStep1Valid && !isSubmitting;
 
   return (
-    <View style={[chambaStyles.screen, { paddingTop: insets.top }]}>
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <ScreenBackButton onPress={() => navigation.goBack()} color={CHAMBA.navy} />
-        <Text style={styles.headerTitle}>Nueva solicitud</Text>
+        <ScreenBackButton
+          onPress={() => {
+            if (currentStep === 2) {
+              handleBackToStep1();
+            } else {
+              navigation.goBack();
+            }
+          }}
+          color={DEEP_BLUE}
+        />
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>Nueva Solicitud</Text>
+          <Text style={styles.stepLabel}>
+            Paso {currentStep} de {TOTAL_STEPS}
+          </Text>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: progressWidth }]} />
+          </View>
+        </View>
         <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Text style={chambaStyles.sectionTitle}>Detalles de tu solicitud</Text>
-        <Text style={[chambaStyles.sectionSubtitle, styles.sectionGap]}>
-          Completa los campos para publicar tu pedido
-        </Text>
-
         {publishLimit.atLimit && (
           <View style={styles.limitBanner}>
             <Ionicons name="information-circle-outline" size={18} color="#0284C7" />
@@ -258,156 +259,147 @@ export const CreateJobFormScreen: React.FC = () => {
           </View>
         )}
 
-        <View style={chambaStyles.stepCard}>
-          <View style={chambaStyles.stepCardContent}>
-            <Text style={chambaStyles.cardTitle}>{serviceLabel}</Text>
-            <Text style={chambaStyles.cardSubtitle}>{label}</Text>
-          </View>
-          <View style={[chambaStyles.iconCircleRight, { backgroundColor: iconBg }]}>
-            {renderServiceIconBySlug(serviceTypeSlug)}
-          </View>
-        </View>
+        {currentStep === 1 ? (
+          <>
+            <Text style={styles.blockTitle}>Detalles del Trabajo</Text>
+            <Text style={styles.blockSubtitle}>
+              Contanos qué necesitás y cuándo lo querés
+            </Text>
 
-        <ChambaFormField
-          label="Título de la solicitud"
-          value={title}
-          onChangeText={setTitle}
-          placeholder="Ej. Limpieza de sofá y colchón"
-          icon="create-outline"
-        />
-        <ChambaFormField
-          label="Descripción detallada"
-          value={description}
-          onChangeText={setDescription}
-          placeholder={
-            isPetCustomRequest
-              ? 'Ej. cuidado de gato senior, medicación, horarios, tipo de mascota...'
-              : 'Describe qué necesitas, el estado actual, preferencias...'
-          }
-          multiline
-          icon="document-text-outline"
-        />
+            <View style={styles.card}>
+              <Text style={styles.cardSectionLabel}>El servicio</Text>
+              <View style={styles.serviceBadge}>
+                <Ionicons name="sparkles-outline" size={14} color={DEEP_BLUE} />
+                <Text style={styles.serviceBadgeText}>{label}</Text>
+              </View>
 
-        <Text style={[chambaStyles.sectionTitle, styles.scheduleSectionTitle]}>
-          ¿Cuándo lo necesitás?
-        </Text>
-        <Text style={[chambaStyles.sectionSubtitle, styles.scheduleSectionSubtitle]}>
-          Elegí urgencia, fecha y hora para que el técnico decida mejor
-        </Text>
+              <Text style={chambaStyles.formLabel}>Descripción</Text>
+              <View style={[chambaStyles.formInputRow, styles.descriptionRow]}>
+                <TextInput
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Contanos un poco más sobre lo que necesitás..."
+                  placeholderTextColor={CHAMBA.muted}
+                  multiline
+                  style={[styles.descriptionInput, textInputWebFocusStyle]}
+                  editable={!isSubmitting}
+                />
+              </View>
 
-        <JobSchedulingSection
-          hideTitle
-          urgencyLevel={schedulingFields.urgencyLevel}
-          onUrgencyChange={schedulingFields.setUrgencyLevel}
-          scheduledDate={schedulingFields.scheduledDate}
-          onScheduledDateChange={schedulingFields.setScheduledDate}
-          scheduledTime={schedulingFields.scheduledTime}
-          onScheduledTimeChange={schedulingFields.setScheduledTime}
-          disabled={isSubmitting}
-        />
-        {schedulingFields.scheduleError ? (
-          <Text style={styles.scheduleError}>{schedulingFields.scheduleError}</Text>
-        ) : null}
+              <JobRequestPhotoPicker
+                photoUri={requestPhotoUri}
+                onPhotoChange={setRequestPhotoUri}
+                disabled={isSubmitting}
+                variant="minimal"
+              />
+            </View>
 
-        {showRequestPhoto && (
-          <JobRequestPhotoPicker
-            photoUri={requestPhotoUri}
-            onPhotoChange={setRequestPhotoUri}
-            disabled={isSubmitting}
-          />
-        )}
-
-        <ClientJobLocationSection
-          address={address}
-          onAddressChange={setAddress}
-          lat={serviceLat}
-          lng={serviceLng}
-          onCoordsChange={(nextLat, nextLng) => {
-            setServiceLat(nextLat);
-            setServiceLng(nextLng);
-          }}
-          disabled={isSubmitting}
-        />
-
-        <View style={styles.row}>
-          <View style={styles.rowCol}>
-            <ChambaFormField
-              label="Presupuesto (C$)"
-              value={budget}
-              onChangeText={handleBudgetChange}
-              placeholder={String(suggestedPrice)}
-              keyboardType="decimal-pad"
-              icon="cash-outline"
-            />
-            <View style={styles.priceHintBox}>
-              <Text style={styles.priceHint}>
-                Precio sugerido: {formatCurrency(suggestedPrice)}
-              </Text>
-              <Text style={styles.priceHintMuted}>
-                Mínimo: {formatCurrency(minimumPrice)} (50% del sugerido)
-              </Text>
-              {budgetError ? (
-                <Text style={styles.priceError}>{budgetError}</Text>
+            <View style={styles.card}>
+              <Text style={styles.cardSectionLabel}>¿Cuándo lo necesitás?</Text>
+              <JobSchedulingSection
+                hideTitle
+                embedded
+                accentColor={DEEP_BLUE}
+                urgencyLevel={schedulingFields.urgencyLevel}
+                onUrgencyChange={schedulingFields.setUrgencyLevel}
+                scheduledDate={schedulingFields.scheduledDate}
+                onScheduledDateChange={schedulingFields.setScheduledDate}
+                scheduledTime={schedulingFields.scheduledTime}
+                onScheduledTimeChange={schedulingFields.setScheduledTime}
+                disabled={isSubmitting}
+              />
+              {schedulingFields.scheduleError ? (
+                <Text style={styles.scheduleError}>{schedulingFields.scheduleError}</Text>
               ) : null}
             </View>
-          </View>
-          <View style={styles.rowGap} />
-          <View style={styles.rowCol}>
-            <ChambaFormField
-              label="Duración (horas)"
-              value={durationHours}
-              onChangeText={setDurationHours}
-              placeholder="2"
-              keyboardType="numeric"
-              icon="time-outline"
-            />
-          </View>
-        </View>
+          </>
+        ) : (
+          <>
+            <Text style={styles.blockTitle}>Ubicación y Confirmación</Text>
+            <Text style={styles.blockSubtitle}>
+              Indicá dónde y revisá el precio antes de enviar
+            </Text>
 
-        <ChambaFormField
-          label="Trabajadores requeridos"
-          value={requiredWorkers}
-          onChangeText={setRequiredWorkers}
-          placeholder="1"
-          keyboardType="numeric"
-          icon="people-outline"
-        />
+            <View style={styles.card}>
+              <Text style={styles.cardSectionLabel}>Dirección</Text>
+              <ClientJobLocationSection
+                hideHeader
+                address={address}
+                onAddressChange={setAddress}
+                lat={serviceLat}
+                lng={serviceLng}
+                onCoordsChange={(nextLat, nextLng) => {
+                  setServiceLat(nextLat);
+                  setServiceLng(nextLng);
+                }}
+                disabled={isSubmitting}
+              />
+            </View>
 
-        <View style={styles.infoBox}>
-          <View style={styles.infoIconWrap}>
-            <Ionicons name="information-circle" size={20} color={CHAMBA.blue} />
-          </View>
-          <Text style={styles.infoText}>
-            Tu solicitud será visible para trabajadores verificados de la categoría
-            seleccionada. Indicá bien la dirección del servicio; el GPS es opcional si no
-            estás en ese lugar.
-          </Text>
-        </View>
+            <View style={styles.card}>
+              <Text style={styles.cardSectionLabel}>Resumen</Text>
+              <Text style={styles.summaryService}>{label}</Text>
+              {description.trim() ? (
+                <Text style={styles.summaryDescription} numberOfLines={3}>
+                  {description.trim()}
+                </Text>
+              ) : null}
+              <View style={styles.priceBlock}>
+                <Text style={styles.priceLabel}>Precio del servicio</Text>
+                <Text style={styles.priceValue}>{formatCurrency(suggestedPrice)}</Text>
+                <Text style={styles.priceNote}>
+                  El pago se realiza directamente al técnico al finalizar
+                </Text>
+              </View>
+            </View>
+          </>
+        )}
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-        <TouchableOpacity
-          onPress={handleSubmit}
-          disabled={!submitEnabled}
-          activeOpacity={0.88}
-          style={!submitEnabled && styles.submitTouchableDisabled}
-        >
-          <LinearGradient
-            colors={submitEnabled ? [...GRADIENT_TOGGLE] : ['#CBD5E1', '#94A3B8']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.submitBtn}
+        {currentStep === 1 ? (
+          <TouchableOpacity
+            onPress={handleNextStep}
+            disabled={!nextEnabled}
+            activeOpacity={0.88}
+            style={[
+              styles.primaryBtn,
+              !nextEnabled && styles.primaryBtnDisabled,
+            ]}
           >
-            {isSubmitting ? (
-              <ActivityIndicator color="#FFF" />
-            ) : (
-              <>
-                <Ionicons name="flash" size={20} color="#FFF" />
-                <Text style={styles.submitBtnText}>Enviar solicitud</Text>
-              </>
-            )}
-          </LinearGradient>
-        </TouchableOpacity>
+            <Text style={styles.primaryBtnText}>Siguiente paso</Text>
+            <Ionicons name="arrow-forward" size={20} color="#FFF" />
+          </TouchableOpacity>
+        ) : (
+          <>
+            <TouchableOpacity
+              onPress={handleBackToStep1}
+              disabled={isSubmitting}
+              style={styles.backLink}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.backLinkText}>← Volver al paso 1</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleSubmit}
+              disabled={!submitEnabled}
+              activeOpacity={0.88}
+              style={[
+                styles.primaryBtn,
+                !submitEnabled && styles.primaryBtnDisabled,
+              ]}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle-outline" size={22} color="#FFF" />
+                  <Text style={styles.primaryBtnText}>Confirmar Solicitud</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </>
+        )}
       </View>
 
       <ChambaPublishSuccess
@@ -423,30 +415,161 @@ export const CreateJobFormScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: SCREEN_BG,
+  },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingVertical: 12,
+    backgroundColor: SCREEN_BG,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: CHAMBA.border,
+    borderBottomColor: '#E5E7EB',
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 8,
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: CHAMBA.navy,
+    fontWeight: '700',
+    color: DEEP_BLUE,
     letterSpacing: -0.3,
+  },
+  stepLabel: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+    letterSpacing: 0.2,
+  },
+  progressTrack: {
+    marginTop: 8,
+    width: '100%',
+    maxWidth: 160,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#E5E7EB',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: DEEP_BLUE,
+    borderRadius: 2,
   },
   headerSpacer: { width: 40 },
   content: {
     paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 24,
+    paddingTop: 20,
+    paddingBottom: 120,
   },
-  sectionGap: { marginBottom: 16 },
-  scheduleSectionTitle: { marginTop: 8, marginBottom: 4 },
-  scheduleSectionSubtitle: { marginBottom: 10 },
+  blockTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+    letterSpacing: -0.4,
+    marginBottom: 4,
+  },
+  blockSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  card: {
+    backgroundColor: CHAMBA.white,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    ...CARD_STEP_SHADOW,
+  },
+  cardSectionLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#6B7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 12,
+  },
+  serviceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  serviceBadgeText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: DEEP_BLUE,
+    letterSpacing: -0.2,
+  },
+  descriptionRow: {
+    alignItems: 'flex-start',
+    minHeight: 96,
+    marginBottom: 4,
+  },
+  descriptionInput: {
+    flex: 1,
+    fontSize: 15,
+    color: CHAMBA.navy,
+    paddingVertical: 10,
+    textAlignVertical: 'top',
+    minHeight: 80,
+  },
+  scheduleError: {
+    color: '#DC2626',
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 8,
+  },
+  summaryService: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: DEEP_BLUE,
+    marginBottom: 6,
+  },
+  summaryDescription: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  priceBlock: {
+    paddingTop: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E5E7EB',
+  },
+  priceLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  priceValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: DEEP_BLUE,
+    letterSpacing: -0.6,
+    marginBottom: 8,
+  },
+  priceNote: {
+    fontSize: 13,
+    color: '#6B7280',
+    lineHeight: 19,
+  },
   limitBanner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -465,82 +588,41 @@ const styles = StyleSheet.create({
     color: '#1E40AF',
     lineHeight: 18,
   },
-  row: { flexDirection: 'row' },
-  rowCol: { flex: 1 },
-  rowGap: { width: 12 },
-  priceHintBox: { marginTop: -8, marginBottom: 8, gap: 2, paddingLeft: 2 },
-  priceHint: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: CHAMBA.blue,
-  },
-  priceHintMuted: {
-    fontSize: 12,
-    color: CHAMBA.muted,
-    fontWeight: '400',
-  },
-  priceError: {
-    color: '#DC2626',
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  scheduleError: {
-    color: '#DC2626',
-    fontSize: 13,
-    fontWeight: '600',
-    marginTop: -6,
-    marginBottom: 12,
-    paddingHorizontal: 2,
-  },
-  infoBox: {
-    flexDirection: 'row',
-    gap: 12,
-    backgroundColor: CHAMBA.white,
-    borderRadius: 16,
-    padding: 14,
-    marginTop: 4,
-    borderWidth: 1,
-    borderColor: '#E0F2FE',
-    ...CARD_STEP_SHADOW,
-  },
-  infoIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: '#E0F2FE',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  infoText: {
-    flex: 1,
-    color: CHAMBA.muted,
-    fontSize: 13,
-    lineHeight: 19,
-    fontWeight: '400',
-  },
   footer: {
     paddingHorizontal: 20,
     paddingTop: 12,
     backgroundColor: CHAMBA.white,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: CHAMBA.border,
+    borderTopColor: '#E5E7EB',
   },
-  submitBtn: {
+  primaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    borderRadius: 24,
+    borderRadius: 16,
     minHeight: TOUCH_TARGET_MIN,
     paddingVertical: 16,
+    backgroundColor: DEEP_BLUE,
     ...CARD_STEP_SHADOW,
   },
-  submitTouchableDisabled: { opacity: 0.85 },
-  submitBtnText: {
+  primaryBtnDisabled: {
+    backgroundColor: '#94A3B8',
+  },
+  primaryBtnText: {
     color: '#FFF',
     fontSize: 16,
     fontWeight: '700',
     letterSpacing: -0.2,
+  },
+  backLink: {
+    alignSelf: 'center',
+    paddingVertical: 8,
+    marginBottom: 10,
+  },
+  backLinkText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
   },
 });
