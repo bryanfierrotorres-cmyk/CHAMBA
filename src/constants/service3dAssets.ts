@@ -1,0 +1,30 @@
+import type { ImageSourcePropType } from 'react-native';
+
+/** IDs de tiles principales Express (home cliente). */
+export type Service3dTileId =
+  | 'limpieza'
+  | 'car'
+  | 'ac'
+  | 'jardineria'
+  | 'pet'
+  | 'mandados';
+
+const SERVICE_3D_ASSETS: Record<Service3dTileId, ImageSourcePropType> = {
+  limpieza: require('../../assets/services-3d/limpieza.jpg'),
+  car: require('../../assets/services-3d/car_wash.jpg'),
+  ac: require('../../assets/services-3d/ac.jpg'),
+  jardineria: require('../../assets/services-3d/jardineria.jpg'),
+  pet: require('../../assets/services-3d/mascotas.jpg'),
+  mandados: require('../../assets/services-3d/mandados.jpg'),
+};
+
+export function getService3dAsset(tileId: string): ImageSourcePropType | null {
+  if (tileId in SERVICE_3D_ASSETS) {
+    return SERVICE_3D_ASSETS[tileId as Service3dTileId];
+  }
+  return null;
+}
+
+export function hasService3dAsset(tileId: string): boolean {
+  return tileId in SERVICE_3D_ASSETS;
+}

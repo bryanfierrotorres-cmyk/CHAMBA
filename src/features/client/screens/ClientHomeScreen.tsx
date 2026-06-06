@@ -46,6 +46,7 @@ import {
   type ExpressTileDef,
 } from '@constants/clientHomeExpress';
 import { ClientHomeHeroCarousel } from '@components/client/ClientHomeHeroCarousel';
+import { getService3dAsset } from '@constants/service3dAssets';
 import {
   CLIENT_EMPRESA_HERO_SLIDES,
   CLIENT_HOGAR_HERO_SLIDES,
@@ -143,6 +144,7 @@ export const ClientHomeScreen: React.FC = () => {
         title: tile.title,
         iconColor,
         icon: renderExpressTileIcon(tile.id, selectedExpressCat),
+        imageSource: selectedExpressCat ? null : getService3dAsset(tile.id),
         onPress: () => onExpressPress(tile),
         isCategory,
         footer: isCategory
