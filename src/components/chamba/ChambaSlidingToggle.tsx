@@ -8,7 +8,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { GRADIENT_TOGGLE, CHAMBA } from '@constants/chambaUI';
+import { CHAMBA } from '@constants/chambaUI';
 
 const TAB_BAR_PADDING = 6;
 
@@ -22,6 +22,10 @@ interface ChambaSlidingToggleProps<T extends string> {
   active: T;
   onChange: (id: T) => void;
   style?: ViewStyle;
+  /** Radio de esquinas (p. ej. 12 en login). Por defecto 30 contenedor / 24 pill. */
+  cornerRadius?: number;
+  /** Peso tipográfico del segmento activo. */
+  activeFontWeight?: '600' | '700';
 }
 
 export function ChambaSlidingToggle<T extends string>({
@@ -29,7 +33,11 @@ export function ChambaSlidingToggle<T extends string>({
   active,
   onChange,
   style,
+  cornerRadius,
+  activeFontWeight = '700',
 }: ChambaSlidingToggleProps<T>) {
+  const outerRadius = cornerRadius ?? 30;
+  const pillRadius = cornerRadius ?? 24;
   const [barWidth, setBarWidth] = useState(0);
   const activeIndex = Math.max(0, options.findIndex((o) => o.id === active));
   const slide = useRef(new Animated.Value(activeIndex)).current;
@@ -74,7 +82,11 @@ export function ChambaSlidingToggle<T extends string>({
 
   return (
     <View
-      style={[styles.tabOuterContainer, style]}
+      style={[
+        styles.tabOuterContainer,
+        { backgroundColor: CHAMBA.toggleBg, borderRadius: outerRadius },
+        style,
+      ]}
       onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
     >
       {pillWidth > 0 && (
@@ -82,14 +94,14 @@ export function ChambaSlidingToggle<T extends string>({
           style={[
             styles.tabActivePill,
             styles.modeTogglePill,
-            { width: pillWidth, transform: [{ translateX }] },
+            { width: pillWidth, borderRadius: pillRadius, transform: [{ translateX }] },
           ]}
         >
           <LinearGradient
-            colors={[...GRADIENT_TOGGLE]}
+            colors={[CHAMBA.primary, CHAMBA.primary]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            style={styles.gradientButton}
+            style={[styles.gradientButton, { borderRadius: pillRadius }]}
           />
         </Animated.View>
       )}
@@ -103,7 +115,11 @@ export function ChambaSlidingToggle<T extends string>({
         >
           <View style={styles.tabLabelStack}>
             <Animated.Text
-              style={[styles.tabTextActive, styles.tabLabelOverlay, { opacity: activeOpacityFor(index) }]}
+              style={[
+                styles.tabTextActive,
+                styles.tabLabelOverlay,
+                { opacity: activeOpacityFor(index), fontWeight: activeFontWeight },
+              ]}
             >
               {option.label}
             </Animated.Text>
@@ -120,8 +136,6 @@ export function ChambaSlidingToggle<T extends string>({
 const styles = StyleSheet.create({
   tabOuterContainer: {
     flexDirection: 'row',
-    backgroundColor: CHAMBA.toggleBg,
-    borderRadius: 30,
     padding: TAB_BAR_PADDING,
     alignItems: 'center',
     shadowColor: '#6B7280',
@@ -139,8 +153,7 @@ const styles = StyleSheet.create({
     zIndex: 0,
   },
   tabActivePill: {
-    borderRadius: 24,
-    shadowColor: '#1E293B',
+    shadowColor: CHAMBA.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.22,
     shadowRadius: 6,
@@ -148,7 +161,6 @@ const styles = StyleSheet.create({
   },
   gradientButton: {
     flex: 1,
-    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -169,11 +181,11 @@ const styles = StyleSheet.create({
   tabTextActive: {
     color: '#FFFFFF',
     fontSize: 15,
-    fontWeight: '700',
   },
   tabTextInactive: {
     color: CHAMBA.inactive,
     fontSize: 15,
     fontWeight: '600',
+    backgroundColor: 'transparent',
   },
 });
