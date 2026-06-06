@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { formatChatTime } from '../utils/chatHelpers';
+import { CHAT_THEME } from '../constants/chatTheme';
 import type { ServiceMessage } from '@/types';
 
 interface Props {
@@ -16,7 +17,7 @@ export const ChatMessageBubble: React.FC<Props> = ({ message, isMine, accentColo
   useEffect(() => {
     Animated.parallel([
       Animated.timing(fade, { toValue: 1, duration: 220, useNativeDriver: true }),
-      Animated.spring(slide, { toValue: 0, friction: 9, tension: 80, useNativeDriver: true }),
+      Animated.spring(slide, { toValue: 0, friction: 10, tension: 90, useNativeDriver: true }),
     ]).start();
   }, [fade, slide]);
 
@@ -36,7 +37,9 @@ export const ChatMessageBubble: React.FC<Props> = ({ message, isMine, accentColo
             : styles.bubbleTheirs,
         ]}
       >
-        <Text style={[styles.text, isMine && styles.textMine]}>{message.texto}</Text>
+        <Text style={[styles.text, isMine ? styles.textMine : styles.textTheirs]}>
+          {message.texto}
+        </Text>
         <Text style={[styles.time, isMine && styles.timeMine]}>
           {formatChatTime(message.creado_al)}
         </Text>
@@ -44,6 +47,9 @@ export const ChatMessageBubble: React.FC<Props> = ({ message, isMine, accentColo
     </Animated.View>
   );
 };
+
+const BUBBLE_RADIUS = 16;
+const BUBBLE_TAIL = 4;
 
 const styles = StyleSheet.create({
   row: {
@@ -54,35 +60,41 @@ const styles = StyleSheet.create({
   rowTheirs: { alignItems: 'flex-start' },
   bubble: {
     maxWidth: '82%',
-    borderRadius: 20,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
   },
   bubbleMine: {
-    borderBottomRightRadius: 6,
+    borderTopLeftRadius: BUBBLE_RADIUS,
+    borderTopRightRadius: BUBBLE_RADIUS,
+    borderBottomLeftRadius: BUBBLE_RADIUS,
+    borderBottomRightRadius: BUBBLE_TAIL,
   },
   bubbleTheirs: {
-    backgroundColor: '#F3F4F6',
-    borderBottomLeftRadius: 6,
+    backgroundColor: CHAT_THEME.bubbleTheirs,
+    borderTopLeftRadius: BUBBLE_RADIUS,
+    borderTopRightRadius: BUBBLE_RADIUS,
+    borderBottomLeftRadius: BUBBLE_TAIL,
+    borderBottomRightRadius: BUBBLE_RADIUS,
   },
   text: {
     fontSize: 15,
-    lineHeight: 22,
-    color: '#111827',
+    lineHeight: 21,
     fontWeight: '400',
   },
   textMine: {
     color: '#FFFFFF',
-    fontWeight: '400',
+  },
+  textTheirs: {
+    color: CHAT_THEME.textPrimary,
   },
   time: {
-    marginTop: 6,
-    fontSize: 11,
-    color: '#6B7280',
+    marginTop: 5,
+    fontSize: 10,
+    color: CHAT_THEME.time,
     fontWeight: '500',
     alignSelf: 'flex-end',
   },
   timeMine: {
-    color: 'rgba(255,255,255,0.78)',
+    color: 'rgba(255,255,255,0.72)',
   },
 });

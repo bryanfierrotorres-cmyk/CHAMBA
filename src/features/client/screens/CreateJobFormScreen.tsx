@@ -288,6 +288,27 @@ export const CreateJobFormScreen: React.FC = () => {
           icon="document-text-outline"
         />
 
+        <Text style={[chambaStyles.sectionTitle, styles.scheduleSectionTitle]}>
+          ¿Cuándo lo necesitás?
+        </Text>
+        <Text style={[chambaStyles.sectionSubtitle, styles.scheduleSectionSubtitle]}>
+          Elegí urgencia, fecha y hora para que el técnico decida mejor
+        </Text>
+
+        <JobSchedulingSection
+          hideTitle
+          urgencyLevel={schedulingFields.urgencyLevel}
+          onUrgencyChange={schedulingFields.setUrgencyLevel}
+          scheduledDate={schedulingFields.scheduledDate}
+          onScheduledDateChange={schedulingFields.setScheduledDate}
+          scheduledTime={schedulingFields.scheduledTime}
+          onScheduledTimeChange={schedulingFields.setScheduledTime}
+          disabled={isSubmitting}
+        />
+        {schedulingFields.scheduleError ? (
+          <Text style={styles.scheduleError}>{schedulingFields.scheduleError}</Text>
+        ) : null}
+
         {showRequestPhoto && (
           <JobRequestPhotoPicker
             photoUri={requestPhotoUri}
@@ -307,19 +328,6 @@ export const CreateJobFormScreen: React.FC = () => {
           }}
           disabled={isSubmitting}
         />
-
-        <JobSchedulingSection
-          urgencyLevel={schedulingFields.urgencyLevel}
-          onUrgencyChange={schedulingFields.setUrgencyLevel}
-          scheduledDate={schedulingFields.scheduledDate}
-          onScheduledDateChange={schedulingFields.setScheduledDate}
-          scheduledTime={schedulingFields.scheduledTime}
-          onScheduledTimeChange={schedulingFields.setScheduledTime}
-          disabled={isSubmitting}
-        />
-        {schedulingFields.scheduleError ? (
-          <Text style={styles.scheduleError}>{schedulingFields.scheduleError}</Text>
-        ) : null}
 
         <View style={styles.row}>
           <View style={styles.rowCol}>
@@ -437,6 +445,8 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   sectionGap: { marginBottom: 16 },
+  scheduleSectionTitle: { marginTop: 8, marginBottom: 4 },
+  scheduleSectionSubtitle: { marginBottom: 10 },
   limitBanner: {
     flexDirection: 'row',
     alignItems: 'flex-start',

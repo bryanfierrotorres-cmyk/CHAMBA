@@ -4,6 +4,10 @@ import { supabase } from '@services/supabase';
 import { useAuthStore } from '@store/authStore';
 import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
 import {
+  persistPilotProfileIfChanged,
+  syncProfileWithDatabase,
+} from '@utils/profileSync';
+import {
   fetchJobChatContext,
   fetchJobMessages,
   sendJobMessage,
@@ -14,13 +18,17 @@ import type { JobStatus, ServiceMessage } from '@/types';
 
 export const jobChatMessagesKey = (jobId: string) => ['chat', 'messages', jobId] as const;
 
+/** Respaldo si Realtime no entrega (RLS / sesión / web). */
+const CHAT_POLL_MS = 4_000;
+
 export function useJobChat(jobId: string) {
   const profile = useAuthStore((s) => s.profile);
+  const session = useAuthStore((s) => s.session);
   const queryClient = useQueryClient();
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const actorIdRef = useRef<string | null>(null);
 
   const contextQuery = useQuery({
     queryKey: ['chat', 'context', jobId],
@@ -35,11 +43,21 @@ export function useJobChat(jobId: string) {
     if (context?.status) setJobStatus(context.status);
   }, [context?.status]);
 
+  const loadMessages = useCallback(async () => {
+    if (!profile?.id) return [];
+    const synced = await syncProfileWithDatabase(profile);
+    await persistPilotProfileIfChanged(profile, synced);
+    actorIdRef.current = synced.id;
+    return fetchJobMessages(jobId, synced.id);
+  }, [jobId, profile]);
+
   const messagesQuery = useQuery({
     queryKey: jobChatMessagesKey(jobId),
-    queryFn: () => fetchJobMessages(jobId),
+    queryFn: loadMessages,
     enabled: !!jobId && !!profile?.id && !!context,
-    staleTime: 5_000,
+    staleTime: 2_000,
+    refetchInterval: CHAT_POLL_MS,
+    refetchIntervalInBackground: false,
   });
 
   const appendMessage = useCallback(
@@ -58,14 +76,28 @@ export function useJobChat(jobId: string) {
     if (!profile?.id || !jobId || !context) return undefined;
 
     let cancelled = false;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
 
-    void (async () => {
-      await ensurePhoneAuthSession(profile);
-
+    const setup = async () => {
+      const synced = await syncProfileWithDatabase(profile);
       if (cancelled) return;
 
-      const channel = supabase
-        .channel(`job-chat-${jobId}`)
+      await persistPilotProfileIfChanged(profile, synced);
+      actorIdRef.current = synced.id;
+
+      const authSession = await ensurePhoneAuthSession(synced);
+      if (cancelled) return;
+
+      if (authSession) {
+        const store = useAuthStore.getState();
+        if (!store.session?.access_token) {
+          store.setSession(authSession);
+          store.setPhoneAuth(false);
+        }
+      }
+
+      channel = supabase
+        .channel(`job-chat-${jobId}-${synced.id}`)
         .on(
           'postgres_changes',
           {
@@ -91,26 +123,39 @@ export function useJobChat(jobId: string) {
             if (next.status) setJobStatus(next.status);
           },
         )
-        .subscribe();
+        .subscribe((status, err) => {
+          if (status === 'CHANNEL_ERROR') {
+            console.warn('[JobChat] realtime:', err?.message ?? status);
+          }
+          if (status === 'TIMED_OUT') {
+            console.warn('[JobChat] realtime: timeout');
+          }
+        });
+    };
 
-      channelRef.current = channel;
-    })();
+    void setup();
 
     return () => {
       cancelled = true;
-      if (channelRef.current) {
-        void supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
+      if (channel) void supabase.removeChannel(channel);
     };
-  }, [appendMessage, context, jobId, profile]);
+  }, [
+    appendMessage,
+    context,
+    jobId,
+    profile?.id,
+    profile?.phone,
+    session?.access_token,
+  ]);
 
   const effectiveStatus = jobStatus ?? context?.status ?? null;
   const readOnly = !isJobChatWritable(effectiveStatus);
 
   const counterpart = useMemo(() => {
     if (!context || !profile) return null;
-    const isClient = profile.id === context.clientId;
+    const isClient =
+      profile.id === context.clientId
+      || (profile.role === 'client' && profile.id !== context.workerId);
     return {
       id: isClient ? context.workerId : context.clientId,
       name: isClient ? context.workerName ?? 'Técnico' : context.clientName,
@@ -124,11 +169,20 @@ export function useJobChat(jobId: string) {
       setSendError(null);
       setIsSending(true);
       try {
-        await ensurePhoneAuthSession(profile);
-        const msg = await sendJobMessage(jobId, profile.id, text);
+        const synced = await syncProfileWithDatabase(profile);
+        await persistPilotProfileIfChanged(profile, synced);
+        actorIdRef.current = synced.id;
+        await ensurePhoneAuthSession(synced);
+        const msg = await sendJobMessage(jobId, synced.id, text);
         appendMessage(msg);
       } catch (err: unknown) {
-        setSendError(err instanceof Error ? err.message : 'No se pudo enviar');
+        const raw = err instanceof Error ? err.message : 'No se pudo enviar';
+        const friendly = raw.includes('row-level security')
+          ? 'No se pudo enviar. Ejecutá npm run db:sync-chat y volvé a iniciar sesión.'
+          : raw.includes('No podés enviar mensajes')
+            ? raw
+            : raw;
+        setSendError(friendly);
       } finally {
         setIsSending(false);
       }

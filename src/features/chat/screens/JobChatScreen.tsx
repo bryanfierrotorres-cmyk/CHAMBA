@@ -10,15 +10,16 @@ import {
 import { useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@store/authStore';
 import { CHAMBA } from '@constants/chambaUI';
-import { M3 } from '@constants/workerTheme';
 import { useJobChat } from '../hooks/useJobChat';
 import { ChatHeader } from '../components/ChatHeader';
 import { ChatMessageBubble } from '../components/ChatMessageBubble';
 import { ChatInputBar } from '../components/ChatInputBar';
 import { ChatSkeleton } from '../components/ChatSkeleton';
 import { groupMessagesForList } from '../utils/chatHelpers';
+import { CHAT_THEME } from '../constants/chatTheme';
 import type { JobChatStackParamList } from '@/types';
 
 type ChatRoute = RouteProp<JobChatStackParamList, 'JobChat'>;
@@ -37,7 +38,7 @@ export const JobChatScreen: React.FC<Props> = ({ accentColor }) => {
   const { jobId, readOnly: routeReadOnly } = route.params;
   const roleAccent =
     accentColor ??
-    (profile?.role === 'worker' ? M3.primary : CHAMBA.blue);
+    (profile?.role === 'worker' ? CHAT_THEME.workerAccent : CHAT_THEME.clientAccent);
 
   const {
     context,
@@ -78,15 +79,18 @@ export const JobChatScreen: React.FC<Props> = ({ accentColor }) => {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 8 : 0}
       >
         {isLoading ? (
           <ChatSkeleton />
         ) : isError || !context ? (
           <View style={styles.errorWrap}>
+            <View style={styles.errorIcon}>
+              <Ionicons name="cloud-offline-outline" size={32} color={CHAMBA.blue} />
+            </View>
             <Text style={styles.errorTitle}>No se pudo cargar el chat</Text>
             <Text style={styles.errorSub}>
-              Verificá tu conexión o que el servicio siga activo.
+              Verificá tu conexión o que el servicio siga activo con técnico asignado.
             </Text>
           </View>
         ) : (
@@ -119,9 +123,13 @@ export const JobChatScreen: React.FC<Props> = ({ accentColor }) => {
             }}
             ListEmptyComponent={
               <View style={styles.emptyWrap}>
-                <Text style={styles.emptyTitle}>Sin mensajes aún</Text>
+                <View style={[styles.emptyIcon, { backgroundColor: `${roleAccent}18` }]}>
+                  <Ionicons name="chatbubbles-outline" size={36} color={roleAccent} />
+                </View>
+                <Text style={styles.emptyTitle}>Iniciá la conversación</Text>
                 <Text style={styles.emptySub}>
-                  Coordiná detalles del servicio con {counterpart?.name ?? 'tu contacto'}.
+                  Coordiná horarios, accesos o detalles del servicio con{' '}
+                  {counterpart?.name ?? 'tu contacto'}.
                 </Text>
               </View>
             }
@@ -143,13 +151,13 @@ export const JobChatScreen: React.FC<Props> = ({ accentColor }) => {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: CHAT_THEME.bg,
   },
   flex: { flex: 1 },
   list: { flex: 1 },
   listContent: {
     paddingTop: 12,
-    paddingBottom: 16,
+    paddingBottom: 12,
   },
   listEmpty: {
     flexGrow: 1,
@@ -160,47 +168,66 @@ const styles = StyleSheet.create({
     marginVertical: 14,
   },
   dateLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
-    color: '#9CA3AF',
-    backgroundColor: '#F3F4F6',
+    color: CHAT_THEME.muted,
+    backgroundColor: CHAT_THEME.inputBg,
     paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 999,
+    paddingVertical: 5,
+    borderRadius: 10,
     overflow: 'hidden',
   },
   emptyWrap: {
     alignItems: 'center',
-    paddingHorizontal: 32,
+    paddingHorizontal: 40,
+  },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
   },
   emptyTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#374151',
+    fontSize: 17,
+    fontWeight: '600',
+    color: CHAT_THEME.navy,
     marginBottom: 6,
+    letterSpacing: -0.2,
   },
   emptySub: {
     fontSize: 14,
-    color: '#6B7280',
+    color: CHAT_THEME.muted,
     textAlign: 'center',
     lineHeight: 20,
+    fontWeight: '400',
   },
   errorWrap: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 32,
+    paddingHorizontal: 36,
+  },
+  errorIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: CHAT_THEME.inputBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
   },
   errorTitle: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 8,
+    fontWeight: '600',
+    color: CHAT_THEME.navy,
+    marginBottom: 6,
   },
   errorSub: {
     fontSize: 14,
-    color: '#6B7280',
+    color: CHAT_THEME.muted,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 21,
   },
 });

@@ -5,14 +5,20 @@ export const CHAMBA = {
   white: '#FFFFFF',
   navy: '#0F172A',
   muted: '#8A94A6',
+  /** Azul profundo — botones activos, switches ON, pill seleccionado */
+  primary: '#1E293B',
+  /** Texto de opciones inactivas en toggles/segmentos */
+  inactive: '#6B7280',
   cyan: '#00F2FE',
   blue: '#0284C7',
   teal: '#0D9488',
-  toggleBg: '#EFF2F9',
+  /** Fondo de contenedores de toggles y segmentos */
+  toggleBg: '#F3F4F6',
   border: '#E2E8F0',
 } as const;
 
-export const GRADIENT_TOGGLE = ['#00E5FF', '#3B82F6'] as const;
+/** Pill activo del segmento — azul profundo sofisticado (contraste WCAG ≥ 4.5:1 con texto blanco) */
+export const GRADIENT_TOGGLE = ['#1E293B', '#334155'] as const;
 
 export const CARD_STEP_SHADOW = {
   shadowColor: '#0F172A',
@@ -113,9 +119,9 @@ export const chambaStyles = StyleSheet.create({
   tabActiveTouchable: {
     flex: 1,
     borderRadius: 24,
-    shadowColor: '#00E5FF',
+    shadowColor: '#1E293B',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.22,
     shadowRadius: 6,
     elevation: 4,
   },
@@ -134,7 +140,7 @@ export const chambaStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   tabTextActive: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  tabTextInactive: { color: '#2D3748', fontSize: 15, fontWeight: '600' },
+  tabTextInactive: { color: '#6B7280', fontSize: 15, fontWeight: '600' },
   panelCard: {
     backgroundColor: CHAMBA.white,
     borderRadius: 18,

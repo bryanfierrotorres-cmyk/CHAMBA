@@ -13,6 +13,14 @@ export interface JobChatContext {
   workerAvatar: string | null;
 }
 
+const isMissingRpc = (err: { code?: string; message?: string } | null): boolean =>
+  !!err && (
+    err.code === 'PGRST202'
+    || err.message?.includes('Could not find the function')
+    || err.message?.includes('send_job_chat_message')
+    || err.message?.includes('get_job_chat_messages')
+  );
+
 export async function fetchJobChatContext(jobId: string): Promise<JobChatContext | null> {
   const { data, error } = await supabase
     .from('jobs')
@@ -50,19 +58,65 @@ export async function fetchJobChatContext(jobId: string): Promise<JobChatContext
   };
 }
 
-export async function fetchJobMessages(servicioId: string): Promise<ServiceMessage[]> {
+async function fetchJobMessagesDirect(servicioId: string): Promise<ServiceMessage[]> {
   const { data, error } = await supabase
     .from('mensajes')
     .select('id, servicio_id, remitente_id, texto, creado_al')
     .eq('servicio_id', servicioId)
     .order('creado_al', { ascending: true });
 
-  if (error) {
-    console.warn('[fetchJobMessages]', error.message);
-    throw new Error(error.message);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ServiceMessage[];
+}
+
+export async function fetchJobMessages(
+  servicioId: string,
+  callerId?: string,
+): Promise<ServiceMessage[]> {
+  if (callerId) {
+    const { data, error } = await supabase.rpc('get_job_chat_messages', {
+      p_servicio_id: servicioId,
+      p_caller_id: callerId,
+    });
+
+    if (!error && data) {
+      const body = data as { success?: boolean; error?: string; messages?: ServiceMessage[] };
+      if (body.success && Array.isArray(body.messages)) {
+        return body.messages;
+      }
+      if (!body.success) {
+        throw new Error(body.error ?? 'No se pudieron cargar los mensajes');
+      }
+    }
+
+    if (isMissingRpc(error)) {
+      console.warn('[fetchJobMessages] RPC ausente, intento directo');
+      return fetchJobMessagesDirect(servicioId);
+    }
+
+    throw new Error(error?.message ?? 'No se pudieron cargar los mensajes');
   }
 
-  return (data ?? []) as ServiceMessage[];
+  return fetchJobMessagesDirect(servicioId);
+}
+
+async function sendJobMessageDirect(
+  servicioId: string,
+  remitenteId: string,
+  texto: string,
+): Promise<ServiceMessage> {
+  const { data, error } = await supabase
+    .from('mensajes')
+    .insert({
+      servicio_id: servicioId,
+      remitente_id: remitenteId,
+      texto,
+    })
+    .select('id, servicio_id, remitente_id, texto, creado_al')
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as ServiceMessage;
 }
 
 export async function sendJobMessage(
@@ -73,16 +127,37 @@ export async function sendJobMessage(
   const trimmed = texto.trim();
   if (!trimmed) throw new Error('Escribí un mensaje');
 
-  const { data, error } = await supabase
-    .from('mensajes')
-    .insert({
-      servicio_id: servicioId,
-      remitente_id: remitenteId,
-      texto: trimmed,
-    })
-    .select('id, servicio_id, remitente_id, texto, creado_al')
-    .single();
+  const { data, error } = await supabase.rpc('send_job_chat_message', {
+    p_servicio_id: servicioId,
+    p_remitente_id: remitenteId,
+    p_texto: trimmed,
+  });
 
-  if (error) throw new Error(error.message);
-  return data as ServiceMessage;
+  if (!error && data) {
+    const body = data as {
+      success?: boolean;
+      error?: string;
+      message?: ServiceMessage;
+    };
+    if (body.success && body.message) {
+      return body.message;
+    }
+    if (!body.success) {
+      throw new Error(body.error ?? 'No se pudo enviar el mensaje');
+    }
+  }
+
+  if (isMissingRpc(error)) {
+    throw new Error(
+      'Chat no configurado en el servidor. Ejecutá npm run db:sync-chat (migración 024) o pegá el SQL en Supabase.',
+    );
+  }
+
+  if (error?.message?.includes('row-level security')) {
+    throw new Error(
+      'No se pudo enviar: falta aplicar la migración 024 en Supabase (npm run db:sync-chat).',
+    );
+  }
+
+  throw new Error(error?.message ?? 'No se pudo enviar el mensaje');
 }

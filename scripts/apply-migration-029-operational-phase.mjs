@@ -1,19 +1,10 @@
 #!/usr/bin/env node
-/**
- * Aplica migraciones de chat (023 tabla + 024 RPC piloto).
- * npm run db:sync-chat
- */
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const MIGRATIONS = [
-  '023_job_chat_mensajes.sql',
-  '024_job_chat_rpc.sql',
-  '025_mensajes_rls_fix.sql',
-  '026_mensajes_realtime.sql',
-];
+const MIGRATION = '029_jobs_operational_phase_pending.sql';
 
 function loadEnv() {
   const envPath = join(ROOT, '.env');
@@ -41,30 +32,31 @@ async function main() {
   const Client = pg.default?.Client ?? pg.Client;
   const client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
   await client.connect();
+  await client.query(readFileSync(join(ROOT, 'supabase', 'migrations', MIGRATION), 'utf8'));
 
-  for (const file of MIGRATIONS) {
-    const path = join(ROOT, 'supabase', 'migrations', file);
-    if (!existsSync(path)) {
-      console.warn(`⚠ Omitido: ${file}`);
-      continue;
-    }
-    console.log(`Aplicando ${file}…`);
-    await client.query(readFileSync(path, 'utf8'));
-  }
-
-  const { rows } = await client.query(`
-    SELECT proname FROM pg_proc
-    WHERE proname = 'send_job_chat_message'
+  const { rows: colRows } = await client.query(`
+    SELECT column_name, column_default, is_nullable
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'jobs'
+      AND column_name = 'operational_phase'
   `);
+
+  const { rows: phaseRows } = await client.query(`
+    SELECT operational_phase, COUNT(*)::int AS total
+    FROM jobs
+    GROUP BY operational_phase
+    ORDER BY operational_phase NULLS FIRST
+  `);
+
   await client.end();
-  console.log(
-    rows.length
-      ? '✅ Chat OK (tabla mensajes + RPC send_job_chat_message)'
-      : '⚠️ Revisar funciones RPC en Supabase',
-  );
+
+  console.log('✅ Migration 029 (operational_phase pending) applied');
+  console.log('Columna:', colRows[0] ?? '(no encontrada)');
+  console.log('Distribución operational_phase:', phaseRows);
 }
 
-main().catch((e) => {
-  console.error('❌', e.message);
+main().catch((err) => {
+  console.error(err);
   process.exit(1);
 });

@@ -2,7 +2,10 @@ import React from 'react';
 import {
   View, TouchableOpacity, ActivityIndicator, StyleSheet,
 } from 'react-native';
-import { M3 } from '@constants/stitchStyles';
+
+const SWITCH_ON = '#1E293B';
+const SWITCH_OFF = '#F3F4F6';
+const SWITCH_THUMB = '#FFFFFF';
 
 interface StitchToggleProps {
   value: boolean;
@@ -24,7 +27,7 @@ export const StitchToggle: React.FC<StitchToggleProps> = ({
     style={[styles.track, value ? styles.trackOn : styles.trackOff]}
   >
     {loading ? (
-      <ActivityIndicator size="small" color={M3.primary} style={styles.loader} />
+      <ActivityIndicator size="small" color={SWITCH_ON} style={styles.loader} />
     ) : (
       <View style={[styles.thumb, value ? styles.thumbOn : styles.thumbOff]} />
     )}
@@ -38,17 +41,17 @@ const styles = StyleSheet.create({
   track: {
     width:           TRACK_W,
     height:          THUMB,
-    borderRadius:    THUMB / 2,
+    borderRadius:    12,
     justifyContent:  'center',
     paddingHorizontal: 2,
   },
-  trackOn:  { backgroundColor: M3.primary },
-  trackOff: { backgroundColor: M3.outlineVariant },
+  trackOn:  { backgroundColor: SWITCH_ON },
+  trackOff: { backgroundColor: SWITCH_OFF },
   thumb: {
     width:           THUMB - 4,
     height:          THUMB - 4,
-    borderRadius:    (THUMB - 4) / 2,
-    backgroundColor: M3.surfaceContainerLowest,
+    borderRadius:    12,
+    backgroundColor: SWITCH_THUMB,
   },
   thumbOn:  { alignSelf: 'flex-end' },
   thumbOff: { alignSelf: 'flex-start' },

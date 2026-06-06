@@ -390,6 +390,15 @@ export const JobActiveScreen: React.FC = () => {
           )}
         </Card>
 
+        {/* ── Mensajes con cliente ── */}
+        {isJobChatWritable(job.status) && (
+          <JobChatEntryButton
+            variant="worker"
+            fullWidth
+            onPress={() => navigation.navigate('JobChat', { jobId })}
+          />
+        )}
+
         {/* ── Quick Actions ── */}
         <View style={{ gap: SPACING.sm }}>
           <Text style={styles.sectionMicro}>ACCESOS RÁPIDOS</Text>
@@ -398,12 +407,6 @@ export const JobActiveScreen: React.FC = () => {
               clientPhone={clientPhone}
               jobTitle={job.title}
             />
-            {isJobChatWritable(job.status) && (
-              <JobChatEntryButton
-                variant="worker"
-                onPress={() => navigation.navigate('JobChat', { jobId })}
-              />
-            )}
             <View style={{ flex: 1 }}>
               <QuickAction
                 icon="map"

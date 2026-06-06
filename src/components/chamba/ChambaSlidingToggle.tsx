@@ -8,7 +8,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { GRADIENT_TOGGLE } from '@constants/chambaUI';
+import { GRADIENT_TOGGLE, CHAMBA } from '@constants/chambaUI';
 
 const TAB_BAR_PADDING = 6;
 
@@ -120,11 +120,11 @@ export function ChambaSlidingToggle<T extends string>({
 const styles = StyleSheet.create({
   tabOuterContainer: {
     flexDirection: 'row',
-    backgroundColor: '#EFF2F9',
+    backgroundColor: CHAMBA.toggleBg,
     borderRadius: 30,
     padding: TAB_BAR_PADDING,
     alignItems: 'center',
-    shadowColor: '#6B7A8A',
+    shadowColor: '#6B7280',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.06,
     shadowRadius: 8,
@@ -140,9 +140,9 @@ const styles = StyleSheet.create({
   },
   tabActivePill: {
     borderRadius: 24,
-    shadowColor: '#00E5FF',
+    shadowColor: '#1E293B',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.22,
     shadowRadius: 6,
     elevation: 4,
   },
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   tabTextInactive: {
-    color: '#2D3748',
+    color: CHAMBA.inactive,
     fontSize: 15,
     fontWeight: '600',
   },

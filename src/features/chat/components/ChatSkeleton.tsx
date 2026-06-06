@@ -1,17 +1,19 @@
 import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, Animated } from 'react-native';
+import { CHAT_THEME } from '../constants/chatTheme';
 
-const SkeletonBar: React.FC<{ width: number | `${number}%`; height?: number }> = ({
+const SkeletonBar: React.FC<{ width: number | `${number}%`; height?: number; align?: 'left' | 'right' }> = ({
   width,
   height = 14,
+  align = 'left',
 }) => {
-  const opacity = useRef(new Animated.Value(0.35)).current;
+  const opacity = useRef(new Animated.Value(0.3)).current;
 
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(opacity, { toValue: 0.75, duration: 700, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 0.35, duration: 700, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.55, duration: 800, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.3, duration: 800, useNativeDriver: true }),
       ]),
     );
     loop.start();
@@ -20,7 +22,11 @@ const SkeletonBar: React.FC<{ width: number | `${number}%`; height?: number }> =
 
   return (
     <Animated.View
-      style={[styles.bar, { width, height, opacity }]}
+      style={[
+        styles.bar,
+        align === 'right' ? styles.barMine : styles.barTheirs,
+        { width, height, opacity },
+      ]}
     />
   );
 };
@@ -28,16 +34,16 @@ const SkeletonBar: React.FC<{ width: number | `${number}%`; height?: number }> =
 export const ChatSkeleton: React.FC = () => (
   <View style={styles.wrap}>
     <View style={styles.rowLeft}>
-      <SkeletonBar width="62%" height={44} />
+      <SkeletonBar width="58%" height={44} />
     </View>
     <View style={styles.rowRight}>
-      <SkeletonBar width="48%" height={36} />
+      <SkeletonBar width="42%" height={38} align="right" />
     </View>
     <View style={styles.rowLeft}>
-      <SkeletonBar width="55%" height={36} />
+      <SkeletonBar width="50%" height={38} />
     </View>
     <View style={styles.rowRight}>
-      <SkeletonBar width="70%" height={52} />
+      <SkeletonBar width="64%" height={52} align="right" />
     </View>
   </View>
 );
@@ -45,15 +51,21 @@ export const ChatSkeleton: React.FC = () => (
 const styles = StyleSheet.create({
   wrap: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    gap: 14,
-    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    gap: 12,
+    backgroundColor: CHAT_THEME.bg,
   },
   rowLeft: { alignItems: 'flex-start' },
   rowRight: { alignItems: 'flex-end' },
   bar: {
-    borderRadius: 18,
-    backgroundColor: '#E5E7EB',
+    borderRadius: 16,
+  },
+  barTheirs: {
+    backgroundColor: CHAT_THEME.bubbleTheirs,
+  },
+  barMine: {
+    backgroundColor: `${CHAT_THEME.clientAccent}28`,
+    borderBottomRightRadius: 4,
   },
 });

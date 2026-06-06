@@ -2,7 +2,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@services/supabase';
 import { pilotPhoneEmail } from '@constants/pilot';
 import { readPublicEnv } from '@utils/env';
-import { normalizePhone } from '@utils/profileSync';
+import { fetchProfileByPhone, normalizePhone } from '@utils/profileSync';
 import type { UserProfile } from '@/types';
 
 /** Contraseña compartida para cuentas teléfono en piloto / QA (no OTP). */
@@ -17,19 +17,41 @@ export const resolvePhoneAuthEmail = (profile: UserProfile): string => {
 
 let inflightSession: { profileId: string; promise: Promise<Session | null> } | null = null;
 
+/** Usa el ID de profiles en Supabase (por teléfono) para alinear Auth y RPC de chat. */
+const resolveCanonicalProfile = async (profile: UserProfile): Promise<UserProfile> => {
+  const phone = normalizePhone(profile.phone);
+  if (!phone) return profile;
+  try {
+    const byPhone = await fetchProfileByPhone(phone);
+    if (byPhone?.id) {
+      return {
+        ...profile,
+        id: byPhone.id,
+        full_name: profile.full_name || byPhone.full_name,
+        role: byPhone.role === 'admin' ? byPhone.role : profile.role,
+        is_approved: !!byPhone.is_approved,
+      };
+    }
+  } catch {
+    // conservar perfil local
+  }
+  return profile;
+};
+
 const ensurePhoneAuthSessionInner = async (
   profile: UserProfile,
 ): Promise<Session | null> => {
-  const email = resolvePhoneAuthEmail(profile);
+  const effective = await resolveCanonicalProfile(profile);
+  const email = resolvePhoneAuthEmail(effective);
   const password = getPhoneAuthPassword();
 
   try {
     const { data: existing } = await supabase.auth.getSession();
     const session = existing.session;
-    if (session?.user?.id === profile.id) {
+    if (session?.user?.id === effective.id) {
       return session;
     }
-    if (session && session.user?.id !== profile.id) {
+    if (session && session.user?.id !== effective.id) {
       await supabase.auth.signOut();
     }
   } catch {
@@ -45,12 +67,12 @@ const ensurePhoneAuthSessionInner = async (
 
   if (!data.session) return null;
 
-  if (data.user.id !== profile.id) {
+  if (data.user.id !== effective.id) {
     console.warn(
       '[ensurePhoneAuthSession] ID distinto: auth=',
       data.user.id,
       'perfil=',
-      profile.id,
+      effective.id,
       '— ejecutá npm run db:reset-two-users',
     );
     await supabase.auth.signOut();

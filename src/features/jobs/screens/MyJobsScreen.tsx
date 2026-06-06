@@ -381,15 +381,16 @@ const AssignmentCard: React.FC<{
             <Ionicons name="receipt-outline" size={22} color="#FFF" />
           </View>
         )}
-
-        {canChat && (
-          <JobChatEntryButton
-            variant="worker"
-            readOnly={chatReadOnly}
-            onPress={() => onOpenChat!(chatReadOnly)}
-          />
-        )}
       </View>
+
+      {canChat && (
+        <JobChatEntryButton
+          variant="worker"
+          readOnly={chatReadOnly}
+          fullWidth
+          onPress={() => onOpenChat!(chatReadOnly)}
+        />
+      )}
 
       {showStepper && job && (
         <JobOperationalStepper
