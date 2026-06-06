@@ -10,6 +10,7 @@ import { JobDetailScreen }           from '@features/jobs/screens/JobDetailScree
 import { JobActiveScreen }           from '@features/jobs/screens/JobActiveScreen';
 import { JobChatScreen }             from '@features/chat/screens/JobChatScreen';
 import { MyJobsScreen }              from '@features/jobs/screens/MyJobsScreen';
+import { WalletScreen }              from '@features/jobs/screens/WalletScreen';
 import { ProfileScreen }             from '@features/workers/screens/ProfileScreen';
 import { WorkerOnboardingScreen }    from '@features/workers/screens/WorkerOnboardingScreen';
 import { WorkerTabBar }              from '@components/worker/WorkerTabBar';
@@ -116,6 +117,7 @@ export const WorkerNavigator: React.FC = () => {
           >
             <Tab.Screen name="JobFeed" component={JobsStack} />
             <Tab.Screen name="MyJobs"  component={MyJobsScreen} />
+            <Tab.Screen name="Wallet"  component={WalletScreen} />
             <Tab.Screen name="Profile" component={ProfileStack} />
           </Tab.Navigator>
           <WhatsAppBubble bottom={insets.bottom + 72} />

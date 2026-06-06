@@ -11,11 +11,12 @@ import { webFixedTabBarStyle } from '@constants/webMobileLayout';
 const CYAN = CHAMBA.cyan;
 const SLATE_MUTED = '#94A3B8';
 
-type TabRoute = 'JobFeed' | 'MyJobs' | 'Profile';
+type TabRoute = 'JobFeed' | 'MyJobs' | 'Wallet' | 'Profile';
 
 const TAB_CONFIG: Record<TabRoute, { label: string; iconOutline: keyof typeof Ionicons.glyphMap; iconFilled: keyof typeof Ionicons.glyphMap }> = {
   JobFeed: { label: 'Inicio', iconOutline: 'radio-outline', iconFilled: 'radio' },
   MyJobs:  { label: 'Agenda', iconOutline: 'receipt-outline', iconFilled: 'receipt' },
+  Wallet:  { label: 'Billetera', iconOutline: 'wallet-outline', iconFilled: 'wallet' },
   Profile: { label: 'Perfil', iconOutline: 'person-outline', iconFilled: 'person' },
 };
 
@@ -32,6 +33,8 @@ export const WorkerTabBar: React.FC<BottomTabBarProps> = ({ state, navigation })
 
         const isFeed = route.name === 'JobFeed';
         const isAgenda = route.name === 'MyJobs';
+        const isWallet = route.name === 'Wallet';
+        const accentFocused = focused && (isAgenda || isWallet);
 
         return (
           <TouchableOpacity
@@ -53,7 +56,7 @@ export const WorkerTabBar: React.FC<BottomTabBarProps> = ({ state, navigation })
                   <Ionicons
                     name={focused ? cfg.iconFilled : cfg.iconOutline}
                     size={22}
-                    color={focused && isAgenda ? CYAN : SLATE_MUTED}
+                    color={accentFocused ? CYAN : SLATE_MUTED}
                   />
                   {route.name === 'Profile' && (
                     <View style={styles.dotWrap}>
@@ -61,7 +64,7 @@ export const WorkerTabBar: React.FC<BottomTabBarProps> = ({ state, navigation })
                     </View>
                   )}
                 </View>
-                <Text style={[styles.tabLabel, focused && isAgenda && styles.agendaLabelActive]}>
+                <Text style={[styles.tabLabel, accentFocused && styles.agendaLabelActive]}>
                   {cfg.label}
                 </Text>
               </>

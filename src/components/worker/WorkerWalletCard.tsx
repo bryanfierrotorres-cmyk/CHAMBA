@@ -7,6 +7,8 @@ import type { WorkerWalletSummary } from '@utils/workerWalletSummary';
 
 interface WorkerWalletCardProps {
   summary: WorkerWalletSummary;
+  /** Solo desglose (sin repetir saldo total) — p. ej. pantalla Billetera. */
+  breakdownOnly?: boolean;
 }
 
 const WalletLine: React.FC<{
@@ -28,34 +30,49 @@ const WalletLine: React.FC<{
   </View>
 );
 
-export const WorkerWalletCard: React.FC<WorkerWalletCardProps> = ({ summary }) => {
+export const WorkerWalletCard: React.FC<WorkerWalletCardProps> = ({
+  summary,
+  breakdownOnly = false,
+}) => {
   const hasActivity =
     summary.totalPaid > 0
     || summary.pendingPayout > 0
     || summary.processingPayout > 0
     || summary.inProgressEstimate > 0;
 
+  if (breakdownOnly && !hasActivity) {
+    return null;
+  }
+
   return (
     <View style={styles.card}>
-      <View style={styles.headerRow}>
-        <View style={styles.iconWrap}>
-          <Ionicons name="wallet-outline" size={20} color="#FFFFFF" />
-        </View>
-        <View style={styles.headerText}>
-          <Text style={styles.eyebrow}>Billetera CHAMBA</Text>
-          <Text style={styles.totalLabel}>Total recibido</Text>
-        </View>
-      </View>
+      {!breakdownOnly && (
+        <>
+          <View style={styles.headerRow}>
+            <View style={styles.iconWrap}>
+              <Ionicons name="wallet-outline" size={20} color="#FFFFFF" />
+            </View>
+            <View style={styles.headerText}>
+              <Text style={styles.eyebrow}>Billetera CHAMBA</Text>
+              <Text style={styles.totalLabel}>Total recibido</Text>
+            </View>
+          </View>
 
-      <Text style={styles.totalAmount}>{formatCurrency(summary.totalPaid)}</Text>
-      <Text style={styles.totalHint}>
-        {summary.paidCount > 0
-          ? `${summary.paidCount} pago${summary.paidCount === 1 ? '' : 's'} acreditado${summary.paidCount === 1 ? '' : 's'}`
-          : 'Tus pagos aparecerán aquí al completar chambas'}
-      </Text>
+          <Text style={styles.totalAmount}>{formatCurrency(summary.totalPaid)}</Text>
+          <Text style={styles.totalHint}>
+            {summary.paidCount > 0
+              ? `${summary.paidCount} pago${summary.paidCount === 1 ? '' : 's'} acreditado${summary.paidCount === 1 ? '' : 's'}`
+              : 'Tus pagos aparecerán aquí al completar chambas'}
+          </Text>
+        </>
+      )}
+
+      {breakdownOnly && hasActivity && (
+        <Text style={styles.breakdownTitle}>Desglose de saldo</Text>
+      )}
 
       {hasActivity && (
-        <View style={styles.breakdown}>
+        <View style={[styles.breakdown, breakdownOnly && styles.breakdownStandalone]}>
           {summary.pendingPayout > 0 && (
             <WalletLine
               label="Pendiente de acreditar"
@@ -136,6 +153,17 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: CHAMBA.border,
     gap: 8,
+  },
+  breakdownStandalone: {
+    marginTop: 0,
+    paddingTop: 0,
+    borderTopWidth: 0,
+  },
+  breakdownTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: CHAMBA.navy,
+    marginBottom: 4,
   },
   lineRow: {
     flexDirection: 'row',

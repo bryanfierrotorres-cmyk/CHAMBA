@@ -226,6 +226,7 @@ export type ProfileStackParamList = {
 export type WorkerTabParamList = {
   JobFeed:    NavigatorScreenParams<JobStackParamList> | undefined;
   MyJobs:     undefined;
+  Wallet:     undefined;
   Profile:    NavigatorScreenParams<ProfileStackParamList> | undefined;
 };
 

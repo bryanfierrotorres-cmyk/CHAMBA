@@ -36,8 +36,6 @@ import {
 import { confirmAction, showMessage } from '@utils/confirmAction';
 import { JobChatEntryButton } from '@components/chat/JobChatEntryButton';
 import { showJobChatEntry } from '@features/chat/utils/chatHelpers';
-import { WorkerWalletCard } from '@components/worker/WorkerWalletCard';
-import { computeWorkerWalletSummary } from '@utils/workerWalletSummary';
 import {
   isWorkerCommitmentActive,
   isWorkerPendingClientSelection,
@@ -169,11 +167,6 @@ export const MyJobsScreen: React.FC = () => {
     }
   }, [completeMut]);
 
-  const walletSummary = useMemo(
-    () => computeWorkerWalletSummary(assignments),
-    [assignments],
-  );
-
   const openAssignment = useCallback((item: JobAssignment) => {
     if (!item.job_id) return;
     const status = item.job?.status;
@@ -226,8 +219,6 @@ export const MyJobsScreen: React.FC = () => {
         <Text style={styles.headerSubtitle}>
           Gestioná trabajos en curso y revisá tu historial
         </Text>
-
-        <WorkerWalletCard summary={walletSummary} />
 
         <ChambaSlidingToggle
           options={filterTabs}
