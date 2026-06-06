@@ -89,7 +89,7 @@ export const AdminProfileScreen: React.FC = () => {
           </Text>
         </View>
         <View style={chambaStyles.catalogPanel}>
-          <ServiceCatalogGroups compact />
+          <ServiceCatalogGroups compact accordion />
         </View>
 
         <View style={[chambaStyles.sectionHeader, { marginTop: 20 }]}>
