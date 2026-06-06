@@ -1,15 +1,17 @@
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, Animated, PanResponder, ActivityIndicator,
-  StyleSheet, LayoutChangeEvent, Platform, TouchableOpacity, Pressable,
+  StyleSheet, LayoutChangeEvent, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { CHAMBA, GRADIENT_TOGGLE } from '@constants/chambaUI';
 
 const THUMB_SIZE = 52;
 const SWIPE_THRESHOLD = 0.55;
-const TAP_MOVE_THRESHOLD = 12;
+
+const DEEP_BLUE = '#1E293B';
+const RAIL_BG = '#F3F4F6';
+const MUTED = '#6B7280';
+const BORDER = '#E5E7EB';
 
 type SwipePhase = 'idle' | 'loading' | 'accepted' | 'in_process';
 
@@ -22,9 +24,7 @@ interface SwipeAcceptTrackProps {
   label?:         string;
   successLabel?:  string;
   processLabel?:  string;
-  /** Cambia al cambiar de trabajo para resetear el gesto. */
   resetKey?:      string;
-  /** Cupo de chambas activas lleno: solo ver en radar, no postular. */
   disabled?:      boolean;
   disabledLabel?: string;
 }
@@ -44,7 +44,7 @@ export const SwipeAcceptTrack: React.FC<SwipeAcceptTrackProps> = ({
   isInProcess = false,
   onInProcess,
   label = 'Desliza para aceptar',
-  successLabel = '¡Aceptado!',
+  successLabel = 'Aceptado',
   processLabel = 'En proceso',
   resetKey,
   disabled = false,
@@ -53,7 +53,7 @@ export const SwipeAcceptTrack: React.FC<SwipeAcceptTrackProps> = ({
   if (disabled) {
     return (
       <View style={styles.disabledBox}>
-        <Ionicons name="lock-closed-outline" size={18} color="#64748B" />
+        <Ionicons name="lock-closed-outline" size={18} color={MUTED} />
         <Text style={styles.disabledText} numberOfLines={2}>
           {disabledLabel}
         </Text>
@@ -169,14 +169,12 @@ export const SwipeAcceptTrack: React.FC<SwipeAcceptTrackProps> = ({
     }
   }, [onAccept, onInProcess, snapBack, translateX, progressWidth, textOpacity]);
 
-  const onDragEnd = useCallback((allowTapAccept = false) => {
+  const onDragEnd = useCallback(() => {
     if (phaseRef.current !== 'idle') return;
     const max = maxTravelRef.current;
     if (max <= 0) return;
 
     if (dragX.current >= max * SWIPE_THRESHOLD) {
-      void runAcceptFlow();
-    } else if (allowTapAccept && dragX.current <= TAP_MOVE_THRESHOLD) {
       void runAcceptFlow();
     } else {
       snapBack();
@@ -200,7 +198,7 @@ export const SwipeAcceptTrack: React.FC<SwipeAcceptTrackProps> = ({
       onPanResponderMove: (_, g) => {
         applyDragPosition(dragStartRef.current + g.dx);
       },
-      onPanResponderRelease: () => onDragEnd(false),
+      onPanResponderRelease: () => onDragEnd(),
       onPanResponderTerminate: () => snapBack(),
     }),
     [applyDragPosition, onDragEnd, snapBack, translateX],
@@ -239,7 +237,7 @@ export const SwipeAcceptTrack: React.FC<SwipeAcceptTrackProps> = ({
   const endGesture = useCallback(() => {
     if (!isPointerDown.current) return;
     isPointerDown.current = false;
-    onDragEnd(Platform.OS === 'web');
+    onDragEnd();
   }, [onDragEnd]);
 
   const webGestureHandlers = Platform.OS === 'web' ? {
@@ -277,13 +275,12 @@ export const SwipeAcceptTrack: React.FC<SwipeAcceptTrackProps> = ({
     return (
       <View style={[styles.track, styles.trackProcess]}>
         <View style={styles.stateIconWrap}>
-          <Ionicons name="time" size={20} color={CHAMBA.blue} />
+          <Ionicons name="time-outline" size={18} color={DEEP_BLUE} />
         </View>
         <View style={styles.stateTextWrap}>
           <Text style={styles.processText}>{processLabel}</Text>
           <Text style={styles.processHint}>Ver en Agenda</Text>
         </View>
-        <Ionicons name="receipt-outline" size={20} color={CHAMBA.muted} />
       </View>
     );
   }
@@ -292,7 +289,7 @@ export const SwipeAcceptTrack: React.FC<SwipeAcceptTrackProps> = ({
     return (
       <View style={[styles.track, styles.trackSuccess]}>
         <View style={[styles.stateIconWrap, styles.stateIconSuccess]}>
-          <Ionicons name="checkmark" size={20} color="#FFF" />
+          <Ionicons name="checkmark" size={18} color="#FFF" />
         </View>
         <Text style={styles.successText}>{successLabel}</Text>
       </View>
@@ -302,68 +299,44 @@ export const SwipeAcceptTrack: React.FC<SwipeAcceptTrackProps> = ({
   if (phase === 'loading' || isLoading) {
     return (
       <View style={[styles.track, styles.trackLoading]}>
-        <ActivityIndicator color={CHAMBA.blue} />
-        <Text style={styles.labelLoading}>Procesando...</Text>
+        <ActivityIndicator color={DEEP_BLUE} />
+        <Text style={styles.labelLoading}>Procesando…</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.wrapper}>
-      <View
-        ref={trackRef}
-        style={styles.track}
-        onLayout={onLayout}
-        {...(Platform.OS !== 'web' ? panResponder.panHandlers : webGestureHandlers)}
-      >
-        <Animated.View
-          pointerEvents="none"
-          style={[styles.progressFill, { width: progressWidth }]}
-        >
-          <LinearGradient
-            colors={['rgba(0,229,255,0.35)', 'rgba(59,130,246,0.25)']}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
-            style={StyleSheet.absoluteFillObject}
-          />
-        </Animated.View>
+    <View
+      ref={trackRef}
+      style={styles.track}
+      onLayout={onLayout}
+      {...(Platform.OS !== 'web' ? panResponder.panHandlers : webGestureHandlers)}
+    >
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.progressFill, { width: progressWidth }]}
+      />
 
-        <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-          <Animated.Text style={[styles.label, { opacity: textOpacity }]}>
-            {label}
-          </Animated.Text>
-          <Ionicons
-            name="chevron-forward"
-            size={16}
-            color={CHAMBA.muted}
-            style={styles.labelChevron}
-          />
-        </View>
-
-        <Animated.View
-          style={[styles.thumbOuter, { transform: [{ translateX }] }]}
-          pointerEvents="none"
-        >
-          <LinearGradient
-            colors={[...GRADIENT_TOGGLE]}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
-            style={styles.thumb}
-          >
-            <Ionicons name="arrow-forward" size={22} color="#FFF" />
-          </LinearGradient>
-        </Animated.View>
+      <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+        <Animated.Text style={[styles.label, { opacity: textOpacity }]}>
+          {label}
+        </Animated.Text>
+        <Ionicons
+          name="chevron-forward"
+          size={14}
+          color="#9CA3AF"
+          style={styles.labelChevron}
+        />
       </View>
 
-      <Pressable
-        onPress={() => void runAcceptFlow()}
-        style={styles.tapFallback}
-        accessibilityRole="button"
-        accessibilityLabel="Aceptar trabajo"
-        hitSlop={8}
+      <Animated.View
+        style={[styles.thumbOuter, { transform: [{ translateX }] }]}
+        pointerEvents="none"
       >
-        <Text style={styles.tapFallbackText}>Toca aquí para aceptar</Text>
-      </Pressable>
+        <View style={styles.thumb}>
+          <Ionicons name="arrow-forward" size={20} color="#FFF" />
+        </View>
+      </Animated.View>
     </View>
   );
 };
@@ -379,144 +352,129 @@ const webTrackStyle = Platform.OS === 'web'
   : {};
 
 const styles = StyleSheet.create({
-  wrapper: {
-    gap: 4,
-  },
   track: {
-    height:          THUMB_SIZE,
-    borderRadius:    THUMB_SIZE / 2,
-    backgroundColor: CHAMBA.toggleBg,
-    justifyContent:  'center',
-    alignItems:      'center',
-    overflow:        'hidden',
-    position:        'relative',
-    borderWidth:     1,
-    borderColor:     CHAMBA.border,
+    height: THUMB_SIZE,
+    borderRadius: THUMB_SIZE / 2,
+    backgroundColor: RAIL_BG,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: BORDER,
     ...webTrackStyle,
   },
   progressFill: {
-    position:        'absolute',
-    left:            0,
-    top:             0,
-    bottom:          0,
-    borderRadius:    THUMB_SIZE / 2,
-    overflow:        'hidden',
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    borderRadius: THUMB_SIZE / 2,
+    backgroundColor: '#E5E7EB',
   },
   trackSuccess: {
-    flexDirection:   'row',
-    gap:             10,
-    backgroundColor: '#ECFDF5',
-    borderColor:     '#A7F3D0',
+    flexDirection: 'row',
+    gap: 10,
+    backgroundColor: '#F8FAFC',
+    borderColor: BORDER,
     paddingHorizontal: 14,
   },
   trackProcess: {
-    flexDirection:   'row',
-    alignItems:      'center',
-    gap:             10,
-    backgroundColor: '#EFF6FF',
-    borderColor:     '#BFDBFE',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#F8FAFC',
+    borderColor: BORDER,
     paddingHorizontal: 14,
-    justifyContent:  'flex-start',
+    justifyContent: 'flex-start',
   },
   trackLoading: {
     flexDirection: 'row',
-    gap:           10,
+    gap: 10,
   },
   label: {
-    fontSize:   15,
+    fontSize: 14,
     fontWeight: '600',
-    color:      CHAMBA.blue,
-    letterSpacing: 0.2,
+    color: MUTED,
+    letterSpacing: 0.1,
   },
   labelChevron: {
     position: 'absolute',
     right: 16,
     top: '50%',
-    marginTop: -8,
-    opacity: 0.5,
+    marginTop: -7,
+    opacity: 0.6,
   },
   labelLoading: {
-    fontSize:   15,
+    fontSize: 14,
     fontWeight: '600',
-    color:      CHAMBA.blue,
+    color: MUTED,
   },
   successText: {
-    fontSize:   15,
+    fontSize: 14,
     fontWeight: '700',
-    color:      '#059669',
+    color: DEEP_BLUE,
   },
   processText: {
-    fontSize:   15,
+    fontSize: 14,
     fontWeight: '700',
-    color:      CHAMBA.navy,
+    color: DEEP_BLUE,
   },
   processHint: {
-    fontSize:   12,
+    fontSize: 12,
     fontWeight: '500',
-    color:      CHAMBA.muted,
-    marginTop:  1,
+    color: MUTED,
+    marginTop: 1,
   },
   stateTextWrap: {
     flex: 1,
   },
   stateIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#DBEAFE',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#E2E8F0',
     alignItems: 'center',
     justifyContent: 'center',
   },
   stateIconSuccess: {
-    backgroundColor: '#10B981',
+    backgroundColor: DEEP_BLUE,
   },
   thumbOuter: {
     position: 'absolute',
     left: 0,
     top: 0,
     zIndex: 2,
-    shadowColor: '#0284C7',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 4,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 3,
   },
   thumb: {
-    width:           THUMB_SIZE,
-    height:          THUMB_SIZE,
-    borderRadius:    THUMB_SIZE / 2,
-    alignItems:      'center',
-    justifyContent:  'center',
-  },
-  tapFallback: {
-    alignSelf:       'center',
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    minHeight:       36,
-    justifyContent:  'center',
-  },
-  tapFallbackText: {
-    fontSize:   13,
-    fontWeight: '600',
-    color:      CHAMBA.blue,
-    textDecorationLine: 'underline',
+    width: THUMB_SIZE,
+    height: THUMB_SIZE,
+    borderRadius: THUMB_SIZE / 2,
+    backgroundColor: DEEP_BLUE,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   disabledBox: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: RAIL_BG,
     borderRadius: 14,
     paddingVertical: 14,
     paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: BORDER,
   },
   disabledText: {
     flex: 1,
     fontSize: 13,
     fontWeight: '600',
-    color: '#64748B',
+    color: MUTED,
     lineHeight: 18,
   },
 });

@@ -1,26 +1,26 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { ChambaPressable } from '@components/chamba/ChambaPressable';
 import { Ionicons } from '@expo/vector-icons';
 import { SwipeAcceptTrack } from '@components/worker/SwipeAcceptTrack';
-import {
-  M3, SPACING, BORDER_RADIUS,
-  CARD_ELEVATION, stitchTypography, stitchLayout,
-} from '@constants/stitchStyles';
+import { SPACING } from '@constants/stitchStyles';
 import { CHAMBA } from '@constants/chambaUI';
-import { JobLocationLabel } from '@components/worker/JobLocationLabel';
 import { CategoryIconCircle } from '@utils/categoryVisual';
 import { formatCurrency } from '@utils/formatters';
+import { parseJobAddress } from '@utils/locationFormat';
 import {
   formatScheduleDateLabel,
   formatScheduleTimeLabel,
   formatUrgencyLabel,
   normalizeUrgencyLevel,
 } from '@utils/jobScheduling';
-import { openJobLocationInMaps } from '@utils/openMaps';
-import { hasUsableJobCoordinates } from '@utils/shareJobLocation';
 import type { Job } from '@/types';
 import { jobHasRequestPhoto } from '@utils/jobRequestPhoto';
+
+const DEEP_BLUE = '#1E293B';
+const TITLE_COLOR = '#111827';
+const MUTED = '#6B7280';
+const BORDER = '#E5E7EB';
 
 interface JobCardProps {
   job:            Job;
@@ -32,12 +32,20 @@ interface JobCardProps {
   isAccepted?:    boolean;
   isInProcess?:   boolean;
   showSwipe?:     boolean;
-  /** Postuló y espera que el cliente elija (máx. 3 técnicos). */
   awaitingClientChoice?: boolean;
-  /** Cupo de 2 chambas activas lleno — ver radar pero no postular. */
   acceptBlocked?: boolean;
   acceptBlockedMessage?: string;
 }
+
+const DetailRow: React.FC<{
+  icon: keyof typeof Ionicons.glyphMap;
+  children: React.ReactNode;
+}> = ({ icon, children }) => (
+  <View style={styles.detailRow}>
+    <Ionicons name={icon} size={15} color={MUTED} style={styles.detailIcon} />
+    <View style={styles.detailContent}>{children}</View>
+  </View>
+);
 
 export const JobCard: React.FC<JobCardProps> = ({
   job,
@@ -53,13 +61,17 @@ export const JobCard: React.FC<JobCardProps> = ({
   acceptBlocked = false,
   acceptBlockedMessage,
 }) => {
-  const isUrgent = job.required_workers > 1 && job.slots_taken >= job.required_workers - 1;
   const hasClientPhoto = jobHasRequestPhoto(job);
   const urgencyLevel = normalizeUrgencyLevel(job.urgency_level);
   const scheduleTimeLabel = formatScheduleTimeLabel(job.scheduled_time);
-  const scheduleDetailText = (() => {
+  const { department, detail } = parseJobAddress(job.location?.address);
+  const locationLabel = department ?? detail ?? job.location?.address ?? 'Ubicación no indicada';
+  const locationSub = department && detail ? detail : null;
+
+  const whenLabel = formatUrgencyLabel(urgencyLevel);
+  const whenDetail = (() => {
     if (urgencyLevel === 'hoy') {
-      return scheduleTimeLabel ? `Hora: ${scheduleTimeLabel}` : 'Cuando antes';
+      return scheduleTimeLabel ? scheduleTimeLabel : 'Lo antes posible';
     }
     if (urgencyLevel === 'manana') {
       const datePart = job.scheduled_date
@@ -73,126 +85,99 @@ export const JobCard: React.FC<JobCardProps> = ({
     }
     return 'Fecha por confirmar';
   })();
-  const canNavigate =
-    showSwipe &&
-    (!!job.location?.address?.trim() ||
-      hasUsableJobCoordinates(job.location?.lat, job.location?.lng));
 
-  const handleNavigate = () => {
-    void openJobLocationInMaps({
-      lat: job.location?.lat,
-      lng: job.location?.lng,
-      address: job.location?.address,
-    });
-  };
+  const price = formatCurrency(job.worker_payout || job.pay_amount);
+  const showAcceptSwipe =
+    showSwipe && onAccept && (job.status === 'open' || isInProcess);
 
   return (
     <View style={styles.card}>
-      <ChambaPressable onPress={onPress}>
-        {/* Header */}
+      <ChambaPressable onPress={onPress} style={styles.cardBody}>
         <View style={styles.headerRow}>
-        <View style={styles.headerLeft}>
-          <CategoryIconCircle category={job.category} size={48} />
-          <View style={styles.titleBlock}>
-            <Text style={stitchTypography.headlineMdMobile} numberOfLines={2}>
-              {job.title}
+          <CategoryIconCircle category={job.category} size={44} />
+          <Text style={styles.title} numberOfLines={2}>
+            {job.title}
+          </Text>
+          <View style={styles.priceBlock}>
+            <Text style={styles.price}>{price}</Text>
+            <Text style={styles.priceCaption}>sugerido</Text>
+          </View>
+        </View>
+
+        <View style={styles.detailsGrid}>
+          <DetailRow icon="location-outline">
+            <Text style={styles.detailPrimary} numberOfLines={1}>
+              {locationLabel}
             </Text>
-            <JobLocationLabel
-              address={job.location?.address}
-              compact
-              showDistance={showDistance}
-              distanceKm={job.location?.distance_km}
-            />
-            {hasClientPhoto && (
-              <View style={styles.photoBadge}>
-                <Ionicons name="camera" size={12} color={M3.primary} />
-                <Text style={styles.photoBadgeText}>Con foto del cliente</Text>
-              </View>
-            )}
-            <View style={styles.scheduleRow}>
+            {locationSub ? (
+              <Text style={styles.detailSecondary} numberOfLines={1}>
+                {locationSub}
+              </Text>
+            ) : null}
+            {showDistance && job.location?.distance_km != null ? (
+              <Text style={styles.detailSecondary}>
+                {job.location.distance_km.toFixed(1)} km de ti
+              </Text>
+            ) : null}
+          </DetailRow>
+
+          <DetailRow icon="calendar-outline">
+            <View style={styles.whenRow}>
               <View style={[
-                styles.scheduleBadge,
-                urgencyLevel === 'hoy' && styles.scheduleBadgeUrgent,
+                styles.whenBadge,
+                urgencyLevel === 'hoy' && styles.whenBadgeToday,
               ]}>
-                <Ionicons
-                  name={
-                    urgencyLevel === 'hoy'
-                      ? 'flash'
-                      : urgencyLevel === 'manana'
-                        ? 'sunny-outline'
-                        : 'calendar-outline'
-                  }
-                  size={12}
-                  color={urgencyLevel === 'hoy' ? '#B45309' : M3.primary}
-                />
                 <Text style={[
-                  styles.scheduleBadgeText,
-                  urgencyLevel === 'hoy' && styles.scheduleBadgeTextUrgent,
+                  styles.whenBadgeText,
+                  urgencyLevel === 'hoy' && styles.whenBadgeTextToday,
                 ]}>
-                  {formatUrgencyLabel(urgencyLevel)}
+                  {whenLabel}
                 </Text>
               </View>
-              <Text style={styles.scheduleDetail} numberOfLines={1}>
-                {scheduleDetailText}
+              <Text style={styles.detailPrimary} numberOfLines={1}>
+                {whenDetail}
               </Text>
             </View>
-          </View>
+          </DetailRow>
+
+          {job.duration_hours > 0 ? (
+            <DetailRow icon="time-outline">
+              <Text style={styles.detailPrimary}>
+                {job.duration_hours}h estimadas
+              </Text>
+            </DetailRow>
+          ) : null}
+
+          {hasClientPhoto ? (
+            <DetailRow icon="camera-outline">
+              <Text style={styles.detailPrimary}>Incluye foto del cliente</Text>
+            </DetailRow>
+          ) : null}
         </View>
-        {isUrgent && (
-          <View style={styles.urgentBadge}>
-            <Text style={styles.urgentText}>Urgente</Text>
-          </View>
-        )}
-      </View>
-
-      {/* Price */}
-      <View style={styles.priceBlock}>
-        <Text style={[stitchTypography.labelBold, styles.priceLabel]}>PRECIO SUGERIDO</Text>
-        <Text style={stitchTypography.displayPrice}>
-          {formatCurrency(job.worker_payout || job.pay_amount)}
-        </Text>
-        {job.duration_hours > 0 && (
-          <Text style={stitchTypography.bodySm}>{job.duration_hours}h estimadas</Text>
-        )}
-      </View>
-
-      <View style={stitchLayout.divider} />
       </ChambaPressable>
 
-      {canNavigate && (
-        <TouchableOpacity
-          style={styles.navigateBtn}
-          onPress={handleNavigate}
-          activeOpacity={0.88}
-          accessibilityRole="button"
-          accessibilityLabel="Abrir ubicación del cliente en mapa"
-        >
-          <Ionicons name="navigate" size={18} color={M3.primary} />
-          <Text style={styles.navigateBtnText}>Ir al cliente (mapa)</Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Swipe or tap hint */}
       {awaitingClientChoice ? (
         <View style={styles.awaitingBox}>
-          <Ionicons name="hourglass-outline" size={18} color={M3.primary} />
+          <Ionicons name="hourglass-outline" size={16} color={MUTED} />
           <Text style={styles.awaitingText}>Postulaste — el cliente te elegirá</Text>
         </View>
-      ) : showSwipe && onAccept && (job.status === 'open' || isInProcess) ? (
-        <SwipeAcceptTrack
-          resetKey={job.id}
-          onAccept={onAccept}
-          onInProcess={onInProcess}
-          isLoading={isAccepting}
-          isAccepted={isAccepted}
-          isInProcess={isInProcess}
-          disabled={acceptBlocked}
-          disabledLabel={acceptBlockedMessage}
-        />
+      ) : showAcceptSwipe ? (
+        <View style={styles.swipeWrap}>
+          <SwipeAcceptTrack
+            resetKey={job.id}
+            onAccept={onAccept}
+            onInProcess={onInProcess}
+            isLoading={isAccepting}
+            isAccepted={isAccepted}
+            isInProcess={isInProcess}
+            disabled={acceptBlocked}
+            disabledLabel={acceptBlockedMessage}
+          />
+        </View>
       ) : (
         <ChambaPressable onPress={onPress} style={styles.tapHint} pressScale={0.98}>
-          <Text style={styles.tapHintText}>Toca para ver detalles</Text>
-          <Ionicons name="chevron-forward" size={18} color={M3.outline} />
+          <Text style={styles.tapHintText}>Ver detalle</Text>
+          <Ionicons name="chevron-forward" size={16} color={MUTED} />
         </ChambaPressable>
       )}
     </View>
@@ -202,143 +187,138 @@ export const JobCard: React.FC<JobCardProps> = ({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: CHAMBA.white,
-    borderRadius:    16,
-    padding:         SPACING.md,
-    marginBottom:    SPACING.sm + 4,
-    gap:             SPACING.sm,
-    ...CARD_ELEVATION,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: BORDER,
+    marginBottom: SPACING.sm + 4,
+    overflow: 'hidden',
+  },
+  cardBody: {
+    padding: 16,
+    gap: 14,
   },
   headerRow: {
-    flexDirection:  'row',
-    alignItems:     'flex-start',
-    justifyContent: 'space-between',
-    gap:            SPACING.sm,
-  },
-  headerLeft: {
     flexDirection: 'row',
-    alignItems:    'center',
-    gap:           SPACING.md,
-    flex:          1,
+    alignItems: 'flex-start',
+    gap: 12,
   },
-  titleBlock: {
+  title: {
     flex: 1,
-    gap:  4,
-  },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems:    'center',
-    gap:           4,
-    marginTop:     2,
-  },
-  urgentBadge: {
-    backgroundColor: M3.surfaceContainerHigh,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical:   4,
-    borderRadius:      BORDER_RADIUS.sm,
-  },
-  urgentText: {
-    fontSize:   12,
+    fontSize: 16,
+    lineHeight: 22,
     fontWeight: '700',
-    color:      M3.onSurfaceVariant,
+    color: TITLE_COLOR,
+    letterSpacing: -0.2,
+    paddingTop: 2,
   },
   priceBlock: {
-    marginTop: SPACING.xs,
-    gap:       2,
+    alignItems: 'flex-end',
+    minWidth: 88,
   },
-  priceLabel: {
-    color:         M3.outline,
-    letterSpacing: 0.8,
+  price: {
+    fontSize: 20,
+    lineHeight: 24,
+    fontWeight: '700',
+    color: DEEP_BLUE,
+    letterSpacing: -0.3,
+  },
+  priceCaption: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: MUTED,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginTop: 2,
+  },
+  detailsGrid: {
+    gap: 10,
+    paddingTop: 2,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  detailIcon: {
+    marginTop: 2,
+    width: 16,
+  },
+  detailContent: {
+    flex: 1,
+    gap: 2,
+  },
+  detailPrimary: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: MUTED,
+    lineHeight: 20,
+  },
+  detailSecondary: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: '#9CA3AF',
+    lineHeight: 16,
+  },
+  whenRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    flex: 1,
+  },
+  whenBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: '#F3F4F6',
+  },
+  whenBadgeToday: {
+    backgroundColor: '#E2E8F0',
+  },
+  whenBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: DEEP_BLUE,
+    letterSpacing: 0.2,
+  },
+  whenBadgeTextToday: {
+    color: DEEP_BLUE,
+  },
+  swipeWrap: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    paddingTop: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: BORDER,
   },
   tapHint: {
-    flexDirection:  'row',
-    alignItems:     'center',
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
-    gap:            4,
-    paddingVertical: SPACING.xs,
+    gap: 4,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: BORDER,
   },
   tapHintText: {
-    fontSize: 14,
-    color:    M3.outline,
-  },
-  photoBadge: {
-    flexDirection: 'row',
-    alignItems:    'center',
-    gap:           4,
-    marginTop:     4,
-    alignSelf:     'flex-start',
-    backgroundColor: M3.primaryContainer,
-    paddingHorizontal: 8,
-    paddingVertical:   3,
-    borderRadius:      BORDER_RADIUS.sm,
-  },
-  photoBadgeText: {
-    fontSize:   11,
+    fontSize: 13,
     fontWeight: '600',
-    color:      M3.onPrimaryContainer,
-  },
-  scheduleRow: {
-    flexDirection: 'row',
-    alignItems:    'center',
-    flexWrap:      'wrap',
-    gap:           6,
-    marginTop:     6,
-  },
-  scheduleBadge: {
-    flexDirection:     'row',
-    alignItems:        'center',
-    gap:               4,
-    paddingHorizontal: 8,
-    paddingVertical:   3,
-    borderRadius:      BORDER_RADIUS.sm,
-    backgroundColor:   M3.primaryContainer,
-  },
-  scheduleBadgeUrgent: {
-    backgroundColor: '#FEF3C7',
-  },
-  scheduleBadgeText: {
-    fontSize:   11,
-    fontWeight: '700',
-    color:      M3.onPrimaryContainer,
-  },
-  scheduleBadgeTextUrgent: {
-    color: '#B45309',
-  },
-  scheduleDetail: {
-    flex:      1,
-    fontSize:  12,
-    color:     M3.onSurfaceVariant,
-    fontWeight: '500',
-  },
-  navigateBtn: {
-    flexDirection:     'row',
-    alignItems:        'center',
-    justifyContent:    'center',
-    gap:               6,
-    paddingVertical:   10,
-    paddingHorizontal: 12,
-    borderRadius:      12,
-    backgroundColor:   M3.primaryContainer,
-    borderWidth:       1,
-    borderColor:       M3.primary + '33',
-  },
-  navigateBtnText: {
-    fontSize:   13,
-    fontWeight: '700',
-    color:      M3.primary,
+    color: MUTED,
   },
   awaitingBox: {
-    flexDirection:     'row',
-    alignItems:        'center',
-    justifyContent:    'center',
-    gap:               8,
-    paddingVertical:   12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
     paddingHorizontal: 12,
-    borderRadius:      12,
-    backgroundColor:   M3.secondaryContainer,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: BORDER,
+    backgroundColor: '#F9FAFB',
   },
   awaitingText: {
-    fontSize:   13,
-    fontWeight: '700',
-    color:      M3.onSecondaryContainer,
+    fontSize: 13,
+    fontWeight: '600',
+    color: MUTED,
   },
 });
