@@ -33,16 +33,16 @@ interface RoleOption {
 
 const ROLE_OPTIONS: RoleOption[] = [
   {
+    role:     'client',
+    emoji:    '🏠',
+    title:    'Cliente',
+    subtitle: 'Solicitá servicios para tu hogar o negocio',
+  },
+  {
     role:     'worker',
     emoji:    '👷',
     title:    'Trabajador',
     subtitle: 'Acepta chambas y recibe el 95% del pago',
-  },
-  {
-    role:     'admin',
-    emoji:    '🏢',
-    title:    'Empresa',
-    subtitle: 'Publica excedentes de trabajo',
   },
 ];
 
@@ -75,7 +75,7 @@ export const RegisterScreen: React.FC = () => {
   const [fullName, setFullName]   = useState('');
   const [email, setEmail]         = useState('');
   const [phone, setPhone]         = useState('');
-  const [role, setRole]           = useState<UserRole>('worker');
+  const [role, setRole]           = useState<UserRole>('client');
   const [fieldError, setFieldError] = useState('');
 
   // Animation
@@ -297,12 +297,20 @@ const Step2: React.FC<Step2Props> = ({
       })}
     </View>
 
-    {/* Info banner worker */}
+    {/* Info banners por rol */}
     {role === 'worker' && (
       <View style={styles.infoBanner}>
         <Ionicons name="information-circle-outline" size={16} color={COLORS.info} />
         <Text style={styles.infoText}>
           Los trabajadores requieren aprobación del admin antes de aceptar chambas.
+        </Text>
+      </View>
+    )}
+    {role === 'client' && (
+      <View style={styles.infoBanner}>
+        <Ionicons name="information-circle-outline" size={16} color={COLORS.info} />
+        <Text style={styles.infoText}>
+          Tu cuenta quedará en revisión hasta que el administrador la apruebe.
         </Text>
       </View>
     )}

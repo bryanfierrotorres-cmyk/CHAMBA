@@ -519,6 +519,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         throw new Error('Ingresá exactamente 8 dígitos de tu celular');
       }
 
+      if (role === 'admin') {
+        throw new Error('Elegí Cliente o Trabajador para registrarte.');
+      }
+
       const existing = await fetchProfileByPhone(cleanPhone);
       if (existing) {
         throw new Error('Este número ya está registrado. Iniciá sesión con tu celular.');
@@ -531,7 +535,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         phone: cleanPhone,
         email: pilotPhoneEmail(cleanPhone),
         role: dbRole,
-        is_approved: role === 'admin',
+        is_approved: false,
         ...(role === 'worker'
           ? { worker_status: 'incomplete' as const }
           : {}),
