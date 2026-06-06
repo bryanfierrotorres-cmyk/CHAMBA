@@ -9,6 +9,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@components/Button';
 import { Input } from '@components/Input';
+import {
+  JobSchedulingSection,
+  useJobSchedulingFields,
+} from '@components/jobs/JobSchedulingSection';
 import { createJob } from '@features/jobs/services/jobsService';
 import { useAuthStore } from '@store/authStore';
 import { JOB_KEYS } from '@features/jobs/hooks/useJobs';
@@ -141,6 +145,7 @@ export const CreateJobScreen: React.FC = () => {
   const [requiredWorkers, setWorkers] = useState('1');
   const [error, setError]             = useState('');
   const [published, setPublished]     = useState(false);
+  const schedulingFields = useJobSchedulingFields();
 
   const pay    = parseFloat(payAmount) || 0;
   const fee    = parseFloat((pay * CONFIG.platform.commissionRate).toFixed(2));
@@ -168,6 +173,7 @@ export const CreateJobScreen: React.FC = () => {
     setDuration('4');
     setWorkers('1');
     setError('');
+    schedulingFields.resetScheduling();
   };
 
   const handlePublish = async () => {
@@ -179,6 +185,10 @@ export const CreateJobScreen: React.FC = () => {
     const fullAddress = formatJobAddress(department, addressDetail);
     const validation = validateJobForm(title, description, pay, fullAddress, category);
     if (!validation.valid) { setError(validation.message); return; }
+    if (!schedulingFields.isScheduleValid) {
+      setError(schedulingFields.scheduleError ?? 'Elegí una fecha para servicios programados.');
+      return;
+    }
     setError('');
 
     const coords = DEPARTMENT_COORDS[department];
@@ -197,6 +207,9 @@ export const CreateJobScreen: React.FC = () => {
         requiredWorkers: parseInt(requiredWorkers, 10) || 1,
         createdBy:       adminProfile.id,
         relaxedPricing:  true,
+        urgencyLevel:    schedulingFields.schedulingPayload.urgencyLevel,
+        scheduledDate:   schedulingFields.schedulingPayload.scheduledDate,
+        scheduledTime:   schedulingFields.schedulingPayload.scheduledTime,
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'No se pudo publicar la chamba';
@@ -325,6 +338,22 @@ export const CreateJobScreen: React.FC = () => {
               leftIcon="navigate-outline"
             />
           </View>
+        </ConsoleSection>
+
+        <ConsoleSection
+          label="Programación"
+          hint="Los técnicos ven urgencia, fecha y hora al evaluar la chamba"
+        >
+          <JobSchedulingSection
+            urgencyLevel={schedulingFields.urgencyLevel}
+            onUrgencyChange={schedulingFields.setUrgencyLevel}
+            scheduledDate={schedulingFields.scheduledDate}
+            onScheduledDateChange={schedulingFields.setScheduledDate}
+            scheduledTime={schedulingFields.scheduledTime}
+            onScheduledTimeChange={schedulingFields.setScheduledTime}
+            disabled={isPending}
+            style={{ marginBottom: 0, borderWidth: 0, shadowOpacity: 0, elevation: 0, padding: 0 }}
+          />
         </ConsoleSection>
 
         {/* Pago */}

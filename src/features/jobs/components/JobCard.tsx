@@ -11,6 +11,12 @@ import { CHAMBA } from '@constants/chambaUI';
 import { JobLocationLabel } from '@components/worker/JobLocationLabel';
 import { CategoryIconCircle } from '@utils/categoryVisual';
 import { formatCurrency } from '@utils/formatters';
+import {
+  formatScheduleDateLabel,
+  formatScheduleTimeLabel,
+  formatUrgencyLabel,
+  normalizeUrgencyLevel,
+} from '@utils/jobScheduling';
 import { openJobLocationInMaps } from '@utils/openMaps';
 import { hasUsableJobCoordinates } from '@utils/shareJobLocation';
 import type { Job } from '@/types';
@@ -49,6 +55,24 @@ export const JobCard: React.FC<JobCardProps> = ({
 }) => {
   const isUrgent = job.required_workers > 1 && job.slots_taken >= job.required_workers - 1;
   const hasClientPhoto = jobHasRequestPhoto(job);
+  const urgencyLevel = normalizeUrgencyLevel(job.urgency_level);
+  const scheduleTimeLabel = formatScheduleTimeLabel(job.scheduled_time);
+  const scheduleDetailText = (() => {
+    if (urgencyLevel === 'hoy') {
+      return scheduleTimeLabel ? `Hora: ${scheduleTimeLabel}` : 'Cuando antes';
+    }
+    if (urgencyLevel === 'manana') {
+      const datePart = job.scheduled_date
+        ? formatScheduleDateLabel(job.scheduled_date)
+        : 'Día siguiente';
+      return scheduleTimeLabel ? `${datePart} · ${scheduleTimeLabel}` : datePart;
+    }
+    if (job.scheduled_date) {
+      const datePart = formatScheduleDateLabel(job.scheduled_date);
+      return scheduleTimeLabel ? `${datePart} · ${scheduleTimeLabel}` : datePart;
+    }
+    return 'Fecha por confirmar';
+  })();
   const canNavigate =
     showSwipe &&
     (!!job.location?.address?.trim() ||
@@ -85,6 +109,33 @@ export const JobCard: React.FC<JobCardProps> = ({
                 <Text style={styles.photoBadgeText}>Con foto del cliente</Text>
               </View>
             )}
+            <View style={styles.scheduleRow}>
+              <View style={[
+                styles.scheduleBadge,
+                urgencyLevel === 'hoy' && styles.scheduleBadgeUrgent,
+              ]}>
+                <Ionicons
+                  name={
+                    urgencyLevel === 'hoy'
+                      ? 'flash'
+                      : urgencyLevel === 'manana'
+                        ? 'sunny-outline'
+                        : 'calendar-outline'
+                  }
+                  size={12}
+                  color={urgencyLevel === 'hoy' ? '#B45309' : M3.primary}
+                />
+                <Text style={[
+                  styles.scheduleBadgeText,
+                  urgencyLevel === 'hoy' && styles.scheduleBadgeTextUrgent,
+                ]}>
+                  {formatUrgencyLabel(urgencyLevel)}
+                </Text>
+              </View>
+              <Text style={styles.scheduleDetail} numberOfLines={1}>
+                {scheduleDetailText}
+              </Text>
+            </View>
           </View>
         </View>
         {isUrgent && (
@@ -224,6 +275,39 @@ const styles = StyleSheet.create({
     fontSize:   11,
     fontWeight: '600',
     color:      M3.onPrimaryContainer,
+  },
+  scheduleRow: {
+    flexDirection: 'row',
+    alignItems:    'center',
+    flexWrap:      'wrap',
+    gap:           6,
+    marginTop:     6,
+  },
+  scheduleBadge: {
+    flexDirection:     'row',
+    alignItems:        'center',
+    gap:               4,
+    paddingHorizontal: 8,
+    paddingVertical:   3,
+    borderRadius:      BORDER_RADIUS.sm,
+    backgroundColor:   M3.primaryContainer,
+  },
+  scheduleBadgeUrgent: {
+    backgroundColor: '#FEF3C7',
+  },
+  scheduleBadgeText: {
+    fontSize:   11,
+    fontWeight: '700',
+    color:      M3.onPrimaryContainer,
+  },
+  scheduleBadgeTextUrgent: {
+    color: '#B45309',
+  },
+  scheduleDetail: {
+    flex:      1,
+    fontSize:  12,
+    color:     M3.onSurfaceVariant,
+    fontWeight: '500',
   },
   navigateBtn: {
     flexDirection:     'row',

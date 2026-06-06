@@ -28,6 +28,12 @@ import {
   formatCurrency, formatDate, formatTime,
   getCategoryEmoji, getCategoryLabel,
 } from '@utils/formatters';
+import {
+  formatScheduleDateLabel,
+  formatScheduleTimeLabel,
+  formatUrgencyLabel,
+  normalizeUrgencyLevel,
+} from '@utils/jobScheduling';
 import type { JobStackParamList } from '@/types';
 
 type Route = RouteProp<JobStackParamList, 'JobDetail'>;
@@ -128,6 +134,21 @@ export const JobDetailScreen: React.FC = () => {
   const requestPhotoUrl = getJobRequestPhotoUrl(job);
   const payoutLabel = isAdmin ? 'Pago al técnico' : 'Tu ganancia';
   const payoutColor = isAdmin ? CHAMBA.blue : COLORS.brand[600];
+  const urgencyLevel = normalizeUrgencyLevel(job.urgency_level);
+  const scheduleDateLabel = job.scheduled_date
+    ? formatScheduleDateLabel(job.scheduled_date)
+    : job.scheduled_at
+      ? formatDate(job.scheduled_at)
+      : urgencyLevel === 'manana'
+        ? 'Mañana'
+        : urgencyLevel === 'hoy'
+          ? 'Hoy'
+          : '—';
+  const scheduleTimeLabel = job.scheduled_time
+    ? formatScheduleTimeLabel(job.scheduled_time)
+    : job.scheduled_at
+      ? formatTime(job.scheduled_at)
+      : 'Sin hora definida';
 
   const handleAccept = () => {
     const confirmMsg =
@@ -270,12 +291,9 @@ export const JobDetailScreen: React.FC = () => {
           <View style={styles.detailsGrid}>
             <DetailItem admin={isAdmin} icon="time-outline"    label="Duración"     value={`${job.duration_hours}h`} />
             <DetailItem admin={isAdmin} icon="people-outline"  label="Trabajadores" value={`${job.slots_taken}/${job.required_workers}`} />
-            {job.scheduled_at && (
-              <>
-                <DetailItem admin={isAdmin} icon="calendar-outline" label="Fecha" value={formatDate(job.scheduled_at)} />
-                <DetailItem admin={isAdmin} icon="alarm-outline"    label="Hora"  value={formatTime(job.scheduled_at)} />
-              </>
-            )}
+            <DetailItem admin={isAdmin} icon="flash-outline"   label="Urgencia"     value={formatUrgencyLabel(urgencyLevel)} />
+            <DetailItem admin={isAdmin} icon="calendar-outline" label="Fecha"       value={scheduleDateLabel} />
+            <DetailItem admin={isAdmin} icon="alarm-outline"    label="Hora"        value={scheduleTimeLabel} />
           </View>
         </SectionPanel>
 

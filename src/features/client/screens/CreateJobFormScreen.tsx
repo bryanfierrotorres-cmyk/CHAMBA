@@ -26,6 +26,10 @@ import { assertClientJobPlatformReady } from '@services/clientJobPlatform';
 import { JOB_KEYS } from '@features/jobs/hooks/useJobs';
 import { uploadJobRequestPhoto } from '@features/jobs/services/jobRequestPhotoService';
 import { JobRequestPhotoPicker } from '@components/jobs/JobRequestPhotoPicker';
+import {
+  JobSchedulingSection,
+  useJobSchedulingFields,
+} from '@components/jobs/JobSchedulingSection';
 import { ClientJobLocationSection } from '@components/client/ClientJobLocationSection';
 import { jobCoordinatesForCreate } from '@utils/shareJobLocation';
 import { isExpressServiceSlug } from '@constants/servicesConfig';
@@ -87,6 +91,7 @@ export const CreateJobFormScreen: React.FC = () => {
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [requestPhotoUri, setRequestPhotoUri] = useState<string | null>(null);
+  const schedulingFields = useJobSchedulingFields();
 
   const showRequestPhoto = isExpressServiceSlug(serviceTypeSlug);
   const isPetCustomRequest = serviceTypeSlug === 'pet_personalizado';
@@ -105,6 +110,7 @@ export const CreateJobFormScreen: React.FC = () => {
     description.trim() &&
     address.trim() &&
     priceValidation.valid &&
+    schedulingFields.isScheduleValid &&
     !publishLimit.atLimit;
 
   const handleBudgetChange = (value: string) => {
@@ -136,6 +142,13 @@ export const CreateJobFormScreen: React.FC = () => {
       return;
     }
 
+    if (!schedulingFields.isScheduleValid) {
+      const msg = schedulingFields.scheduleError ?? 'Revisá la fecha del servicio';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Programación', msg);
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       await assertClientJobPlatformReady();
@@ -161,6 +174,9 @@ export const CreateJobFormScreen: React.FC = () => {
         requiredWorkers: Number(requiredWorkers) || 1,
         createdBy: creatorId,
         mediaUrls,
+        urgencyLevel: schedulingFields.schedulingPayload.urgencyLevel,
+        scheduledDate: schedulingFields.schedulingPayload.scheduledDate,
+        scheduledTime: schedulingFields.schedulingPayload.scheduledTime,
       });
 
       setSuccessMessage(
@@ -179,6 +195,21 @@ export const CreateJobFormScreen: React.FC = () => {
           console.warn('[CreateJobForm] prefetch orders:', cacheErr);
         });
     } catch (err) {
+      console.error('[CreateJobForm] publish failed — raw error:', err);
+      if (err && typeof err === 'object') {
+        const supa = err as {
+          message?: string;
+          details?: string;
+          hint?: string;
+          code?: string;
+        };
+        console.error('[CreateJobForm] Supabase fields:', {
+          message: supa.message ?? String(err),
+          details: supa.details ?? null,
+          hint: supa.hint ?? null,
+          code: supa.code ?? null,
+        });
+      }
       const message = err instanceof Error ? err.message : 'Error al enviar';
       if (Platform.OS === 'web') window.alert(`Error: ${message}`);
       else Alert.alert('Error', message);
@@ -276,6 +307,19 @@ export const CreateJobFormScreen: React.FC = () => {
           }}
           disabled={isSubmitting}
         />
+
+        <JobSchedulingSection
+          urgencyLevel={schedulingFields.urgencyLevel}
+          onUrgencyChange={schedulingFields.setUrgencyLevel}
+          scheduledDate={schedulingFields.scheduledDate}
+          onScheduledDateChange={schedulingFields.setScheduledDate}
+          scheduledTime={schedulingFields.scheduledTime}
+          onScheduledTimeChange={schedulingFields.setScheduledTime}
+          disabled={isSubmitting}
+        />
+        {schedulingFields.scheduleError ? (
+          <Text style={styles.scheduleError}>{schedulingFields.scheduleError}</Text>
+        ) : null}
 
         <View style={styles.row}>
           <View style={styles.rowCol}>
@@ -430,6 +474,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     marginTop: 2,
+  },
+  scheduleError: {
+    color: '#DC2626',
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: -6,
+    marginBottom: 12,
+    paddingHorizontal: 2,
   },
   infoBox: {
     flexDirection: 'row',
