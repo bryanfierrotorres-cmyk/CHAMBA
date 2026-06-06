@@ -10,12 +10,12 @@ export type Service3dTileId =
   | 'mandados';
 
 const SERVICE_3D_ASSETS: Record<Service3dTileId, ImageSourcePropType> = {
-  limpieza: require('../../assets/services-3d/limpieza.jpg'),
-  car: require('../../assets/services-3d/car_wash.jpg'),
-  ac: require('../../assets/services-3d/ac.jpg'),
+  limpieza: require('../../assets/services-3d/limpieza.png'),
+  car: require('../../assets/services-3d/car_wash.png'),
+  ac: require('../../assets/services-3d/ac.png'),
   jardineria: require('../../assets/services-3d/jardineria.jpg'),
-  pet: require('../../assets/services-3d/mascotas.jpg'),
-  mandados: require('../../assets/services-3d/mandados.jpg'),
+  pet: require('../../assets/services-3d/mascotas.png'),
+  mandados: require('../../assets/services-3d/mandados.png'),
 };
 
 export function getService3dAsset(tileId: string): ImageSourcePropType | null {

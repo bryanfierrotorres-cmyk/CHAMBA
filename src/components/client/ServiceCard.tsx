@@ -13,7 +13,9 @@ import { ChambaPressable } from '@components/chamba/ChambaPressable';
 import { CHAMBA, chambaStyles } from '@constants/chambaUI';
 
 const DEEP_BLUE = '#1E293B';
-const IMAGE_SIZE = 80;
+/** Área fija del avatar 3D — evita layout shift entre categorías. */
+const IMAGE_BOX_HEIGHT = 96;
+const IMAGE_BOX_WIDTH = '100%' as const;
 
 export interface ServiceCardProps {
   title: string;
@@ -84,7 +86,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 12,
     alignItems: 'center',
-    minHeight: 168,
+    minHeight: 184,
     justifyContent: 'flex-start',
     ...Platform.select({
       ios: {
@@ -100,16 +102,18 @@ const styles = StyleSheet.create({
     }),
   },
   imageWrap: {
-    width: IMAGE_SIZE,
-    height: IMAGE_SIZE,
-    marginBottom: 12,
+    width: IMAGE_BOX_WIDTH,
+    height: IMAGE_BOX_HEIGHT,
+    maxWidth: 132,
+    marginBottom: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
   },
   image3d: {
-    width: IMAGE_SIZE,
-    height: IMAGE_SIZE,
+    width: '100%',
+    height: '100%',
   },
   iconWrap: {
     width: 56,
