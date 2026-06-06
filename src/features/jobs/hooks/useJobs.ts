@@ -10,7 +10,7 @@ import {
 
   acceptJob,
 
-  subscribeToJobs,
+  subscribeToWorkerRadarJobs,
 
   fetchWorkerAssignments,
 
@@ -36,6 +36,10 @@ import { mergeAssignments, patchLocalJobStatus, getLocalAssignments } from '@uti
 
 import { CONFIG } from '@constants/config';
 import { workerActiveCountKey } from '@features/jobs/hooks/useJobActiveLimits';
+import { fromDbJobCategory } from '@constants/chambaCategories';
+import { workerCoversJobCategory } from '@utils/workerCategoryAccess';
+import { syncProfileWithDatabase } from '@utils/profileSync';
+import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
 
 import type {
   JobCategory,
@@ -118,9 +122,11 @@ export const useJobFeed = (
 
 ) => {
 
-  const { upsertJob } = useJobStore();
+  const { upsertJob, removeJob } = useJobStore();
 
   const profile = useAuthStore((s) => s.profile);
+
+  const queryClient = useQueryClient();
 
 
 
@@ -153,11 +159,77 @@ export const useJobFeed = (
 
   useEffect(() => {
 
-    const unsub = subscribeToJobs(upsertJob);
+    if (profile?.role !== 'worker' || !profile.id) return undefined;
 
-    return () => { void unsub(); };
+    let cancelled = false;
 
-  }, [upsertJob]);
+    let teardown: (() => void) | undefined;
+
+    const feedQueryKey = [
+      ...JOB_KEYS.feed(status, category),
+      categories,
+      profile.id,
+      profile.is_approved,
+    ] as const;
+
+    const jobMatchesFeed = (job: Job): boolean => {
+      if (job.status !== status) return false;
+      if (categories !== undefined && categories.length === 0) return false;
+
+      const jobSlug = fromDbJobCategory(job.category) ?? job.category;
+      if (categories && categories.length > 0 && !categories.includes(jobSlug as JobCategory)) {
+        return false;
+      }
+      return workerCoversJobCategory(profile, job.category);
+    };
+
+    const start = async () => {
+      const synced = await syncProfileWithDatabase(profile);
+      if (cancelled) return;
+
+      if (synced.id !== profile.id || synced.is_approved !== profile.is_approved) {
+        useAuthStore.getState().setProfile(synced);
+      }
+
+      await ensurePhoneAuthSession(synced);
+      if (cancelled) return;
+
+      teardown = subscribeToWorkerRadarJobs(({ job, eventType }) => {
+        if (eventType === 'DELETE' || job.status !== 'open') {
+          removeJob(job.id);
+          void queryClient.invalidateQueries({ queryKey: feedQueryKey });
+          return;
+        }
+
+        if (!jobMatchesFeed(job)) return;
+
+        upsertJob(job);
+        void queryClient.invalidateQueries({ queryKey: feedQueryKey });
+      });
+    };
+
+    void start();
+
+    return () => {
+      cancelled = true;
+      teardown?.();
+    };
+
+  }, [
+    profile?.id,
+    profile?.role,
+    profile?.is_approved,
+    profile?.category_1,
+    profile?.category_2,
+    profile?.category_1_approved,
+    profile?.category_2_approved,
+    categories,
+    category,
+    status,
+    upsertJob,
+    removeJob,
+    queryClient,
+  ]);
 
 
 

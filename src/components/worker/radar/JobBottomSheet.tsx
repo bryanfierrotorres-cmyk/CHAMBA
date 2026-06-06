@@ -5,14 +5,13 @@ import {
   StyleSheet,
   Platform,
   ActivityIndicator,
-  RefreshControl,
   FlatList,
   Pressable,
   useWindowDimensions,
 } from 'react-native';
 import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { EmptyState } from '@components/EmptyState';
+import { RadarSearchingEmptyState } from './RadarSearchingEmptyState';
 import {
   RADAR_BORDER,
   RADAR_DEEP_BLUE,
@@ -25,12 +24,11 @@ interface JobBottomSheetProps {
   jobs: Job[];
   isLoading: boolean;
   isFetchingNextPage: boolean;
-  onRefresh: () => void;
   onEndReached: () => void;
   listHeader?: React.ReactNode;
   renderJob: (job: Job) => React.ReactElement | null;
-  emptyTitle: string;
-  emptySubtitle: string;
+  /** Hint opcional bajo el mensaje de búsqueda (ej. filtro activo). */
+  emptyHint?: string;
 }
 
 const SheetHandle: React.FC<{ jobCount: number; peekTitle?: string }> = ({
@@ -41,7 +39,7 @@ const SheetHandle: React.FC<{ jobCount: number; peekTitle?: string }> = ({
     <View style={styles.handleIndicator} />
     <Text style={styles.handleTitle}>
       {jobCount === 0
-        ? 'Sin solicitudes disponibles'
+        ? 'Buscando chambas...'
         : `${jobCount} solicitud${jobCount === 1 ? '' : 'es'} disponible${jobCount === 1 ? '' : 's'}`}
     </Text>
     {peekTitle ? (
@@ -56,12 +54,10 @@ const NativeJobBottomSheet: React.FC<JobBottomSheetProps> = ({
   jobs,
   isLoading,
   isFetchingNextPage,
-  onRefresh,
   onEndReached,
   listHeader,
   renderJob,
-  emptyTitle,
-  emptySubtitle,
+  emptyHint,
 }) => {
   const insets = useSafeAreaInsets();
   const sheetRef = useRef<BottomSheet>(null);
@@ -89,17 +85,9 @@ const NativeJobBottomSheet: React.FC<JobBottomSheetProps> = ({
 
   const ListEmpty = useMemo(
     () => (
-      !isLoading ? (
-        <EmptyState
-          icon="briefcase-outline"
-          title={emptyTitle}
-          subtitle={emptySubtitle}
-          actionLabel="Actualizar"
-          onAction={onRefresh}
-        />
-      ) : null
+      !isLoading ? <RadarSearchingEmptyState hint={emptyHint} /> : null
     ),
-    [isLoading, emptyTitle, emptySubtitle, onRefresh],
+    [isLoading, emptyHint],
   );
 
   const ListFooter = useMemo(
@@ -133,9 +121,6 @@ const NativeJobBottomSheet: React.FC<JobBottomSheetProps> = ({
         ListFooterComponent={ListFooter}
         onEndReached={onEndReached}
         onEndReachedThreshold={0.35}
-        refreshControl={
-          <RefreshControl refreshing={false} onRefresh={onRefresh} tintColor={RADAR_DEEP_BLUE} />
-        }
       />
     </BottomSheet>
   );
@@ -174,13 +159,7 @@ const WebJobBottomSheet: React.FC<JobBottomSheetProps> = (props) => {
           )}
           ListEmptyComponent={
             !props.isLoading ? (
-              <EmptyState
-                icon="briefcase-outline"
-                title={props.emptyTitle}
-                subtitle={props.emptySubtitle}
-                actionLabel="Actualizar"
-                onAction={props.onRefresh}
-              />
+              <RadarSearchingEmptyState hint={props.emptyHint} />
             ) : null
           }
           ListFooterComponent={
@@ -190,13 +169,6 @@ const WebJobBottomSheet: React.FC<JobBottomSheetProps> = (props) => {
           }
           onEndReached={props.onEndReached}
           onEndReachedThreshold={0.35}
-          refreshControl={
-            <RefreshControl
-              refreshing={false}
-              onRefresh={props.onRefresh}
-              tintColor={RADAR_DEEP_BLUE}
-            />
-          }
         />
       ) : null}
     </View>

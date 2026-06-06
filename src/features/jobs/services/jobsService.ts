@@ -931,6 +931,52 @@ export const subscribeToJobs = (onUpdate: (job: Job) => void) => {
   return () => supabase.removeChannel(channel);
 };
 
+export type WorkerRadarJobEvent = 'INSERT' | 'UPDATE' | 'DELETE';
+
+/** Realtime del radar técnico — INSERT/UPDATE/DELETE en `jobs`. */
+export const subscribeToWorkerRadarJobs = (
+  onEvent: (payload: { job: Job; eventType: WorkerRadarJobEvent }) => void,
+) => {
+  const channel = supabase
+    .channel('worker-radar-jobs')
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'jobs' },
+      (payload) => {
+        if (payload.new) {
+          onEvent({ job: normalizeJobRow(payload.new as Job), eventType: 'INSERT' });
+        }
+      },
+    )
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'jobs' },
+      (payload) => {
+        if (payload.new) {
+          onEvent({ job: normalizeJobRow(payload.new as Job), eventType: 'UPDATE' });
+        }
+      },
+    )
+    .on(
+      'postgres_changes',
+      { event: 'DELETE', schema: 'public', table: 'jobs' },
+      (payload) => {
+        if (payload.old) {
+          onEvent({ job: normalizeJobRow(payload.old as Job), eventType: 'DELETE' });
+        }
+      },
+    )
+    .subscribe((status, err) => {
+      if (__DEV__ && (err || status === 'CHANNEL_ERROR')) {
+        console.warn('[worker-radar-realtime]', err?.message ?? status);
+      }
+    });
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+};
+
 interface CreateJobParams {
   title: string;
   description: string;

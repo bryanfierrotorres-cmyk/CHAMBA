@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import MapView from 'react-native-maps';
 import { ChambaMapMarker } from '@components/maps/ChambaMapMarker';
+import { RadarSearchingEmptyState } from './RadarSearchingEmptyState';
 import { formatCurrency } from '@utils/formatters';
 import { hasUsableJobCoordinates } from '@utils/shareJobLocation';
 import type { Job } from '@/types';
@@ -86,10 +87,7 @@ export const RadarFullMap: React.FC<RadarFullMapProps> = ({ jobs }) => {
 
       {isEmpty && (
         <View style={styles.emptyOverlay} pointerEvents="none">
-          <Text style={styles.emptyTitle}>Sin solicitudes en tu zona</Text>
-          <Text style={styles.emptySub}>
-            Cuando haya chambas abiertas, verás los puntos en el mapa
-          </Text>
+          <RadarSearchingEmptyState />
         </View>
       )}
 
@@ -114,23 +112,10 @@ const styles = StyleSheet.create({
   },
   emptyOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(248, 250, 252, 0.72)',
+    backgroundColor: 'rgba(248, 250, 252, 0.78)',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 32,
-  },
-  emptyTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#111827',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  emptySub: {
-    fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 20,
+    paddingHorizontal: 24,
   },
   hintOverlay: {
     position: 'absolute',

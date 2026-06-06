@@ -2,6 +2,9 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, Animated, StyleSheet,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -41,6 +44,10 @@ type CategoryItem = { value: string; label: string };
 
 const FLOATING_HEADER_HEIGHT = 68;
 const FILTERS_GAP = 10;
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 type ToastType = 'success' | 'error';
 interface ToastData { type: ToastType; message: string; }
@@ -171,7 +178,7 @@ export const HomeScreen: React.FC = () => {
     return feedCategories.length > 0 ? feedCategories : undefined;
   }, [selectedCategory, approvedCategories, feedCategories, profile?.is_approved]);
 
-  const { data, isLoading, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
+  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useJobFeed('open', undefined, effectiveCategories);
 
   const queryJobs = useMemo(() => {
@@ -214,6 +221,14 @@ export const HomeScreen: React.FC = () => {
     effectiveCategories,
     profile,
   ]);
+
+  const prevFeedCountRef = useRef(feedJobs.length);
+  useEffect(() => {
+    if (prevFeedCountRef.current === 0 && feedJobs.length > 0) {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    }
+    prevFeedCountRef.current = feedJobs.length;
+  }, [feedJobs.length]);
 
   const handleAccept = useCallback(async (job: Job) => {
     if (!profile?.id || !profile.is_approved) return;
@@ -349,9 +364,9 @@ export const HomeScreen: React.FC = () => {
     handleInProcess,
   ]);
 
-  const emptySubtitle = selectedCategory
-    ? `No hay solicitudes de ${catalog.getLabel(selectedCategory)} ahora.`
-    : 'No hay trabajos disponibles en este momento.';
+  const emptyHint = selectedCategory
+    ? `Filtrando por ${catalog.getLabel(selectedCategory)}`
+    : undefined;
 
   return (
     <View style={styles.root}>
@@ -395,12 +410,10 @@ export const HomeScreen: React.FC = () => {
         jobs={feedJobs}
         isLoading={isLoading}
         isFetchingNextPage={isFetchingNextPage}
-        onRefresh={refetch}
         onEndReached={handleEndReached}
         listHeader={sheetListHeader}
         renderJob={renderJob}
-        emptyTitle="No hay solicitudes"
-        emptySubtitle={emptySubtitle}
+        emptyHint={emptyHint}
       />
     </View>
   );
