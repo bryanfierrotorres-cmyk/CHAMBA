@@ -34,16 +34,18 @@ import {
   getCategoryLabel,
 } from '@utils/formatters';
 import { confirmAction, showMessage } from '@utils/confirmAction';
+import { JobChatEntryButton } from '@components/chat/JobChatEntryButton';
+import { showJobChatEntry } from '@features/chat/utils/chatHelpers';
+import {
+  isWorkerCommitmentActive,
+  isWorkerPendingClientSelection,
+} from '@utils/jobActiveLimits';
 import {
   isActiveOperationalJob,
   isWorkerAssignmentHistory,
   getPhaseAction,
   resolveOperationalPhase,
 } from '@utils/workerOperationalPhase';
-import {
-  isWorkerCommitmentActive,
-  isWorkerPendingClientSelection,
-} from '@utils/jobActiveLimits';
 import type { WorkerTabParamList, JobAssignment, WorkerOperationalPhase } from '@/types';
 
 type Nav = BottomTabNavigationProp<WorkerTabParamList, 'MyJobs'>;
@@ -189,6 +191,14 @@ export const MyJobsScreen: React.FC = () => {
     });
   }, [navigation]);
 
+  const openJobChat = useCallback((item: JobAssignment, readOnly: boolean) => {
+    if (!item.job_id) return;
+    navigation.navigate('JobFeed', {
+      screen: 'JobChat',
+      params: { jobId: item.job_id, readOnly },
+    });
+  }, [navigation]);
+
   const listEmpty = agendaFilter === 'activas' ? (
     <EmptyState
       icon="flash-outline"
@@ -272,6 +282,7 @@ export const MyJobsScreen: React.FC = () => {
               assignment={item}
               variant={agendaFilter}
               onPress={() => openAssignment(item)}
+              onOpenChat={(readOnly) => openJobChat(item, readOnly)}
               onAdvance={(phase) => { void handleAdvance(item, phase); }}
               onFinalize={() => { void handleFinalize(item); }}
               isBusy={busyId === item.id && (isCompleting || isAdvancing)}
@@ -292,6 +303,7 @@ const AssignmentCard: React.FC<{
   assignment: JobAssignment;
   variant: AgendaFilter;
   onPress: () => void;
+  onOpenChat?: (readOnly: boolean) => void;
   onAdvance: (phase: WorkerOperationalPhase) => void;
   onFinalize: () => void;
   isBusy?: boolean;
@@ -299,6 +311,7 @@ const AssignmentCard: React.FC<{
   assignment,
   variant,
   onPress,
+  onOpenChat,
   onAdvance,
   onFinalize,
   isBusy = false,
@@ -330,6 +343,11 @@ const AssignmentCard: React.FC<{
   const category = job?.category ?? '';
   const awaitingClient = !isHistory && isWorkerPendingClientSelection(assignment);
   const showStepper = !isHistory && hasJob && isActiveOperationalJob(job) && !awaitingClient;
+  const canChat =
+    !!onOpenChat &&
+    showJobChatEntry(job?.status) &&
+    !awaitingClient;
+  const chatReadOnly = job?.status === 'completed';
 
   return (
     <ChambaPressable
@@ -362,6 +380,14 @@ const AssignmentCard: React.FC<{
           <View style={[chambaStyles.iconCircleRight, styles.fallbackIcon]}>
             <Ionicons name="receipt-outline" size={22} color="#FFF" />
           </View>
+        )}
+
+        {canChat && (
+          <JobChatEntryButton
+            variant="worker"
+            readOnly={chatReadOnly}
+            onPress={() => onOpenChat!(chatReadOnly)}
+          />
         )}
       </View>
 

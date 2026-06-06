@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HomeScreen }                from '@features/jobs/screens/HomeScreen';
 import { JobDetailScreen }           from '@features/jobs/screens/JobDetailScreen';
 import { JobActiveScreen }           from '@features/jobs/screens/JobActiveScreen';
+import { JobChatScreen }             from '@features/chat/screens/JobChatScreen';
 import { MyJobsScreen }              from '@features/jobs/screens/MyJobsScreen';
 import { ProfileScreen }             from '@features/workers/screens/ProfileScreen';
 import { WorkerOnboardingScreen }    from '@features/workers/screens/WorkerOnboardingScreen';
@@ -31,6 +32,7 @@ const JobsStack: React.FC = () => (
     <Stack.Screen name="JobDetail"  component={JobDetailScreen} />
     <Stack.Screen name="JobMap"     component={JobDetailScreen} />
     <Stack.Screen name="JobActive"  component={JobActiveScreen} />
+    <Stack.Screen name="JobChat"    component={JobChatScreen} />
   </Stack.Navigator>
 );
 

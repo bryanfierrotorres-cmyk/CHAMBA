@@ -9,6 +9,7 @@ import { ClientHomeScreen }    from '@features/client/screens/ClientHomeScreen';
 import { CreateJobFormScreen } from '@features/client/screens/CreateJobFormScreen';
 import { ClientOrdersScreen }  from '@features/client/screens/ClientOrdersScreen';
 import { ClientCompletedJobScreen } from '@features/client/screens/ClientCompletedJobScreen';
+import { JobChatScreen } from '@features/chat/screens/JobChatScreen';
 import { ClientProfileScreen } from '@features/client/screens/ClientProfileScreen';
 import { WhatsAppBubble }      from '@components/WhatsAppBubble';
 import { PendingAccountScreen } from '@components/auth/PendingAccountScreen';
@@ -29,6 +30,7 @@ const ClientOrdersNavigator: React.FC = () => (
   <OrdersStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
     <OrdersStack.Screen name="ClientOrdersList" component={ClientOrdersScreen} />
     <OrdersStack.Screen name="ClientCompletedJob" component={ClientCompletedJobScreen} />
+    <OrdersStack.Screen name="JobChat" component={JobChatScreen} />
   </OrdersStack.Navigator>
 );
 

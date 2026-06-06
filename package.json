@@ -27,6 +27,7 @@
     "db:apply-approve-fix": "node scripts/apply-migration-018-approve-fix.mjs",
     "db:apply-realtime": "node scripts/apply-migration-019-realtime.mjs",
     "db:apply-job-limits": "node scripts/apply-migration-020-job-limits.mjs",
+    "db:apply-chat": "node scripts/apply-migration-023-chat.mjs",
     "db:apply-worker-count-fix": "node scripts/apply-migration-021-worker-count.mjs",
     "db:apply-approve-exclude": "node scripts/apply-migration-022-approve-exclude.mjs",
     "diagnose:pepe-active": "node scripts/diagnose-pepe-active-count.mjs",

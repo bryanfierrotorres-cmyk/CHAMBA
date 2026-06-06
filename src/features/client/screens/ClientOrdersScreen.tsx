@@ -20,6 +20,8 @@ import { useWorkerReviews } from '@features/reviews/hooks/useWorkerReviews';
 import { formatCurrency, formatDate, getCategoryLabel, getClientOrderStatusLabel } from '@utils/formatters';
 import { getCategoryVisual } from '@utils/categoryVisual';
 import { ClientJobApplicantPanel } from '@components/client/ClientJobApplicantPanel';
+import { JobChatEntryButton } from '@components/chat/JobChatEntryButton';
+import { showJobChatEntry } from '@features/chat/utils/chatHelpers';
 import type { ClientOrderJob, JobStatus, ClientOrdersStackParamList } from '@/types';
 
 type OrdersNav = NativeStackNavigationProp<ClientOrdersStackParamList, 'ClientOrdersList'>;
@@ -123,16 +125,22 @@ interface OrderCardProps {
   clientName: string;
   onOpenCompleted?: (jobId: string) => void;
   onApplicantDecision?: () => void;
+  onOpenChat?: (jobId: string, readOnly: boolean) => void;
 }
 
 const OrderCard: React.FC<OrderCardProps> = ({
-  job, clientId, clientName, onOpenCompleted, onApplicantDecision,
+  job, clientId, clientName, onOpenCompleted, onApplicantDecision, onOpenChat,
 }) => {
   const badge = statusBadge(job);
   const visual = getCategoryVisual(job.category);
   const title = job.title?.trim() || getCategoryLabel(job.category);
   const isVariablePrice = job.status === 'open' && !job.pay_amount;
   const isCompleted = job.status === 'completed';
+  const canChat =
+    showJobChatEntry(job.status) &&
+    !!job.assigned_worker_id &&
+    !!onOpenChat;
+  const chatReadOnly = job.status === 'completed';
 
   const handleCardPress = () => {
     if (isCompleted && onOpenCompleted) {
@@ -161,6 +169,13 @@ const OrderCard: React.FC<OrderCardProps> = ({
           </Text>
         </View>
         <View style={styles.cardTrailing}>
+          {canChat && (
+            <JobChatEntryButton
+              variant="client"
+              readOnly={chatReadOnly}
+              onPress={() => onOpenChat!(job.id, chatReadOnly)}
+            />
+          )}
           <View style={[styles.iconCircleRight, { backgroundColor: visual.color }]}>
             {visual.icon}
           </View>
@@ -279,6 +294,9 @@ export const ClientOrdersScreen: React.FC = () => {
                     navigation.navigate('ClientCompletedJob', { jobId })
                   }
                   onApplicantDecision={() => void refetch()}
+                  onOpenChat={(jobId, readOnly) =>
+                    navigation.navigate('JobChat', { jobId, readOnly })
+                  }
                 />
               ) : null,
             )
@@ -340,6 +358,7 @@ const styles = StyleSheet.create({
   cardTrailing: {
     alignItems: 'center',
     flexShrink: 0,
+    gap: 8,
   },
   iconCircleRight: {
     width: 44,

@@ -18,6 +18,8 @@ import {
 } from '../hooks/useJobs';
 import { JobOperationalStepper } from '@components/worker/JobOperationalStepper';
 import { JobQuickContactActions } from '@components/worker/JobQuickContactActions';
+import { JobChatEntryButton } from '@components/chat/JobChatEntryButton';
+import { isJobChatWritable } from '@features/chat/utils/chatHelpers';
 import { JobBeforeAfterUpload } from '@components/jobs/JobBeforeAfterUpload';
 import { useAuthStore } from '@store/authStore';
 import {
@@ -396,6 +398,12 @@ export const JobActiveScreen: React.FC = () => {
               clientPhone={clientPhone}
               jobTitle={job.title}
             />
+            {isJobChatWritable(job.status) && (
+              <JobChatEntryButton
+                variant="worker"
+                onPress={() => navigation.navigate('JobChat', { jobId })}
+              />
+            )}
             <View style={{ flex: 1 }}>
               <QuickAction
                 icon="map"

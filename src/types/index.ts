@@ -208,6 +208,7 @@ export type JobStackParamList = {
   JobDetail:  { jobId: string };
   JobMap:     { jobId: string };
   JobActive:  { jobId: string };
+  JobChat:    { jobId: string; readOnly?: boolean };
 };
 
 export type ProfileStackParamList = {
@@ -245,6 +246,7 @@ export type ClientStackParamList = {
 export type ClientOrdersStackParamList = {
   ClientOrdersList: undefined;
   ClientCompletedJob: { jobId: string };
+  JobChat: { jobId: string; readOnly?: boolean };
 };
 
 export type ClientTabParamList = {
@@ -260,6 +262,22 @@ export interface ClientJobSummary {
   client_review: WorkerReview | null;
   worker_rating_avg: number | null;
 }
+
+/** Mensaje de chat 1:1 por servicio (tabla `mensajes`). */
+export interface ServiceMessage {
+  id: string;
+  servicio_id: string;
+  remitente_id: string;
+  texto: string;
+  creado_al: string;
+}
+
+export type JobChatStackParamList = {
+  JobChat: {
+    jobId: string;
+    readOnly?: boolean;
+  };
+};
 
 // ─── API Responses ────────────────────────────────────────────────────────────
 
