@@ -17,6 +17,7 @@ export interface ExpressCompactItem {
   footer: string;
   isCategory?: boolean;
   imageSource?: ImageSourcePropType | null;
+  imageSize?: number;
 }
 
 interface ExpressServiceCompactGridProps {
@@ -36,6 +37,7 @@ export const ExpressServiceCompactGrid: React.FC<ExpressServiceCompactGridProps>
         footer={item.footer}
         onPress={item.onPress}
         imageSource={item.imageSource}
+        imageSize={item.imageSize}
         icon={item.icon}
         iconColor={item.iconColor}
         isCategory={item.isCategory}

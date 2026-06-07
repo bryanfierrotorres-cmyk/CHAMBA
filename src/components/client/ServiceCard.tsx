@@ -13,9 +13,10 @@ import { ChambaPressable } from '@components/chamba/ChambaPressable';
 import { CHAMBA, chambaStyles } from '@constants/chambaUI';
 
 const DEEP_BLUE = '#1E293B';
-/** Área fija del avatar 3D — evita layout shift entre categorías. */
-const IMAGE_BOX_HEIGHT = 96;
-const IMAGE_BOX_WIDTH = '100%' as const;
+/** Tamaño estándar del avatar 3D en tarjetas Express. */
+export const SERVICE_CARD_IMAGE_SIZE = 128;
+/** Tamaño compacto (p. ej. jardinería — composición ya equilibrada). */
+export const SERVICE_CARD_IMAGE_SIZE_COMPACT = 96;
 
 export interface ServiceCardProps {
   title: string;
@@ -24,6 +25,8 @@ export interface ServiceCardProps {
   style?: StyleProp<ViewStyle>;
   /** Avatar 3D local (prioridad sobre icono vectorial). */
   imageSource?: ImageSourcePropType | null;
+  /** Side del cuadro 3D; default 128px. */
+  imageSize?: number;
   /** Fallback vectorial para subcategorías sin asset 3D. */
   icon?: React.ReactNode;
   iconColor?: string;
@@ -39,6 +42,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
   onPress,
   style,
   imageSource,
+  imageSize = SERVICE_CARD_IMAGE_SIZE,
   icon,
   iconColor = '#E2E8F0',
   isCategory = false,
@@ -49,10 +53,10 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
     pressScale={0.97}
   >
     {imageSource ? (
-      <View style={styles.imageWrap}>
+      <View style={[styles.imageWrap, { width: imageSize, height: imageSize }]}>
         <Image
           source={imageSource}
-          style={styles.image3d}
+          style={{ width: imageSize, height: imageSize }}
           resizeMode="contain"
           accessibilityIgnoresInvertColors
         />
@@ -63,19 +67,21 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
       </View>
     ) : null}
 
-    <Text style={styles.title} numberOfLines={2}>
-      {title}
-    </Text>
+    <View style={styles.textBlock}>
+      <Text style={styles.title} numberOfLines={2}>
+        {title}
+      </Text>
 
-    {isCategory ? (
-      <Text style={styles.categoryFooter} numberOfLines={1}>
-        {footer}
-      </Text>
-    ) : (
-      <Text style={[chambaStyles.priceLine, styles.priceFooter]} numberOfLines={1}>
-        {footer}
-      </Text>
-    )}
+      {isCategory ? (
+        <Text style={styles.categoryFooter} numberOfLines={1}>
+          {footer}
+        </Text>
+      ) : (
+        <Text style={[chambaStyles.priceLine, styles.priceFooter]} numberOfLines={1}>
+          {footer}
+        </Text>
+      )}
+    </View>
   </ChambaPressable>
 );
 
@@ -83,11 +89,10 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: '#F8F9FA',
     borderRadius: 22,
-    paddingVertical: 16,
-    paddingHorizontal: 12,
+    padding: 12,
     alignItems: 'center',
-    minHeight: 184,
-    justifyContent: 'flex-start',
+    minHeight: 196,
+    justifyContent: 'space-between',
     ...Platform.select({
       ios: {
         shadowColor: '#0F172A',
@@ -102,18 +107,13 @@ const styles = StyleSheet.create({
     }),
   },
   imageWrap: {
-    width: IMAGE_BOX_WIDTH,
-    height: IMAGE_BOX_HEIGHT,
-    maxWidth: 132,
-    marginBottom: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 4,
+    backgroundColor: 'transparent',
   },
-  image3d: {
+  textBlock: {
     width: '100%',
-    height: '100%',
+    alignItems: 'center',
   },
   iconWrap: {
     width: 56,
@@ -135,12 +135,12 @@ const styles = StyleSheet.create({
   },
   priceFooter: {
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: 6,
     fontSize: 13,
     lineHeight: 18,
   },
   categoryFooter: {
-    marginTop: 8,
+    marginTop: 6,
     fontSize: 12,
     fontWeight: '600',
     letterSpacing: 1,
