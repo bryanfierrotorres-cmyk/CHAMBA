@@ -15,7 +15,7 @@ export const RadarSearchingEmptyState: React.FC<RadarSearchingEmptyStateProps> =
     {hint ? <Text style={styles.hint}>{hint}</Text> : null}
     <View style={styles.liveRow}>
       <View style={styles.liveDot} />
-      <Text style={styles.liveText}>Escuchando en vivo</Text>
+      <Text style={styles.liveText}>En línea y buscando clientes...</Text>
     </View>
   </View>
 );
@@ -46,8 +46,10 @@ const styles = StyleSheet.create({
   liveRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
     marginTop: 6,
+    maxWidth: '100%',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
@@ -60,11 +62,14 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: '#22C55E',
+    flexShrink: 0,
   },
   liveText: {
+    flexShrink: 1,
     fontSize: 12,
     fontWeight: '600',
     color: RADAR_DEEP_BLUE,
-    letterSpacing: 0.2,
+    letterSpacing: 0.1,
+    textAlign: 'center',
   },
 });

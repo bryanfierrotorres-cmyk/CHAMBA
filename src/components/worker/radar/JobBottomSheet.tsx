@@ -12,6 +12,7 @@ import {
 import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RadarSearchingEmptyState } from './RadarSearchingEmptyState';
+import { RadarPulseAnimation } from './RadarPulseAnimation';
 import {
   RADAR_BORDER,
   RADAR_DEEP_BLUE,
@@ -37,16 +38,26 @@ const SheetHandle: React.FC<{ jobCount: number; peekTitle?: string }> = ({
 }) => (
   <View style={styles.handleWrap}>
     <View style={styles.handleIndicator} />
-    <Text style={styles.handleTitle}>
-      {jobCount === 0
-        ? 'Buscando chambas...'
-        : `${jobCount} solicitud${jobCount === 1 ? '' : 'es'} disponible${jobCount === 1 ? '' : 's'}`}
-    </Text>
-    {peekTitle ? (
-      <Text style={styles.handlePeek} numberOfLines={1}>
-        {peekTitle}
-      </Text>
-    ) : null}
+    {jobCount === 0 ? (
+      <View style={styles.searchingRow}>
+        <RadarPulseAnimation size="compact" />
+        <View style={styles.searchingTextBlock}>
+          <Text style={styles.handleTitle}>Buscando chambas...</Text>
+          <Text style={styles.handleSub}>En línea y buscando clientes...</Text>
+        </View>
+      </View>
+    ) : (
+      <>
+        <Text style={styles.handleTitle}>
+          {`${jobCount} solicitud${jobCount === 1 ? '' : 'es'} disponible${jobCount === 1 ? '' : 's'}`}
+        </Text>
+        {peekTitle ? (
+          <Text style={styles.handlePeek} numberOfLines={1}>
+            {peekTitle}
+          </Text>
+        ) : null}
+      </>
+    )}
   </View>
 );
 
@@ -61,7 +72,10 @@ const NativeJobBottomSheet: React.FC<JobBottomSheetProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const sheetRef = useRef<BottomSheet>(null);
-  const snapPoints = useMemo(() => ['22%', '62%'], []);
+  const snapPoints = useMemo(
+    () => (jobs.length === 0 ? ['30%', '62%'] : ['22%', '62%']),
+    [jobs.length],
+  );
   const peekTitle = jobs[0]?.title?.trim();
 
   const renderItem = useCallback(
@@ -130,7 +144,11 @@ const WebJobBottomSheet: React.FC<JobBottomSheetProps> = (props) => {
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [expanded, setExpanded] = useState(false);
-  const panelHeight = expanded ? height * 0.62 : Math.min(140, height * 0.22);
+  const panelHeight = expanded
+    ? height * 0.62
+    : props.jobs.length === 0
+      ? Math.min(200, height * 0.28)
+      : Math.min(140, height * 0.22);
   const peekTitle = props.jobs[0]?.title?.trim();
 
   return (
@@ -141,7 +159,7 @@ const WebJobBottomSheet: React.FC<JobBottomSheetProps> = (props) => {
       >
         <SheetHandle jobCount={props.jobs.length} peekTitle={peekTitle} />
       </Pressable>
-      {expanded ? (
+      {expanded || props.jobs.length === 0 ? (
         <FlatList
           data={props.jobs}
           keyExtractor={(item) => item.id}
@@ -218,7 +236,26 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: RADAR_TITLE,
-    textAlign: 'center',
+    textAlign: 'left',
+  },
+  searchingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    width: '100%',
+    paddingHorizontal: 4,
+  },
+  searchingTextBlock: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  handleSub: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: RADAR_MUTED,
+    lineHeight: 16,
+    flexShrink: 1,
   },
   handlePeek: {
     fontSize: 12,
