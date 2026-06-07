@@ -42,7 +42,9 @@ export const FloatingRadarHeader: React.FC<FloatingRadarHeaderProps> = ({
             </View>
           )}
           <View style={styles.nameBlock}>
-            <Text style={styles.greeting} numberOfLines={1}>{displayName}</Text>
+            <Text style={styles.greeting} numberOfLines={1} ellipsizeMode="tail">
+              {`Hola, ${displayName}`}
+            </Text>
             <Text style={styles.sub}>Radar de solicitudes</Text>
           </View>
         </View>
@@ -112,6 +114,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: RADAR_TITLE,
     letterSpacing: -0.2,
+    flexShrink: 1,
   },
   sub: {
     fontSize: 11,
