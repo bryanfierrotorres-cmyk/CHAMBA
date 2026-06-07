@@ -46,11 +46,7 @@ import {
   type ExpressTileDef,
 } from '@constants/clientHomeExpress';
 import { ClientHomeHeroCarousel } from '@components/client/ClientHomeHeroCarousel';
-import { getService3dAsset } from '@constants/service3dAssets';
-import {
-  SERVICE_CARD_IMAGE_SIZE,
-  SERVICE_CARD_IMAGE_SIZE_COMPACT,
-} from '@components/client/ServiceCard';
+import { getService3dAsset, getService3dImageSize } from '@constants/service3dAssets';
 import {
   CLIENT_EMPRESA_HERO_SLIDES,
   CLIENT_HOGAR_HERO_SLIDES,
@@ -149,10 +145,7 @@ export const ClientHomeScreen: React.FC = () => {
         iconColor,
         icon: renderExpressTileIcon(tile.id, selectedExpressCat),
         imageSource: selectedExpressCat ? null : getService3dAsset(tile.id),
-        imageSize:
-          !selectedExpressCat && tile.id === 'jardineria'
-            ? SERVICE_CARD_IMAGE_SIZE_COMPACT
-            : SERVICE_CARD_IMAGE_SIZE,
+        imageSize: selectedExpressCat ? undefined : getService3dImageSize(tile.id),
         onPress: () => onExpressPress(tile),
         isCategory,
         footer: isCategory
