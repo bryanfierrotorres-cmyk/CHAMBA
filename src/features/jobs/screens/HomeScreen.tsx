@@ -455,7 +455,11 @@ export const HomeScreen: React.FC = () => {
 
   return (
     <View style={styles.root}>
-      <RadarFullMap jobs={feedJobs} searchHint={emptyHint} />
+      <RadarFullMap
+        jobs={feedJobs}
+        searchHint={emptyHint}
+        isSearching={isOnline && isApproved}
+      />
 
       <FloatingRadarHeader
         topInset={insets.top}

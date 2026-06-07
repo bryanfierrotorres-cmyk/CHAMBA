@@ -49,9 +49,15 @@ interface RadarFullMapProps {
   jobs: Job[];
   /** Hint opcional bajo el mensaje de búsqueda (ej. filtro activo). */
   searchHint?: string;
+  /** Técnico en línea y buscando — activa el radar central sobre el mapa. */
+  isSearching?: boolean;
 }
 
-export const RadarFullMap: React.FC<RadarFullMapProps> = ({ jobs, searchHint }) => {
+export const RadarFullMap: React.FC<RadarFullMapProps> = ({
+  jobs,
+  searchHint,
+  isSearching = true,
+}) => {
   const pins = useMemo(() => {
     return jobs
       .map((job): RadarPin | null => {
@@ -71,7 +77,8 @@ export const RadarFullMap: React.FC<RadarFullMapProps> = ({ jobs, searchHint }) 
   }, [jobs]);
 
   const region = useMemo(() => mapRegionForPins(pins), [pins]);
-  const isEmpty = jobs.length === 0;
+  /** Radar visible mientras busca y no hay marcadores GPS en el mapa. */
+  const showSearchingRadar = isSearching && pins.length === 0;
 
   return (
     <View style={styles.container}>
@@ -91,13 +98,13 @@ export const RadarFullMap: React.FC<RadarFullMapProps> = ({ jobs, searchHint }) 
         ))}
       </MapView>
 
-      {isEmpty && (
+      {showSearchingRadar && (
         <View style={styles.emptyOverlay} pointerEvents="none">
           <RadarSearchingEmptyState hint={searchHint} />
         </View>
       )}
 
-      {!isEmpty && pins.length === 0 && (
+      {!showSearchingRadar && jobs.length > 0 && pins.length === 0 && (
         <View style={styles.hintOverlay} pointerEvents="none">
           <Text style={styles.hintText}>
             Sin coordenadas GPS — revisá la dirección en cada solicitud
@@ -118,6 +125,8 @@ const styles = StyleSheet.create({
   },
   emptyOverlay: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: 8,
+    elevation: 8,
     backgroundColor: 'rgba(248, 250, 252, 0.78)',
     alignItems: 'center',
     justifyContent: 'center',
