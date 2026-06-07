@@ -17,7 +17,25 @@ import {
   RADAR_MUTED,
   RADAR_TITLE,
 } from './radarTheme';
+import {
+  COMPACT_JOB_CARD_GAP,
+  COMPACT_JOB_CARD_HEIGHT,
+} from './CompactJobCard';
 import type { Job } from '@/types';
+
+/** ~5 filas compactas visibles en el snap inicial del sheet. */
+const COMPACT_PEEK_ROWS = 5;
+const SHEET_HANDLE_HEIGHT = 56;
+
+const computeCompactPeekRatio = (windowHeight: number): string => {
+  const listBlock =
+    COMPACT_JOB_CARD_HEIGHT * COMPACT_PEEK_ROWS
+    + COMPACT_JOB_CARD_GAP * (COMPACT_PEEK_ROWS - 1)
+    + SHEET_HANDLE_HEIGHT
+    + 48;
+  const ratio = Math.min(0.58, Math.max(0.42, listBlock / windowHeight));
+  return `${Math.round(ratio * 100)}%`;
+};
 
 interface JobBottomSheetProps {
   jobs: Job[];
@@ -63,10 +81,15 @@ const NativeJobBottomSheet: React.FC<JobBottomSheetProps> = ({
   emptyHint,
 }) => {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const sheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(
-    () => (jobs.length === 0 ? ['18%', '62%'] : ['22%', '62%']),
-    [jobs.length],
+    () => (
+      jobs.length === 0
+        ? ['18%', '62%']
+        : [computeCompactPeekRatio(windowHeight), '78%']
+    ),
+    [jobs.length, windowHeight],
   );
   const peekTitle = jobs[0]?.title?.trim();
 
@@ -109,6 +132,11 @@ const NativeJobBottomSheet: React.FC<JobBottomSheetProps> = ({
     [isFetchingNextPage, insets.bottom],
   );
 
+  const ItemSeparator = useCallback(
+    () => <View style={styles.itemSeparator} />,
+    [],
+  );
+
   return (
     <BottomSheet
       ref={sheetRef}
@@ -125,6 +153,8 @@ const NativeJobBottomSheet: React.FC<JobBottomSheetProps> = ({
         data={jobs}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
+        ItemSeparatorComponent={ItemSeparator}
+        showsVerticalScrollIndicator
         contentContainerStyle={[
           styles.listContent,
           jobs.length === 0 && styles.listContentEmpty,
@@ -144,11 +174,16 @@ const WebJobBottomSheet: React.FC<JobBottomSheetProps> = (props) => {
   const insets = useSafeAreaInsets();
   const [expanded, setExpanded] = useState(false);
   const isEmpty = props.jobs.length === 0;
+  const compactPeekHeight =
+    COMPACT_JOB_CARD_HEIGHT * COMPACT_PEEK_ROWS
+    + COMPACT_JOB_CARD_GAP * (COMPACT_PEEK_ROWS - 1)
+    + SHEET_HANDLE_HEIGHT
+    + 32;
   const panelHeight = expanded
-    ? height * 0.62
+    ? height * 0.78
     : isEmpty
       ? Math.min(118, height * 0.16)
-      : Math.min(140, height * 0.22);
+      : Math.min(compactPeekHeight, height * 0.58);
   const peekTitle = props.jobs[0]?.title?.trim();
 
   return (
@@ -159,11 +194,13 @@ const WebJobBottomSheet: React.FC<JobBottomSheetProps> = (props) => {
       >
         <SheetHandle jobCount={props.jobs.length} peekTitle={peekTitle} />
       </Pressable>
-      {expanded || isEmpty ? (
+      {expanded || isEmpty || props.jobs.length > 0 ? (
         <FlatList
           data={props.jobs}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => props.renderJob(item)}
+          ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
+          showsVerticalScrollIndicator
           contentContainerStyle={[
             styles.listContent,
             isEmpty && styles.listContentEmpty,
@@ -262,9 +299,13 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   listContent: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
+    paddingTop: 4,
     paddingBottom: 8,
     flexGrow: 1,
+  },
+  itemSeparator: {
+    height: COMPACT_JOB_CARD_GAP,
   },
   listContentEmpty: {
     flexGrow: 0,

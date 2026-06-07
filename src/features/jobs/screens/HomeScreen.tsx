@@ -13,13 +13,13 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
-import { JobCard } from '../components/JobCard';
+import { CompactJobCard } from '@components/worker/radar/CompactJobCard';
+import { RADAR_BORDER, RADAR_DEEP_BLUE, RADAR_MUTED } from '@components/worker/radar/radarTheme';
 import { RadarFullMap } from '@components/worker/radar/RadarFullMap';
 import { FloatingRadarHeader } from '@components/worker/radar/FloatingRadarHeader';
 import { FloatingRadarFilters } from '@components/worker/radar/FloatingRadarFilters';
 import { JobBottomSheet } from '@components/worker/radar/JobBottomSheet';
-import { SwipeableRadarJobCard } from '@components/worker/radar/SwipeableRadarJobCard';
-import { RADAR_BORDER, RADAR_DEEP_BLUE, RADAR_MUTED } from '@components/worker/radar/radarTheme';
+import { CompactJobCard } from '@components/worker/radar/CompactJobCard';
 import { useJobFeed, JOB_KEYS, useAcceptJob } from '../hooks/useJobs';
 import { useAuthStore } from '@store/authStore';
 import { useProfileStore } from '@store/profileStore';
@@ -89,38 +89,29 @@ interface FeedItemProps {
   processJobIds: Set<string>;
   awaitingClientChoice: boolean;
   acceptBlocked: boolean;
-  acceptBlockedMessage: string;
   onPressDetail: () => void;
   onAccept: (job: Job) => Promise<void>;
-  onInProcess: (job: Job) => void;
   onDismiss: (job: Job) => void;
   canDismiss: boolean;
 }
 
 const FeedItem: React.FC<FeedItemProps> = ({
   job, isApproved, acceptingJobId, acceptedJobIds, processJobIds, awaitingClientChoice,
-  acceptBlocked, acceptBlockedMessage,
-  onPressDetail, onAccept, onInProcess, onDismiss, canDismiss,
+  acceptBlocked,
+  onPressDetail, onAccept, onDismiss, canDismiss,
 }) => (
-  <SwipeableRadarJobCard
-    enabled={canDismiss}
+  <CompactJobCard
+    job={job}
+    onPressDetail={onPressDetail}
     onDismiss={() => onDismiss(job)}
-  >
-    <JobCard
-      job={job}
-      onPress={onPressDetail}
-      showSwipe={isApproved && !awaitingClientChoice}
-      awaitingClientChoice={awaitingClientChoice}
-      acceptBlocked={acceptBlocked}
-      acceptBlockedMessage={acceptBlockedMessage}
-      onAccept={() => onAccept(job)}
-      onInProcess={() => onInProcess(job)}
-      isAccepting={acceptingJobId === job.id}
-      isAccepted={acceptedJobIds.has(job.id) && !processJobIds.has(job.id)}
-      isInProcess={processJobIds.has(job.id)}
-      showDismissHint={canDismiss}
-    />
-  </SwipeableRadarJobCard>
+    onAccept={() => onAccept(job)}
+    canDismiss={canDismiss}
+    canAccept={isApproved && !awaitingClientChoice}
+    isAccepting={acceptingJobId === job.id}
+    awaitingClientChoice={awaitingClientChoice}
+    isAccepted={acceptedJobIds.has(job.id) && !processJobIds.has(job.id)}
+    acceptBlocked={acceptBlocked}
+  />
 );
 
 export const HomeScreen: React.FC = () => {
@@ -394,9 +385,9 @@ export const HomeScreen: React.FC = () => {
       )}
       {isApproved && feedJobs.length > 0 && dismissedCount === 0 && (
         <View style={styles.swipeHintBanner}>
-          <Ionicons name="swap-horizontal-outline" size={15} color={RADAR_MUTED} />
+          <Ionicons name="list-outline" size={15} color={RADAR_MUTED} />
           <Text style={styles.swipeHintText}>
-            Deslizá una ficha a la izquierda para apartarla del radar
+            Deslizá la lista para ver más solicitudes · Tocá ✕ para apartar
           </Text>
         </View>
       )}
@@ -426,10 +417,8 @@ export const HomeScreen: React.FC = () => {
           && workerLimit.atLimit
           && !awaitingClientChoice
         }
-        acceptBlockedMessage={workerLimit.message}
         onPressDetail={() => navigation.navigate('JobDetail', { jobId: job.id })}
         onAccept={handleAccept}
-        onInProcess={handleInProcess}
         onDismiss={handleDismiss}
         canDismiss={canDismiss}
       />
@@ -442,10 +431,8 @@ export const HomeScreen: React.FC = () => {
     pendingApplicationIds,
     workerLimit.isLoading,
     workerLimit.atLimit,
-    workerLimit.message,
     navigation,
     handleAccept,
-    handleInProcess,
     handleDismiss,
   ]);
 
