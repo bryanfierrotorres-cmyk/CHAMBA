@@ -8,6 +8,7 @@ interface RadarSearchingEmptyStateProps {
   hint?: string;
 }
 
+/** Overlay de búsqueda activa — radar grande + mensajes (solo sobre el mapa). */
 export const RadarSearchingEmptyState: React.FC<RadarSearchingEmptyStateProps> = ({ hint }) => (
   <View style={styles.wrap}>
     <RadarPulseAnimation />
@@ -22,7 +23,6 @@ export const RadarSearchingEmptyState: React.FC<RadarSearchingEmptyStateProps> =
 
 const styles = StyleSheet.create({
   wrap: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 28,

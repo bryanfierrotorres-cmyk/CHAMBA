@@ -11,8 +11,6 @@ import {
 } from 'react-native';
 import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { RadarSearchingEmptyState } from './RadarSearchingEmptyState';
-import { RadarPulseAnimation } from './RadarPulseAnimation';
 import {
   RADAR_BORDER,
   RADAR_DEEP_BLUE,
@@ -39,13 +37,7 @@ const SheetHandle: React.FC<{ jobCount: number; peekTitle?: string }> = ({
   <View style={styles.handleWrap}>
     <View style={styles.handleIndicator} />
     {jobCount === 0 ? (
-      <View style={styles.searchingRow}>
-        <RadarPulseAnimation size="compact" />
-        <View style={styles.searchingTextBlock}>
-          <Text style={styles.handleTitle}>Buscando chambas...</Text>
-          <Text style={styles.handleSub}>En línea y buscando clientes...</Text>
-        </View>
-      </View>
+      <Text style={styles.handleTitleCentered}>Solicitudes</Text>
     ) : (
       <>
         <Text style={styles.handleTitle}>
@@ -73,7 +65,7 @@ const NativeJobBottomSheet: React.FC<JobBottomSheetProps> = ({
   const insets = useSafeAreaInsets();
   const sheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(
-    () => (jobs.length === 0 ? ['30%', '62%'] : ['22%', '62%']),
+    () => (jobs.length === 0 ? ['18%', '62%'] : ['22%', '62%']),
     [jobs.length],
   );
   const peekTitle = jobs[0]?.title?.trim();
@@ -99,7 +91,11 @@ const NativeJobBottomSheet: React.FC<JobBottomSheetProps> = ({
 
   const ListEmpty = useMemo(
     () => (
-      !isLoading ? <RadarSearchingEmptyState hint={emptyHint} /> : null
+      !isLoading && emptyHint ? (
+        <View style={styles.sheetEmptyHint}>
+          <Text style={styles.sheetEmptyHintText}>{emptyHint}</Text>
+        </View>
+      ) : null
     ),
     [isLoading, emptyHint],
   );
@@ -129,7 +125,10 @@ const NativeJobBottomSheet: React.FC<JobBottomSheetProps> = ({
         data={jobs}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          jobs.length === 0 && styles.listContentEmpty,
+        ]}
         ListHeaderComponent={ListHeader}
         ListEmptyComponent={ListEmpty}
         ListFooterComponent={ListFooter}
@@ -144,10 +143,11 @@ const WebJobBottomSheet: React.FC<JobBottomSheetProps> = (props) => {
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [expanded, setExpanded] = useState(false);
+  const isEmpty = props.jobs.length === 0;
   const panelHeight = expanded
     ? height * 0.62
-    : props.jobs.length === 0
-      ? Math.min(200, height * 0.28)
+    : isEmpty
+      ? Math.min(118, height * 0.16)
       : Math.min(140, height * 0.22);
   const peekTitle = props.jobs[0]?.title?.trim();
 
@@ -159,12 +159,15 @@ const WebJobBottomSheet: React.FC<JobBottomSheetProps> = (props) => {
       >
         <SheetHandle jobCount={props.jobs.length} peekTitle={peekTitle} />
       </Pressable>
-      {expanded || props.jobs.length === 0 ? (
+      {expanded || isEmpty ? (
         <FlatList
           data={props.jobs}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => props.renderJob(item)}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[
+            styles.listContent,
+            isEmpty && styles.listContentEmpty,
+          ]}
           ListHeaderComponent={(
             <View style={styles.listHeader}>
               {props.listHeader}
@@ -176,8 +179,10 @@ const WebJobBottomSheet: React.FC<JobBottomSheetProps> = (props) => {
             </View>
           )}
           ListEmptyComponent={
-            !props.isLoading ? (
-              <RadarSearchingEmptyState hint={props.emptyHint} />
+            !props.isLoading && props.emptyHint ? (
+              <View style={styles.sheetEmptyHint}>
+                <Text style={styles.sheetEmptyHintText}>{props.emptyHint}</Text>
+              </View>
             ) : null
           }
           ListFooterComponent={
@@ -220,7 +225,7 @@ const styles = StyleSheet.create({
   handleWrap: {
     alignItems: 'center',
     paddingTop: 10,
-    paddingBottom: 12,
+    paddingBottom: 10,
     paddingHorizontal: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: RADAR_BORDER,
@@ -230,32 +235,19 @@ const styles = StyleSheet.create({
     height: 4,
     borderRadius: 2,
     backgroundColor: '#D1D5DB',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   handleTitle: {
     fontSize: 15,
     fontWeight: '700',
     color: RADAR_TITLE,
-    textAlign: 'left',
+    textAlign: 'center',
   },
-  searchingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    width: '100%',
-    paddingHorizontal: 4,
-  },
-  searchingTextBlock: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  handleSub: {
-    fontSize: 12,
-    fontWeight: '500',
+  handleTitleCentered: {
+    fontSize: 14,
+    fontWeight: '600',
     color: RADAR_MUTED,
-    lineHeight: 16,
-    flexShrink: 1,
+    textAlign: 'center',
   },
   handlePeek: {
     fontSize: 12,
@@ -274,9 +266,23 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     flexGrow: 1,
   },
+  listContentEmpty: {
+    flexGrow: 0,
+  },
   loadingWrap: {
     alignItems: 'center',
-    paddingVertical: 24,
+    paddingVertical: 16,
+  },
+  sheetEmptyHint: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  sheetEmptyHintText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: RADAR_MUTED,
+    textAlign: 'center',
+    lineHeight: 16,
   },
   webSheet: {
     position: 'absolute',

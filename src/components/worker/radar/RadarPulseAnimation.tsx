@@ -1,7 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Animated, StyleSheet, Easing } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { RADAR_DEEP_BLUE } from './radarTheme';
+import { View, Text, Animated, StyleSheet, Easing } from 'react-native';
 
 const RING_COUNT = 3;
 const PULSE_SIZE = 128;
@@ -12,6 +10,7 @@ type RingAnim = {
   opacity: Animated.Value;
 };
 
+/** Radar central con ondas pulsantes (versión grande para overlay del mapa). */
 export const RadarPulseAnimation: React.FC = () => {
   const rings = useRef<RingAnim[]>(
     Array.from({ length: RING_COUNT }, () => ({
@@ -75,7 +74,7 @@ export const RadarPulseAnimation: React.FC = () => {
         />
       ))}
       <View style={styles.center}>
-        <Ionicons name="briefcase-outline" size={26} color={RADAR_DEEP_BLUE} />
+        <Text style={styles.emoji} accessibilityLabel="Radar activo">📡</Text>
       </View>
     </View>
   );
@@ -112,5 +111,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 6,
     elevation: 4,
+  },
+  emoji: {
+    fontSize: 26,
+    lineHeight: 30,
   },
 });

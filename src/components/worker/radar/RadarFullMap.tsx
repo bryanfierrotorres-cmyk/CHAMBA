@@ -47,9 +47,11 @@ const mapRegionForPins = (pins: RadarPin[]) => {
 
 interface RadarFullMapProps {
   jobs: Job[];
+  /** Hint opcional bajo el mensaje de búsqueda (ej. filtro activo). */
+  searchHint?: string;
 }
 
-export const RadarFullMap: React.FC<RadarFullMapProps> = ({ jobs }) => {
+export const RadarFullMap: React.FC<RadarFullMapProps> = ({ jobs, searchHint }) => {
   const pins = useMemo(() => {
     return jobs
       .map((job): RadarPin | null => {
@@ -91,7 +93,7 @@ export const RadarFullMap: React.FC<RadarFullMapProps> = ({ jobs }) => {
 
       {isEmpty && (
         <View style={styles.emptyOverlay} pointerEvents="none">
-          <RadarSearchingEmptyState />
+          <RadarSearchingEmptyState hint={searchHint} />
         </View>
       )}
 
@@ -120,6 +122,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
+    paddingBottom: '18%',
   },
   hintOverlay: {
     position: 'absolute',

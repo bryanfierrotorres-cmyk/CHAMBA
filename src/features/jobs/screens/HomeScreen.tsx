@@ -5,6 +5,7 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
+  Pressable,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -17,6 +18,7 @@ import { RadarFullMap } from '@components/worker/radar/RadarFullMap';
 import { FloatingRadarHeader } from '@components/worker/radar/FloatingRadarHeader';
 import { FloatingRadarFilters } from '@components/worker/radar/FloatingRadarFilters';
 import { JobBottomSheet } from '@components/worker/radar/JobBottomSheet';
+import { SwipeableRadarJobCard } from '@components/worker/radar/SwipeableRadarJobCard';
 import { RADAR_BORDER, RADAR_DEEP_BLUE, RADAR_MUTED } from '@components/worker/radar/radarTheme';
 import { useJobFeed, JOB_KEYS, useAcceptJob } from '../hooks/useJobs';
 import { useAuthStore } from '@store/authStore';
@@ -36,6 +38,11 @@ import {
 import { useAssignmentsStore } from '@store/assignmentsStore';
 import { getLocalAssignments } from '@utils/localAssignments';
 import { useWorkerCommitmentLimit } from '@features/jobs/hooks/useJobActiveLimits';
+import {
+  clearRadarDismissedJobs,
+  dismissRadarJob,
+  loadRadarDismissedJobIds,
+} from '@utils/radarDismissedJobs';
 import type { Job, JobCategory, JobStackParamList, WorkerTabParamList } from '@/types';
 
 type StackNav = NativeStackNavigationProp<JobStackParamList, 'JobList'>;
@@ -86,26 +93,34 @@ interface FeedItemProps {
   onPressDetail: () => void;
   onAccept: (job: Job) => Promise<void>;
   onInProcess: (job: Job) => void;
+  onDismiss: (job: Job) => void;
+  canDismiss: boolean;
 }
 
 const FeedItem: React.FC<FeedItemProps> = ({
   job, isApproved, acceptingJobId, acceptedJobIds, processJobIds, awaitingClientChoice,
   acceptBlocked, acceptBlockedMessage,
-  onPressDetail, onAccept, onInProcess,
+  onPressDetail, onAccept, onInProcess, onDismiss, canDismiss,
 }) => (
-  <JobCard
-    job={job}
-    onPress={onPressDetail}
-    showSwipe={isApproved && !awaitingClientChoice}
-    awaitingClientChoice={awaitingClientChoice}
-    acceptBlocked={acceptBlocked}
-    acceptBlockedMessage={acceptBlockedMessage}
-    onAccept={() => onAccept(job)}
-    onInProcess={() => onInProcess(job)}
-    isAccepting={acceptingJobId === job.id}
-    isAccepted={acceptedJobIds.has(job.id) && !processJobIds.has(job.id)}
-    isInProcess={processJobIds.has(job.id)}
-  />
+  <SwipeableRadarJobCard
+    enabled={canDismiss}
+    onDismiss={() => onDismiss(job)}
+  >
+    <JobCard
+      job={job}
+      onPress={onPressDetail}
+      showSwipe={isApproved && !awaitingClientChoice}
+      awaitingClientChoice={awaitingClientChoice}
+      acceptBlocked={acceptBlocked}
+      acceptBlockedMessage={acceptBlockedMessage}
+      onAccept={() => onAccept(job)}
+      onInProcess={() => onInProcess(job)}
+      isAccepting={acceptingJobId === job.id}
+      isAccepted={acceptedJobIds.has(job.id) && !processJobIds.has(job.id)}
+      isInProcess={processJobIds.has(job.id)}
+      showDismissHint={canDismiss}
+    />
+  </SwipeableRadarJobCard>
 );
 
 export const HomeScreen: React.FC = () => {
@@ -143,6 +158,10 @@ export const HomeScreen: React.FC = () => {
         .map((a) => a.job_id);
       if (pending.length > 0) {
         setPendingApplicationIds(new Set(pending));
+      }
+      const dismissed = await loadRadarDismissedJobIds(profile.id);
+      if (dismissed.size > 0) {
+        setRemovedFromFeedIds(dismissed);
       }
     })();
   }, [profile?.id, profile?.role]);
@@ -203,6 +222,7 @@ export const HomeScreen: React.FC = () => {
     const byId = new Map<string, Job>();
 
     for (const j of queryJobs) {
+      if (removedFromFeedIds.has(j.id)) continue;
       if (filterByCategory && !workerCoversJobCategory(profile, j.category)) continue;
       byId.set(j.id, storeMap.get(j.id) ?? j);
     }
@@ -307,6 +327,29 @@ export const HomeScreen: React.FC = () => {
     }, 2500);
   }, [navigation, toast, profile?.id, queryClient]);
 
+  const handleDismiss = useCallback((job: Job) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setRemovedFromFeedIds((prev) => new Set([...prev, job.id]));
+    if (profile?.id) {
+      void dismissRadarJob(profile.id, job.id);
+    }
+    toast.show({
+      type: 'success',
+      message: 'Solicitud apartada — deslizá menos prioritarias para enfocarte en las importantes',
+    }, 2600);
+  }, [profile?.id, toast]);
+
+  const dismissedCount = removedFromFeedIds.size;
+
+  const handleRestoreDismissed = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setRemovedFromFeedIds(new Set());
+    if (profile?.id) {
+      void clearRadarDismissedJobs(profile.id);
+    }
+    toast.show({ type: 'success', message: 'Solicitudes apartadas restauradas en el radar' }, 2400);
+  }, [profile?.id, toast]);
+
   const handleEndReached = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
@@ -336,28 +379,62 @@ export const HomeScreen: React.FC = () => {
           </Text>
         </View>
       )}
+      {isApproved && dismissedCount > 0 && (
+        <Pressable
+          style={styles.dismissedBanner}
+          onPress={handleRestoreDismissed}
+          accessibilityRole="button"
+          accessibilityLabel="Restaurar solicitudes apartadas"
+        >
+          <Ionicons name="arrow-undo-outline" size={16} color={RADAR_DEEP_BLUE} />
+          <Text style={styles.dismissedBannerText}>
+            {dismissedCount} apartada{dismissedCount === 1 ? '' : 's'} · Tocá para restaurar
+          </Text>
+        </Pressable>
+      )}
+      {isApproved && feedJobs.length > 0 && dismissedCount === 0 && (
+        <View style={styles.swipeHintBanner}>
+          <Ionicons name="swap-horizontal-outline" size={15} color={RADAR_MUTED} />
+          <Text style={styles.swipeHintText}>
+            Deslizá una ficha a la izquierda para apartarla del radar
+          </Text>
+        </View>
+      )}
     </>
   );
 
-  const renderJob = useCallback((job: Job) => (
-    <FeedItem
-      job={job}
-      isApproved={isApproved}
-      acceptingJobId={acceptingJobId}
-      acceptedJobIds={acceptedJobIds}
-      processJobIds={processJobIds}
-      awaitingClientChoice={pendingApplicationIds.has(job.id)}
-      acceptBlocked={
-        !workerLimit.isLoading
-        && workerLimit.atLimit
-        && !pendingApplicationIds.has(job.id)
-      }
-      acceptBlockedMessage={workerLimit.message}
-      onPressDetail={() => navigation.navigate('JobDetail', { jobId: job.id })}
-      onAccept={handleAccept}
-      onInProcess={handleInProcess}
-    />
-  ), [
+  const renderJob = useCallback((job: Job) => {
+    const awaitingClientChoice = pendingApplicationIds.has(job.id);
+    const canDismiss =
+      isApproved
+      && !awaitingClientChoice
+      && !acceptedJobIds.has(job.id)
+      && !processJobIds.has(job.id)
+      && acceptingJobId !== job.id
+      && job.status === 'open';
+
+    return (
+      <FeedItem
+        job={job}
+        isApproved={isApproved}
+        acceptingJobId={acceptingJobId}
+        acceptedJobIds={acceptedJobIds}
+        processJobIds={processJobIds}
+        awaitingClientChoice={awaitingClientChoice}
+        acceptBlocked={
+          !workerLimit.isLoading
+          && workerLimit.atLimit
+          && !awaitingClientChoice
+        }
+        acceptBlockedMessage={workerLimit.message}
+        onPressDetail={() => navigation.navigate('JobDetail', { jobId: job.id })}
+        onAccept={handleAccept}
+        onInProcess={handleInProcess}
+        onDismiss={handleDismiss}
+        canDismiss={canDismiss}
+      />
+    );
+  }, [
     isApproved,
     acceptingJobId,
     acceptedJobIds,
@@ -369,6 +446,7 @@ export const HomeScreen: React.FC = () => {
     navigation,
     handleAccept,
     handleInProcess,
+    handleDismiss,
   ]);
 
   const emptyHint = selectedCategory
@@ -377,7 +455,7 @@ export const HomeScreen: React.FC = () => {
 
   return (
     <View style={styles.root}>
-      <RadarFullMap jobs={feedJobs} />
+      <RadarFullMap jobs={feedJobs} searchHint={emptyHint} />
 
       <FloatingRadarHeader
         topInset={insets.top}
@@ -495,5 +573,39 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.xs,
     flex: 1,
     lineHeight: 18,
+  },
+  dismissedBanner: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    padding: SPACING.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  dismissedBannerText: {
+    color: RADAR_DEEP_BLUE,
+    fontSize: FONT_SIZE.xs,
+    flex: 1,
+    lineHeight: 18,
+    fontWeight: '600',
+  },
+  swipeHintBanner: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: SPACING.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: RADAR_BORDER,
+  },
+  swipeHintText: {
+    color: RADAR_MUTED,
+    fontSize: FONT_SIZE.xs,
+    flex: 1,
+    lineHeight: 17,
   },
 });
