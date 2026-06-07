@@ -19,7 +19,6 @@ import { RadarFullMap } from '@components/worker/radar/RadarFullMap';
 import { FloatingRadarHeader } from '@components/worker/radar/FloatingRadarHeader';
 import { FloatingRadarFilters } from '@components/worker/radar/FloatingRadarFilters';
 import { JobBottomSheet } from '@components/worker/radar/JobBottomSheet';
-import { CompactJobCard } from '@components/worker/radar/CompactJobCard';
 import { useJobFeed, JOB_KEYS, useAcceptJob } from '../hooks/useJobs';
 import { useAuthStore } from '@store/authStore';
 import { useProfileStore } from '@store/profileStore';
