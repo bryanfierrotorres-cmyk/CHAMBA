@@ -18,6 +18,7 @@ import type { ClientHeroSlide } from '@constants/clientHomeHeroSlides';
 const BANNER_HEIGHT = 196;
 const AUTO_ADVANCE_MS = 4500;
 const HORIZONTAL_PAD = 0;
+const PROMO_SLIDE_ID = 'hogar-promo-segundo-servicio';
 
 interface HeroSlidePhotoProps {
   slide: ClientHeroSlide;
@@ -32,6 +33,17 @@ const HeroSlidePhoto: React.FC<HeroSlidePhotoProps> = ({ slide }) => {
     setUri(slide.imageUri);
     setExhausted(false);
   }, [slide.id, slide.imageUri]);
+
+  if (slide.imageLocal) {
+    return (
+      <Image
+        source={slide.imageLocal}
+        style={styles.photo}
+        resizeMode="cover"
+        accessibilityIgnoresInvertColors
+      />
+    );
+  }
 
   const onError = () => {
     if (slide.imageFallbackUri && uri !== slide.imageFallbackUri) {
@@ -111,14 +123,21 @@ export const ClientHomeHeroCarousel: React.FC<ClientHomeHeroCarouselProps> = ({
 
   if (slides.length === 0) return null;
 
-  const renderSlide = ({ item }: { item: ClientHeroSlide }) => (
+  const renderSlide = ({ item }: { item: ClientHeroSlide }) => {
+    const isPromoSlide = item.id === PROMO_SLIDE_ID;
+
+    return (
     <View style={[styles.slideOuter, { width: slideWidth }]}>
       <View style={styles.slideCard}>
         <HeroSlidePhoto slide={item} />
 
         <LinearGradient
-          colors={['transparent', 'rgba(15, 23, 42, 0.55)', 'rgba(15, 23, 42, 0.85)']}
-          locations={[0.35, 0.65, 1]}
+          colors={
+            isPromoSlide
+              ? ['transparent', 'transparent', 'rgba(0, 0, 0, 0.75)']
+              : ['transparent', 'rgba(15, 23, 42, 0.55)', 'rgba(15, 23, 42, 0.85)']
+          }
+          locations={isPromoSlide ? [0, 0.45, 1] : [0.35, 0.65, 1]}
           style={styles.overlay}
         >
           <Text style={styles.heroTitle} numberOfLines={2}>
@@ -130,7 +149,8 @@ export const ClientHomeHeroCarousel: React.FC<ClientHomeHeroCarouselProps> = ({
         </LinearGradient>
       </View>
     </View>
-  );
+    );
+  };
 
   return (
     <View style={styles.bannerWrap}>

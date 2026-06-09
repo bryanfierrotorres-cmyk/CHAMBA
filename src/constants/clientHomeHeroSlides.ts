@@ -10,6 +10,8 @@ export interface ClientHeroSlide {
   subtitle: string;
   imageUri: string;
   imageFallbackUri: string;
+  /** Asset local (require) — prioridad sobre imageUri cuando está definido. */
+  imageLocal?: number;
   placeholderLabel?: string;
 }
 
@@ -18,6 +20,7 @@ const slide = (
   title: string,
   subtitle: string,
   placeholderLabel?: string,
+  imageLocal?: number,
 ): ClientHeroSlide => {
   const imgs = getHeroSlideImages(id);
   return {
@@ -27,6 +30,7 @@ const slide = (
     imageUri: imgs.primary,
     imageFallbackUri: imgs.fallback,
     placeholderLabel,
+    imageLocal,
   };
 };
 
@@ -37,6 +41,7 @@ export const CLIENT_HOGAR_HERO_SLIDES: ClientHeroSlide[] = [
     'Ahorra en tu próximo servicio',
     'Obtén un 15% de descuento al realizar tu segundo servicio con nosotros.',
     'Promoción',
+    require('../../assets/client-hero-hogar-promo.png'),
   ),
   slide(
     'hogar-limpieza',
