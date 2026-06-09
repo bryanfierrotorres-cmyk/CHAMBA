@@ -95,11 +95,11 @@ interface FeedItemProps {
   canDismiss: boolean;
 }
 
-const FeedItem: React.FC<FeedItemProps> = ({
+const FeedItem = React.memo<FeedItemProps>(function FeedItem({
   job, isApproved, acceptingJobId, acceptedJobIds, processJobIds, awaitingClientChoice,
   acceptBlocked,
   onPressDetail, onAccept, onDismiss, canDismiss,
-}) => {
+}) {
   const card = (
     <CompactJobCard
       job={job}
@@ -120,7 +120,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
       {card}
     </SwipeableRadarJobCard>
   );
-};
+});
 
 export const HomeScreen: React.FC = () => {
   const navigation = useNavigation<StackNav>();

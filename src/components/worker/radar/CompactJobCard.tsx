@@ -112,7 +112,7 @@ const AcceptButton: React.FC<AcceptButtonProps> = ({
   </Pressable>
 );
 
-export const CompactJobCard: React.FC<CompactJobCardProps> = ({
+export const CompactJobCard = React.memo<CompactJobCardProps>(function CompactJobCard({
   job,
   onPressDetail,
   onAccept,
@@ -236,7 +236,7 @@ export const CompactJobCard: React.FC<CompactJobCardProps> = ({
       </View>
     </View>
   );
-};
+});
 
 /** Altura aproximada de una fila compacta (para snap del sheet). */
 export const COMPACT_JOB_CARD_HEIGHT = 152;

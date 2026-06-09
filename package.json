@@ -48,6 +48,7 @@
     "db:verify-rls": "node scripts/verify-rls-production.mjs",
     "db:apply-worker-rls": "node scripts/apply-migration-038-worker-rls.mjs",
     "db:apply-launch-rls": "node scripts/apply-migration-039-launch-rls.mjs",
+    "db:apply-performance-indexes": "node scripts/apply-migration-040-performance-indexes.mjs",
     "repair:browser-storage": "node scripts/repair-browser-storage.mjs",
     "db:reset-two-users": "node scripts/reset-two-test-users.mjs",
     "db:purge-client-workers": "node scripts/purge-client-worker-users.mjs",

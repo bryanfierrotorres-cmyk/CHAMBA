@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchJobWorkerApplications } from '@features/client/services/clientJobSelectionService';
+import { QUERY_STALE_FEED_MS } from '@constants/queryCache';
 import { supabase } from '@services/supabase';
 import type { ClientOrderJob, JobWorkerApplication } from '@/types';
 
@@ -104,7 +105,8 @@ export function useJobWorkerApplications(
     queryKey: jobApplicationsQueryKey(jobId, clientId),
     queryFn: () => fetchJobWorkerApplications(jobId, clientId),
     enabled: active,
-    staleTime: 0,
+    staleTime: QUERY_STALE_FEED_MS,
+    refetchOnWindowFocus: false,
     refetchInterval: active ? OPEN_JOB_POLL_MS : false,
     refetchIntervalInBackground: true,
   });

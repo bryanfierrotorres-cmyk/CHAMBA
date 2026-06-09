@@ -82,11 +82,11 @@ const resolveAssignedWorker = (
   return raw;
 };
 
-const ClientOrderReview: React.FC<{
+const ClientOrderReview = React.memo<{
   job: ClientOrderJob;
   clientId: string;
   clientName: string;
-}> = ({ job, clientId, clientName }) => {
+}>(function ClientOrderReview({ job, clientId, clientName }) {
   const worker = resolveAssignedWorker(job.assigned_worker);
   if (!worker?.id || !canRateWorker(job)) return null;
 
@@ -99,7 +99,7 @@ const ClientOrderReview: React.FC<{
       reviewerName={clientName}
     />
   );
-};
+});
 
 interface OrderCardProps {
   job: ClientOrderJob;
@@ -110,9 +110,21 @@ interface OrderCardProps {
   onOpenChat?: (jobId: string, readOnly: boolean) => void;
 }
 
-const OrderCard: React.FC<OrderCardProps> = ({
+const orderCardPropsEqual = (prev: OrderCardProps, next: OrderCardProps): boolean =>
+  prev.clientId === next.clientId
+  && prev.clientName === next.clientName
+  && prev.job.id === next.job.id
+  && prev.job.status === next.job.status
+  && prev.job.updated_at === next.job.updated_at
+  && prev.job.operational_phase === next.job.operational_phase
+  && prev.job.assigned_worker_id === next.job.assigned_worker_id
+  && prev.onOpenCompleted === next.onOpenCompleted
+  && prev.onApplicantDecision === next.onApplicantDecision
+  && prev.onOpenChat === next.onOpenChat;
+
+const OrderCard = React.memo<OrderCardProps>(function OrderCard({
   job, clientId, clientName, onOpenCompleted, onApplicantDecision, onOpenChat,
-}) => {
+}) {
   const ownerClientId = job.created_by || clientId;
   const isOpen = job.status === 'open';
   const {
@@ -151,12 +163,13 @@ const OrderCard: React.FC<OrderCardProps> = ({
       <ClientOrderReview job={job} clientId={clientId} clientName={clientName} />
     </View>
   );
-};
+}, orderCardPropsEqual);
 
 export const ClientOrdersScreen: React.FC = () => {
   const navigation = useNavigation<OrdersNav>();
   const insets = useSafeAreaInsets();
-  const profile = useAuthStore((s) => s.profile);
+  const profileId = useAuthStore((s) => s.profile?.id);
+  const profileName = useAuthStore((s) => s.profile?.full_name ?? 'Cliente');
   const [activeFilter, setActiveFilter] = useState<OrderFilter>('pendientes');
 
   const {
@@ -164,15 +177,30 @@ export const ClientOrdersScreen: React.FC = () => {
     isLoading,
     refetch,
     isRefetching,
+    isStale,
     error: ordersError,
   } = useClientOrders();
 
-  useClientOpenJobsApplicationsRealtime(jobs, profile?.id);
+  useClientOpenJobsApplicationsRealtime(jobs, profileId);
 
   useFocusEffect(
     useCallback(() => {
-      if (profile?.id) refetch();
-    }, [profile?.id, refetch]),
+      if (profileId && isStale) void refetch();
+    }, [profileId, isStale, refetch]),
+  );
+
+  const handleOpenCompleted = useCallback(
+    (jobId: string) => navigation.navigate('ClientCompletedJob', { jobId }),
+    [navigation],
+  );
+
+  const handleApplicantDecision = useCallback(() => {
+    void refetch();
+  }, [refetch]);
+
+  const handleOpenChat = useCallback(
+    (jobId: string, readOnly: boolean) => navigation.navigate('JobChat', { jobId, readOnly }),
+    [navigation],
   );
 
   const filteredJobs = useMemo(
@@ -236,19 +264,15 @@ export const ClientOrdersScreen: React.FC = () => {
             </View>
           ) : (
             filteredJobs.map((job) =>
-              profile?.id && job?.id ? (
+              profileId && job?.id ? (
                 <OrderCard
                   key={job.id}
                   job={job}
-                  clientId={profile.id}
-                  clientName={profile.full_name}
-                  onOpenCompleted={(jobId) =>
-                    navigation.navigate('ClientCompletedJob', { jobId })
-                  }
-                  onApplicantDecision={() => void refetch()}
-                  onOpenChat={(jobId, readOnly) =>
-                    navigation.navigate('JobChat', { jobId, readOnly })
-                  }
+                  clientId={profileId}
+                  clientName={profileName}
+                  onOpenCompleted={handleOpenCompleted}
+                  onApplicantDecision={handleApplicantDecision}
+                  onOpenChat={handleOpenChat}
                 />
               ) : null,
             )

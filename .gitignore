@@ -25,3 +25,9 @@ Thumbs.db
 .vscode/settings.json
 *.log
 .vercel
+
+# Builds locales / artefactos de verificación (no versionar)
+dist-web-check/
+dist-web-check2/
+verify-out.txt
+imagen_3D/

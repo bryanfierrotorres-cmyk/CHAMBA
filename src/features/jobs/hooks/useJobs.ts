@@ -35,6 +35,7 @@ import { useAssignmentsStore } from '@store/assignmentsStore';
 import { mergeAssignments, patchLocalJobStatus, getLocalAssignments } from '@utils/localAssignments';
 
 import { CONFIG } from '@constants/config';
+import { QUERY_STALE_FEED_MS } from '@constants/queryCache';
 import { workerActiveCountKey } from '@features/jobs/hooks/useJobActiveLimits';
 import { WALLET_KEYS } from '@features/jobs/hooks/useWorkerWallet';
 import { fromDbJobCategory } from '@constants/chambaCategories';
@@ -150,7 +151,9 @@ export const useJobFeed = (
 
     enabled: profile?.role !== 'worker' || !!profile?.id,
 
-    staleTime: 15_000,
+    staleTime: QUERY_STALE_FEED_MS,
+
+    refetchOnWindowFocus: false,
 
     refetchOnMount: true,
 
@@ -250,7 +253,7 @@ export const useJobDetail = (jobId: string) =>
 
     enabled: !!jobId,
 
-    staleTime: 10_000,
+    staleTime: QUERY_STALE_FEED_MS,
 
   });
 
@@ -290,7 +293,9 @@ export const useMyJobs = () => {
 
     enabled: !!profile?.id,
 
-    staleTime: 5_000,
+    staleTime: QUERY_STALE_FEED_MS,
+
+    refetchOnWindowFocus: false,
 
     refetchOnMount: true,
 

@@ -1,6 +1,7 @@
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 import { fetchClientOrders } from '@features/jobs/services/jobsService';
 import { useAuthStore } from '@store/authStore';
+import { QUERY_STALE_FEED_MS } from '@constants/queryCache';
 import type { ClientOrderJob, JobStatus, WorkerOperationalPhase } from '@/types';
 
 export const clientOrdersQueryKey = (clientId: string) => ['client-orders', clientId] as const;
@@ -46,13 +47,15 @@ export const patchClientOrderRowInCache = (
 };
 
 export function useClientOrders() {
-  const profile = useAuthStore((s) => s.profile);
+  const clientId = useAuthStore((s) => s.profile?.id);
+  const clientRole = useAuthStore((s) => s.profile?.role);
 
   return useQuery<ClientOrderJob[]>({
-    queryKey: clientOrdersQueryKey(profile?.id ?? ''),
-    queryFn: () => fetchClientOrders(profile!.id),
-    enabled: !!profile?.id && profile.role === 'client',
-    staleTime: 4_000,
+    queryKey: clientOrdersQueryKey(clientId ?? ''),
+    queryFn: () => fetchClientOrders(clientId!),
+    enabled: !!clientId && clientRole === 'client',
+    staleTime: QUERY_STALE_FEED_MS,
+    refetchOnWindowFocus: false,
     refetchInterval: (query) =>
       clientOrdersNeedLivePoll(query.state.data) ? 5_000 : false,
     refetchIntervalInBackground: true,
