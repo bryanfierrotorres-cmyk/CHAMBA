@@ -6,9 +6,11 @@ import {
   StyleSheet,
   FlatList,
   Pressable,
+  Platform,
   useWindowDimensions,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
+  type ImageStyle,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,6 +26,19 @@ interface HeroSlidePhotoProps {
   slide: ClientHeroSlide;
 }
 
+const getPhotoStyle = (slide: ClientHeroSlide): ImageStyle[] => {
+  const base: ImageStyle[] = [styles.photo];
+
+  if (slide.imageFocusY != null && Platform.OS === 'web') {
+    base.push({
+      objectFit: 'cover',
+      objectPosition: `center ${Math.round(slide.imageFocusY * 100)}%`,
+    } as ImageStyle);
+  }
+
+  return base;
+};
+
 /** Foto con respaldo si la URL principal no carga (común en web con Unsplash). */
 const HeroSlidePhoto: React.FC<HeroSlidePhotoProps> = ({ slide }) => {
   const [uri, setUri] = useState(slide.imageUri);
@@ -38,7 +53,7 @@ const HeroSlidePhoto: React.FC<HeroSlidePhotoProps> = ({ slide }) => {
     return (
       <Image
         source={slide.imageLocal}
-        style={styles.photo}
+        style={getPhotoStyle(slide)}
         resizeMode="cover"
         accessibilityIgnoresInvertColors
       />
@@ -67,7 +82,7 @@ const HeroSlidePhoto: React.FC<HeroSlidePhotoProps> = ({ slide }) => {
   return (
     <Image
       source={{ uri }}
-      style={styles.photo}
+      style={getPhotoStyle(slide)}
       resizeMode="cover"
       accessibilityIgnoresInvertColors
       onError={onError}
@@ -127,28 +142,32 @@ export const ClientHomeHeroCarousel: React.FC<ClientHomeHeroCarouselProps> = ({
     const isPromoSlide = item.id === PROMO_SLIDE_ID;
 
     return (
-    <View style={[styles.slideOuter, { width: slideWidth }]}>
-      <View style={styles.slideCard}>
-        <HeroSlidePhoto slide={item} />
+      <View style={[styles.slideOuter, { width: slideWidth }]}>
+        <View style={styles.slideCard}>
+          <View style={styles.imageLayer}>
+            <HeroSlidePhoto slide={item} />
+          </View>
 
-        <LinearGradient
-          colors={
-            isPromoSlide
-              ? ['transparent', 'transparent', 'rgba(0, 0, 0, 0.75)']
-              : ['transparent', 'rgba(15, 23, 42, 0.55)', 'rgba(15, 23, 42, 0.85)']
-          }
-          locations={isPromoSlide ? [0, 0.45, 1] : [0.35, 0.65, 1]}
-          style={styles.overlay}
-        >
-          <Text style={styles.heroTitle} numberOfLines={2}>
-            {item.title}
-          </Text>
-          <Text style={styles.heroSubtitle} numberOfLines={2}>
-            {item.subtitle}
-          </Text>
-        </LinearGradient>
+          <View style={styles.textLayer}>
+            <LinearGradient
+              colors={
+                isPromoSlide
+                  ? ['transparent', 'transparent', 'rgba(0, 0, 0, 0.75)']
+                  : ['transparent', 'rgba(15, 23, 42, 0.55)', 'rgba(15, 23, 42, 0.85)']
+              }
+              locations={isPromoSlide ? [0, 0.45, 1] : [0.35, 0.65, 1]}
+              style={styles.overlay}
+            >
+              <Text style={styles.heroTitle} numberOfLines={2}>
+                {item.title}
+              </Text>
+              <Text style={styles.heroSubtitle} numberOfLines={2}>
+                {item.subtitle}
+              </Text>
+            </LinearGradient>
+          </View>
+        </View>
       </View>
-    </View>
     );
   };
 
@@ -216,16 +235,37 @@ const styles = StyleSheet.create({
     height: BANNER_HEIGHT,
     borderRadius: 18,
     overflow: 'hidden',
+    position: 'relative',
     backgroundColor: '#CBD5E1',
     ...CARD_STEP_SHADOW,
   },
+  imageLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  textLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 2,
+  },
   photo: {
-    ...StyleSheet.absoluteFillObject,
     width: '100%',
     height: '100%',
+    position: 'absolute',
   },
   placeholder: {
-    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
     backgroundColor: '#CBD5E1',
     alignItems: 'center',
     justifyContent: 'center',
@@ -242,7 +282,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    flex: 1,
     justifyContent: 'flex-end',
     paddingHorizontal: 16,
     paddingBottom: 16,

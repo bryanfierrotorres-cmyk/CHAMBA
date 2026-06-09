@@ -12,6 +12,8 @@ export interface ClientHeroSlide {
   imageFallbackUri: string;
   /** Asset local (require) — prioridad sobre imageUri cuando está definido. */
   imageLocal?: number;
+  /** Punto focal vertical 0–1 para recorte cover (0=arriba, 1=abajo). */
+  imageFocusY?: number;
   placeholderLabel?: string;
 }
 
@@ -21,6 +23,7 @@ const slide = (
   subtitle: string,
   placeholderLabel?: string,
   imageLocal?: number,
+  imageFocusY?: number,
 ): ClientHeroSlide => {
   const imgs = getHeroSlideImages(id);
   return {
@@ -31,6 +34,7 @@ const slide = (
     imageFallbackUri: imgs.fallback,
     placeholderLabel,
     imageLocal,
+    imageFocusY,
   };
 };
 
@@ -42,6 +46,7 @@ export const CLIENT_HOGAR_HERO_SLIDES: ClientHeroSlide[] = [
     'Obtén un 15% de descuento al realizar tu segundo servicio con nosotros.',
     'Promoción',
     require('../../assets/client-hero-hogar-promo.png'),
+    0.58,
   ),
   slide(
     'hogar-limpieza',
@@ -54,6 +59,8 @@ export const CLIENT_HOGAR_HERO_SLIDES: ClientHeroSlide[] = [
     'Clima, plomería y más en un solo lugar',
     'Técnicos capacitados para resolver antes de que empeore',
     'Mantenimiento',
+    require('../../assets/client-hero-hogar-promo.png'),
+    0.58,
   ),
   slide(
     'hogar-vida',
