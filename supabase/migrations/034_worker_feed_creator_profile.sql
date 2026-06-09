@@ -1,0 +1,81 @@
+-- CHAMBA 034 — Feed técnico incluye perfil del cliente (nombre + avatar)
+SET statement_timeout = '120s';
+
+CREATE OR REPLACE FUNCTION get_worker_open_jobs_feed(
+  p_worker_id    UUID,
+  p_status       TEXT DEFAULT 'open',
+  p_categories   TEXT[] DEFAULT NULL,
+  p_limit        INT DEFAULT 20,
+  p_offset       INT DEFAULT 0
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_rows JSONB;
+  v_total BIGINT;
+BEGIN
+  IF p_worker_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Trabajador requerido');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = p_worker_id
+      AND p.role::text = 'worker'
+      AND COALESCE(p.is_approved, FALSE) = TRUE
+  ) THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Colaborador no aprobado');
+  END IF;
+
+  SELECT COUNT(*) INTO v_total
+  FROM jobs j
+  WHERE (p_status IS NULL OR j.status::text = p_status)
+    AND (
+      p_categories IS NULL
+      OR cardinality(p_categories) = 0
+      OR j.category::text = ANY (p_categories)
+    );
+
+  SELECT COALESCE(jsonb_agg(entry ORDER BY sort_at DESC), '[]'::jsonb) INTO v_rows
+  FROM (
+    SELECT
+      (
+        to_jsonb(j)
+        || jsonb_build_object(
+          'creator',
+          (
+            SELECT jsonb_build_object(
+              'id', p.id,
+              'full_name', p.full_name,
+              'avatar_url', p.avatar_url
+            )
+            FROM profiles p
+            WHERE p.id = j.created_by
+          )
+        )
+      ) AS entry,
+      j.created_at AS sort_at
+    FROM jobs j
+    WHERE (p_status IS NULL OR j.status::text = p_status)
+      AND (
+        p_categories IS NULL
+        OR cardinality(p_categories) = 0
+        OR j.category::text = ANY (p_categories)
+      )
+    ORDER BY j.created_at DESC
+    LIMIT GREATEST(p_limit, 1)
+    OFFSET GREATEST(p_offset, 0)
+  ) sub;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'jobs', v_rows,
+    'count', v_total
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION get_worker_open_jobs_feed(UUID, TEXT, TEXT[], INT, INT) TO authenticated, anon;

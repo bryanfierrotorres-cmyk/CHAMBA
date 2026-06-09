@@ -1,5 +1,7 @@
 import { supabase } from '@services/supabase';
-import type { Job, UserProfile } from '@/types';
+import type { Job, JobModerationReason, UserProfile } from '@/types';
+
+export type AdminModerationReason = Exclude<JobModerationReason, 'admin'>;
 
 // ─── Admin Job (with nested worker assignment) ────────────────────────────────
 
@@ -119,6 +121,27 @@ export const fetchAdminJobs = async (): Promise<AdminJob[]> => {
 
   if (error) throw new Error(error.message);
   return (data ?? []) as AdminJob[];
+};
+
+export const adminRemoveOpenJob = async (
+  jobId: string,
+  adminId: string,
+  reason: AdminModerationReason = 'spam',
+): Promise<Job> => {
+  const { data, error } = await supabase.rpc('admin_moderate_remove_job', {
+    p_job_id: jobId,
+    p_admin_id: adminId,
+    p_reason: reason,
+  });
+
+  if (error) throw new Error(error.message);
+
+  const body = data as { success?: boolean; job?: Job; error?: string };
+  if (!body?.success || !body.job) {
+    throw new Error(body?.error ?? 'No se pudo retirar el servicio');
+  }
+
+  return body.job;
 };
 
 export const fetchDashboardStats = async (): Promise<DashboardStats> => {

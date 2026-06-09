@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,11 @@ import {
   ActivityIndicator,
   FlatList,
   Pressable,
+  Animated,
+  PanResponder,
   useWindowDimensions,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -23,8 +26,8 @@ import {
 } from './CompactJobCard';
 import type { Job } from '@/types';
 
-/** ~5 filas compactas visibles en el snap inicial del sheet. */
-const COMPACT_PEEK_ROWS = 5;
+/** ~2 filas visibles en el snap inicial del sheet (tarjetas de alta conversión). */
+const COMPACT_PEEK_ROWS = 2;
 const SHEET_HANDLE_HEIGHT = 56;
 
 const computeCompactPeekRatio = (windowHeight: number): string => {
@@ -48,9 +51,14 @@ interface JobBottomSheetProps {
   emptyHint?: string;
 }
 
-const SheetHandle: React.FC<{ jobCount: number; peekTitle?: string }> = ({
+const SheetHandle: React.FC<{
+  jobCount: number;
+  peekTitle?: string;
+  expanded?: boolean;
+}> = ({
   jobCount,
   peekTitle,
+  expanded,
 }) => (
   <View style={styles.handleWrap}>
     <View style={styles.handleIndicator} />
@@ -68,6 +76,18 @@ const SheetHandle: React.FC<{ jobCount: number; peekTitle?: string }> = ({
         ) : null}
       </>
     )}
+    {jobCount > 0 ? (
+      <View style={styles.handleHintRow}>
+        <Ionicons
+          name={expanded ? 'chevron-down' : 'chevron-up'}
+          size={16}
+          color={RADAR_MUTED}
+        />
+        <Text style={styles.handleHint}>
+          {expanded ? 'Deslizá hacia abajo para ver el mapa' : 'Deslizá hacia arriba para ver más'}
+        </Text>
+      </View>
+    ) : null}
   </View>
 );
 
@@ -83,6 +103,7 @@ const NativeJobBottomSheet: React.FC<JobBottomSheetProps> = ({
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const sheetRef = useRef<BottomSheet>(null);
+  const [sheetIndex, setSheetIndex] = useState(0);
   const snapPoints = useMemo(
     () => (
       jobs.length === 0
@@ -137,14 +158,29 @@ const NativeJobBottomSheet: React.FC<JobBottomSheetProps> = ({
     [],
   );
 
+  const toggleSheet = useCallback(() => {
+    const nextIndex = sheetIndex === 0 ? 1 : 0;
+    sheetRef.current?.snapToIndex(nextIndex);
+    setSheetIndex(nextIndex);
+  }, [sheetIndex]);
+
   return (
     <BottomSheet
       ref={sheetRef}
       index={0}
       snapPoints={snapPoints}
       enablePanDownToClose={false}
+      enableOverDrag={false}
+      enableHandlePanningGesture
+      onChange={setSheetIndex}
       handleComponent={() => (
-        <SheetHandle jobCount={jobs.length} peekTitle={peekTitle} />
+        <Pressable onPress={toggleSheet} accessibilityRole="button">
+          <SheetHandle
+            jobCount={jobs.length}
+            peekTitle={peekTitle}
+            expanded={sheetIndex > 0}
+          />
+        </Pressable>
       )}
       backgroundStyle={styles.sheetBackground}
       handleIndicatorStyle={styles.hiddenIndicator}
@@ -169,69 +205,206 @@ const NativeJobBottomSheet: React.FC<JobBottomSheetProps> = ({
   );
 };
 
+const clampSheetHeight = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
 const WebJobBottomSheet: React.FC<JobBottomSheetProps> = (props) => {
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const [expanded, setExpanded] = useState(false);
   const isEmpty = props.jobs.length === 0;
   const compactPeekHeight =
     COMPACT_JOB_CARD_HEIGHT * COMPACT_PEEK_ROWS
     + COMPACT_JOB_CARD_GAP * (COMPACT_PEEK_ROWS - 1)
     + SHEET_HANDLE_HEIGHT
     + 32;
-  const panelHeight = expanded
-    ? height * 0.78
-    : isEmpty
-      ? Math.min(118, height * 0.16)
-      : Math.min(compactPeekHeight, height * 0.58);
+  const compactHeight = isEmpty
+    ? Math.min(118, height * 0.16)
+    : Math.min(compactPeekHeight, height * 0.58);
+  const expandedHeight = isEmpty ? height * 0.62 : height * 0.78;
+
+  const heightAnim = useRef(new Animated.Value(compactHeight)).current;
+  const dragStartHeight = useRef(compactHeight);
+  const isPointerDown = useRef(false);
+  const pointerStartY = useRef(0);
+  const totalDragDy = useRef(0);
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const snapTo = useCallback((target: number, expanded: boolean) => {
+    setIsExpanded(expanded);
+    Animated.spring(heightAnim, {
+      toValue: target,
+      useNativeDriver: false,
+      tension: 120,
+      friction: 14,
+    }).start();
+  }, [heightAnim]);
+
+  const snapToNearest = useCallback((current: number) => {
+    const mid = (compactHeight + expandedHeight) / 2;
+    if (current >= mid) {
+      snapTo(expandedHeight, true);
+    } else {
+      snapTo(compactHeight, false);
+    }
+  }, [compactHeight, expandedHeight, snapTo]);
+
+  const toggleSheet = useCallback(() => {
+    if (isExpanded) {
+      snapTo(compactHeight, false);
+    } else {
+      snapTo(expandedHeight, true);
+    }
+  }, [compactHeight, expandedHeight, isExpanded, snapTo]);
+
+  useEffect(() => {
+    heightAnim.stopAnimation((current) => {
+      const mid = (compactHeight + expandedHeight) / 2;
+      const nextExpanded = current >= mid;
+      snapTo(nextExpanded ? expandedHeight : compactHeight, nextExpanded);
+    });
+  }, [compactHeight, expandedHeight, heightAnim, snapTo]);
+
+  const readPageY = useCallback((e: { nativeEvent: { pageY?: number; touches?: { pageY: number }[] } }) => {
+    const ne = e.nativeEvent;
+    if (typeof ne.pageY === 'number') return ne.pageY;
+    if (ne.touches?.length) return ne.touches[0].pageY;
+    return 0;
+  }, []);
+
+  const panResponder = useMemo(
+    () => PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gesture) =>
+        Math.abs(gesture.dy) > 4 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+      onPanResponderGrant: () => {
+        totalDragDy.current = 0;
+        heightAnim.stopAnimation((value) => {
+          dragStartHeight.current = value;
+        });
+      },
+      onPanResponderMove: (_, gesture) => {
+        totalDragDy.current = gesture.dy;
+        const next = clampSheetHeight(
+          dragStartHeight.current - gesture.dy,
+          compactHeight,
+          expandedHeight,
+        );
+        heightAnim.setValue(next);
+      },
+      onPanResponderRelease: () => {
+        if (Math.abs(totalDragDy.current) < 8) {
+          toggleSheet();
+          return;
+        }
+        heightAnim.stopAnimation((value) => {
+          snapToNearest(value);
+        });
+      },
+      onPanResponderTerminate: () => {
+        heightAnim.stopAnimation((value) => {
+          snapToNearest(value);
+        });
+      },
+    }),
+    [compactHeight, expandedHeight, heightAnim, snapToNearest, toggleSheet],
+  );
+
+  const webHandleGestures = useMemo(() => ({
+    onPointerDown: (e: { nativeEvent: { pageY?: number; touches?: { pageY: number }[] }; preventDefault?: () => void }) => {
+      isPointerDown.current = true;
+      pointerStartY.current = readPageY(e);
+      totalDragDy.current = 0;
+      heightAnim.stopAnimation((value) => {
+        dragStartHeight.current = value;
+      });
+    },
+    onPointerMove: (e: { nativeEvent: { pageY?: number; touches?: { pageY: number }[] }; preventDefault?: () => void }) => {
+      if (!isPointerDown.current) return;
+      const dy = readPageY(e) - pointerStartY.current;
+      totalDragDy.current = dy;
+      const next = clampSheetHeight(
+        dragStartHeight.current - dy,
+        compactHeight,
+        expandedHeight,
+      );
+      heightAnim.setValue(next);
+      e.preventDefault?.();
+    },
+    onPointerUp: () => {
+      if (!isPointerDown.current) return;
+      isPointerDown.current = false;
+      if (Math.abs(totalDragDy.current) < 8) {
+        toggleSheet();
+        return;
+      }
+      heightAnim.stopAnimation((value) => {
+        snapToNearest(value);
+      });
+    },
+    onPointerCancel: () => {
+      isPointerDown.current = false;
+      heightAnim.stopAnimation((value) => {
+        snapToNearest(value);
+      });
+    },
+  }), [compactHeight, expandedHeight, heightAnim, readPageY, snapToNearest, toggleSheet]);
+
   const peekTitle = props.jobs[0]?.title?.trim();
 
   return (
-    <View style={[styles.webSheet, { height: panelHeight + insets.bottom }]}>
-      <Pressable
-        style={styles.webHandle}
-        onPress={() => setExpanded((v) => !v)}
+    <Animated.View
+      style={[
+        styles.webSheet,
+        { height: Animated.add(heightAnim, insets.bottom) },
+      ]}
+    >
+      <View
+        style={[styles.webHandle, styles.webHandleDraggable]}
+        {...(Platform.OS === 'web' ? webHandleGestures : panResponder.panHandlers)}
       >
-        <SheetHandle jobCount={props.jobs.length} peekTitle={peekTitle} />
-      </Pressable>
-      {expanded || isEmpty || props.jobs.length > 0 ? (
-        <FlatList
-          data={props.jobs}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => props.renderJob(item)}
-          ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
-          showsVerticalScrollIndicator
-          contentContainerStyle={[
-            styles.listContent,
-            isEmpty && styles.listContentEmpty,
-          ]}
-          ListHeaderComponent={(
-            <View style={styles.listHeader}>
-              {props.listHeader}
-              {props.isLoading ? (
-                <View style={styles.loadingWrap}>
-                  <ActivityIndicator color={RADAR_DEEP_BLUE} />
-                </View>
-              ) : null}
-            </View>
-          )}
-          ListEmptyComponent={
-            !props.isLoading && props.emptyHint ? (
-              <View style={styles.sheetEmptyHint}>
-                <Text style={styles.sheetEmptyHintText}>{props.emptyHint}</Text>
-              </View>
-            ) : null
-          }
-          ListFooterComponent={
-            props.isFetchingNextPage
-              ? <ActivityIndicator color={RADAR_DEEP_BLUE} style={{ marginVertical: 16 }} />
-              : <View style={{ height: insets.bottom }} />
-          }
-          onEndReached={props.onEndReached}
-          onEndReachedThreshold={0.35}
+        <SheetHandle
+          jobCount={props.jobs.length}
+          peekTitle={peekTitle}
+          expanded={isExpanded}
         />
-      ) : null}
-    </View>
+      </View>
+      <FlatList
+        style={styles.webList}
+        data={props.jobs}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => props.renderJob(item)}
+        ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
+        showsVerticalScrollIndicator
+        contentContainerStyle={[
+          styles.listContent,
+          isEmpty && styles.listContentEmpty,
+        ]}
+        ListHeaderComponent={(
+          <View style={styles.listHeader}>
+            {props.listHeader}
+            {props.isLoading ? (
+              <View style={styles.loadingWrap}>
+                <ActivityIndicator color={RADAR_DEEP_BLUE} />
+              </View>
+            ) : null}
+          </View>
+        )}
+        ListEmptyComponent={
+          !props.isLoading && props.emptyHint ? (
+            <View style={styles.sheetEmptyHint}>
+              <Text style={styles.sheetEmptyHintText}>{props.emptyHint}</Text>
+            </View>
+          ) : null
+        }
+        ListFooterComponent={
+          props.isFetchingNextPage
+            ? <ActivityIndicator color={RADAR_DEEP_BLUE} style={{ marginVertical: 16 }} />
+            : <View style={{ height: insets.bottom }} />
+        }
+        onEndReached={props.onEndReached}
+        onEndReachedThreshold={0.35}
+      />
+    </Animated.View>
   );
 };
 
@@ -294,6 +467,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: '100%',
   },
+  handleHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+  },
+  handleHint: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: RADAR_MUTED,
+  },
   listHeader: {
     gap: 12,
     paddingBottom: 4,
@@ -340,5 +524,16 @@ const styles = StyleSheet.create({
   },
   webHandle: {
     width: '100%',
+  },
+  webHandleDraggable: Platform.select({
+    web: {
+      cursor: 'grab',
+      touchAction: 'none',
+      userSelect: 'none',
+    } as Record<string, string>,
+    default: {},
+  }),
+  webList: {
+    flex: 1,
   },
 });

@@ -36,6 +36,7 @@ import { mergeAssignments, patchLocalJobStatus, getLocalAssignments } from '@uti
 
 import { CONFIG } from '@constants/config';
 import { workerActiveCountKey } from '@features/jobs/hooks/useJobActiveLimits';
+import { WALLET_KEYS } from '@features/jobs/hooks/useWorkerWallet';
 import { fromDbJobCategory } from '@constants/chambaCategories';
 import { workerCoversJobCategory } from '@utils/workerCategoryAccess';
 import { syncProfileWithDatabase } from '@utils/profileSync';
@@ -482,6 +483,7 @@ export const useCompleteJob = () => {
       queryClient.invalidateQueries({ queryKey: JOB_KEYS.detail(jobId) });
       if (profile?.id) {
         queryClient.invalidateQueries({ queryKey: workerActiveCountKey(profile.id) });
+        queryClient.invalidateQueries({ queryKey: WALLET_KEYS.earnings(profile.id) });
       }
     },
   });

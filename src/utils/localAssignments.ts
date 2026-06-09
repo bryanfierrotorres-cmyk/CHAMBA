@@ -314,8 +314,8 @@ export const mergeAssignments = (
     });
   };
 
-  for (const a of remote) ingest(a);
   for (const a of local) ingest(a);
+  for (const a of remote) ingest(a);
 
   return Array.from(byJobId.values()).sort(
     (x, y) => new Date(y.assigned_at).getTime() - new Date(x.assigned_at).getTime(),
@@ -354,5 +354,9 @@ const STATUS_RANK: Record<JobStatus, number> = {
 };
 
 function preferStatus(a: JobStatus, b: JobStatus): JobStatus {
+  const aTerminal = a === 'completed' || a === 'cancelled';
+  const bTerminal = b === 'completed' || b === 'cancelled';
+  if (aTerminal && !bTerminal) return b;
+  if (bTerminal && !aTerminal) return a;
   return STATUS_RANK[b] >= STATUS_RANK[a] ? b : a;
 }

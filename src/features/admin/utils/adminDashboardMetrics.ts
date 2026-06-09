@@ -49,6 +49,14 @@ export const computeDashboardKpis = (jobs: AdminJob[]): DashboardKpis => {
   };
 };
 
+export const getOpenJobsForModeration = (jobs: AdminJob[]): AdminJob[] =>
+  jobs
+    .filter((j) => j.status === 'open')
+    .sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+
 export const getRadarJobs = (jobs: AdminJob[]): AdminJob[] =>
   jobs.filter((j) => j.status === 'taken' || j.status === 'in_progress');
 

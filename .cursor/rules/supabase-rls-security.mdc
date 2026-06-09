@@ -1,0 +1,59 @@
+---
+description: Reglas de seguridad Supabase RLS — sin atajos que debiliten producción
+globs: supabase/**,scripts/apply-*.mjs,scripts/*migration*
+alwaysApply: true
+---
+
+# Seguridad Supabase (RLS)
+
+## Prohibido
+
+1. **`SECURITY DEFINER` + `SET row_security = off`** para “arreglar” fallos de acceso. No desactivar RLS en funciones como solución permanente.
+2. **Saltarse RLS** (bypass, grants amplios, políticas `USING (true)`) en tablas con datos de usuarios, servicios o chat.
+3. **Atajos en el cliente** que envíen `remitente_id` distinto de `auth.uid()` cuando exista sesión Auth válida.
+
+## Si falla RLS
+
+La solución **siempre** es una de estas (en este orden):
+
+1. **Verificar autenticación en el cliente**: tras login por teléfono, debe existir sesión Supabase Auth para que `auth.uid()` no sea null (`ensurePhoneAuthSession`, OTP, o registro Auth con el mismo `id` que `profiles`).
+2. **Ajustar la política (POLICY)** para reflejar la regla de negocio con `auth.uid()` — nunca debilitar la tabla.
+3. **RPC `SECURITY DEFINER`** solo si encapsula lógica de negocio compleja; **sin** `row_security = off` en producción.
+
+## Tablas sensibles
+
+`profiles`, `jobs`, `job_assignments`, `mensajes` y similares: **RLS habilitado y activo en producción**.
+
+## Chat (`mensajes`) — estado actual vs objetivo
+
+**Desarrollo (temporal):** migración `025_mensajes_rls_fix.sql` usa `row_security = off` en RPC de chat para probar UI con login piloto sin JWT consistente.
+
+**Próximo sprint (objetivo definitivo):**
+
+1. Sincronizar login por teléfono con **Supabase Auth** (token/sesión oficial; `auth.uid() === profiles.id`).
+2. Revertir el bypass de RLS en RPC de chat.
+3. Política estándar nativa, por ejemplo:
+
+```sql
+CREATE POLICY mensajes_insert_participant ON mensajes
+  FOR INSERT
+  WITH CHECK (
+    auth.uid() = remitente_id
+    AND EXISTS (
+      SELECT 1 FROM jobs j
+      WHERE j.id = servicio_id
+        AND j.status IN ('taken', 'in_progress')
+        AND (
+          j.created_by = auth.uid()
+          OR j.assigned_worker_id = auth.uid()
+        )
+    )
+  );
+```
+
+(Ajustar nombres de columnas al esquema CHAMBA: `servicio_id` → `jobs.id`, `created_by` / `assigned_worker_id`.)
+
+## Referencia en app
+
+- `src/utils/phoneAuthSession.ts` — sincronización Auth para RLS.
+- `npm run db:sync-chat` — migraciones chat 023–025 (025 es deuda técnica).

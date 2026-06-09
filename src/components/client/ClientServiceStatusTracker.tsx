@@ -13,6 +13,7 @@ import type { ClientOrderJob } from '@/types';
 
 interface Props {
   job: Pick<ClientOrderJob, 'status' | 'operational_phase'>;
+  pendingApplicationsCount?: number;
 }
 
 const StepNode: React.FC<{ state: StepVisualState; label: string }> = ({ state, label }) => {
@@ -56,17 +57,29 @@ const Connector: React.FC<{ filled: boolean }> = ({ filled }) => (
   <View style={[styles.connector, filled && styles.connectorFilled]} />
 );
 
-export const ClientServiceStatusTracker: React.FC<Props> = ({ job }) => {
+export const ClientServiceStatusTracker: React.FC<Props> = ({
+  job,
+  pendingApplicationsCount = 0,
+}) => {
   const phase = resolveOperationalPhase(job);
   const headline = getClientOrderStatusLabel(job.status, job.operational_phase);
 
   if (job.status === 'open') {
+    const hasApplicants = pendingApplicationsCount > 0;
     return (
       <View style={styles.openBanner}>
         <Ionicons name="people-outline" size={22} color={CHAMBA.blue} />
         <View style={styles.openTextWrap}>
-          <Text style={styles.openTitle}>Esperando tu elección</Text>
-          <Text style={styles.openSub}>Revisá las postulaciones y elegí a tu técnico</Text>
+          <Text style={styles.openTitle}>
+            {hasApplicants
+              ? `${pendingApplicationsCount} técnico${pendingApplicationsCount === 1 ? '' : 's'} postularon`
+              : 'Esperando postulaciones'}
+          </Text>
+          <Text style={styles.openSub}>
+            {hasApplicants
+              ? 'Revisá los perfiles abajo y elegí a tu técnico'
+              : 'Te avisamos en cuanto un técnico se postule'}
+          </Text>
         </View>
       </View>
     );

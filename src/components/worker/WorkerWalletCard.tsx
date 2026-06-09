@@ -34,13 +34,12 @@ export const WorkerWalletCard: React.FC<WorkerWalletCardProps> = ({
   summary,
   breakdownOnly = false,
 }) => {
-  const hasActivity =
-    summary.totalPaid > 0
-    || summary.pendingPayout > 0
+  const hasBreakdown =
+    summary.pendingPayout > 0
     || summary.processingPayout > 0
-    || summary.inProgressEstimate > 0;
+    || summary.paidOut > 0;
 
-  if (breakdownOnly && !hasActivity) {
+  if (breakdownOnly && !hasBreakdown) {
     return null;
   }
 
@@ -54,25 +53,31 @@ export const WorkerWalletCard: React.FC<WorkerWalletCardProps> = ({
             </View>
             <View style={styles.headerText}>
               <Text style={styles.eyebrow}>Billetera CHAMBA</Text>
-              <Text style={styles.totalLabel}>Total recibido</Text>
+              <Text style={styles.totalLabel}>Saldo disponible</Text>
             </View>
           </View>
 
-          <Text style={styles.totalAmount}>{formatCurrency(summary.totalPaid)}</Text>
+          <Text style={styles.totalAmount}>{formatCurrency(summary.totalAvailable)}</Text>
           <Text style={styles.totalHint}>
-            {summary.paidCount > 0
-              ? `${summary.paidCount} pago${summary.paidCount === 1 ? '' : 's'} acreditado${summary.paidCount === 1 ? '' : 's'}`
-              : 'Tus pagos aparecerán aquí al completar chambas'}
+            {summary.completedCount > 0
+              ? `${summary.completedCount} servicio${summary.completedCount === 1 ? '' : 's'} completado${summary.completedCount === 1 ? '' : 's'}`
+              : 'Tus ganancias aparecerán aquí al completar chambas'}
           </Text>
         </>
       )}
 
-      {breakdownOnly && hasActivity && (
+      {breakdownOnly && hasBreakdown && (
         <Text style={styles.breakdownTitle}>Desglose de saldo</Text>
       )}
 
-      {hasActivity && (
+      {hasBreakdown && (
         <View style={[styles.breakdown, breakdownOnly && styles.breakdownStandalone]}>
+          {summary.paidOut > 0 && (
+            <WalletLine
+              label="Transferido"
+              value={formatCurrency(summary.paidOut)}
+            />
+          )}
           {summary.pendingPayout > 0 && (
             <WalletLine
               label="Pendiente de acreditar"
@@ -84,13 +89,6 @@ export const WorkerWalletCard: React.FC<WorkerWalletCardProps> = ({
             <WalletLine
               label="En proceso de pago"
               value={formatCurrency(summary.processingPayout)}
-            />
-          )}
-          {summary.inProgressEstimate > 0 && (
-            <WalletLine
-              label="Estimado en curso"
-              value={formatCurrency(summary.inProgressEstimate)}
-              tone="muted"
             />
           )}
         </View>

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -17,8 +17,8 @@ import { summarizeWorkerTrust } from '@utils/workerTrustSummary';
 import {
   clientApproveWorkerApplication,
   clientRejectWorkerApplication,
-  fetchJobWorkerApplications,
 } from '@features/client/services/clientJobSelectionService';
+import { useJobWorkerApplications } from '@features/client/hooks/useJobWorkerApplications';
 import type { JobWorkerApplication } from '@/types';
 
 interface ClientJobApplicantPanelProps {
@@ -34,28 +34,15 @@ export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = (
   jobStatus,
   onDecision,
 }) => {
-  const [apps, setApps] = useState<JobWorkerApplication[]>([]);
-  const [loading, setLoading] = useState(true);
+  const enabled = jobStatus === 'open';
+  const {
+    data: apps = [],
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useJobWorkerApplications(jobId, clientId, enabled);
   const [actingId, setActingId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const rows = await fetchJobWorkerApplications(jobId, clientId);
-      setApps(rows);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Error al cargar técnicos');
-      setApps([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [jobId, clientId]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const error = queryError instanceof Error ? queryError.message : null;
 
   const pending = apps.filter((a) => a.selection_status === 'pending');
   const canChoose = jobStatus === 'open' && pending.length > 0;
@@ -78,7 +65,7 @@ export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = (
     try {
       await clientApproveWorkerApplication(jobId, clientId, app.worker_id);
       onDecision?.();
-      await load();
+      await refetch();
     } catch (err: unknown) {
       const text = err instanceof Error ? err.message : 'No se pudo aprobar';
       if (Platform.OS === 'web') window.alert(text);
@@ -92,7 +79,7 @@ export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = (
     setActingId(app.worker_id);
     try {
       await clientRejectWorkerApplication(jobId, clientId, app.worker_id);
-      await load();
+      await refetch();
       onDecision?.();
     } catch (err: unknown) {
       const text = err instanceof Error ? err.message : 'No se pudo rechazar';
@@ -116,7 +103,7 @@ export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = (
     return (
       <View style={styles.box}>
         <Text style={styles.error}>{error}</Text>
-        <TouchableOpacity onPress={() => void load()}>
+        <TouchableOpacity onPress={() => void refetch()}>
           <Text style={styles.retry}>Reintentar</Text>
         </TouchableOpacity>
       </View>

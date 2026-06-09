@@ -1,53 +1,45 @@
-import type { JobAssignment } from '@/types';
+import type { WorkerWalletEarning } from '@features/jobs/services/workerWalletService';
 
 export interface WorkerWalletSummary {
-  /** Pagos acreditados (payment_status = paid). */
-  totalPaid: number;
-  /** Completadas, pago aún no acreditado. */
+  /** Suma de worker_payout en trabajos completados. */
+  totalAvailable: number;
+  /** Completadas con pago pendiente de acreditar. */
   pendingPayout: number;
   /** En proceso de transferencia. */
   processingPayout: number;
-  /** Chambas en curso (estimado a cobrar). */
-  inProgressEstimate: number;
+  /** Ya transferido al técnico (payment_status = paid). */
+  paidOut: number;
   completedCount: number;
-  paidCount: number;
 }
 
 export function computeWorkerWalletSummary(
-  assignments: JobAssignment[],
+  earnings: WorkerWalletEarning[],
 ): WorkerWalletSummary {
-  let totalPaid = 0;
+  let totalAvailable = 0;
   let pendingPayout = 0;
   let processingPayout = 0;
-  let inProgressEstimate = 0;
-  let completedCount = 0;
-  let paidCount = 0;
+  let paidOut = 0;
 
-  for (const assignment of assignments) {
-    const payout = assignment.job?.worker_payout ?? 0;
-    const status = assignment.job?.status;
+  for (const earning of earnings) {
+    const payout = earning.workerPayout;
+    if (payout <= 0) continue;
 
-    if (status === 'completed') {
-      completedCount += 1;
-      if (assignment.payment_status === 'paid') {
-        totalPaid += payout;
-        paidCount += 1;
-      } else if (assignment.payment_status === 'processing') {
-        processingPayout += payout;
-      } else if (assignment.payment_status !== 'failed') {
-        pendingPayout += payout;
-      }
-    } else if (status === 'taken' || status === 'in_progress') {
-      inProgressEstimate += payout;
+    totalAvailable += payout;
+
+    if (earning.paymentStatus === 'paid') {
+      paidOut += payout;
+    } else if (earning.paymentStatus === 'processing') {
+      processingPayout += payout;
+    } else if (earning.paymentStatus !== 'failed') {
+      pendingPayout += payout;
     }
   }
 
   return {
-    totalPaid,
+    totalAvailable,
     pendingPayout,
     processingPayout,
-    inProgressEstimate,
-    completedCount,
-    paidCount,
+    paidOut,
+    completedCount: earnings.filter((e) => e.workerPayout > 0).length,
   };
 }

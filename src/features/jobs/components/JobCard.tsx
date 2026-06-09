@@ -35,6 +35,7 @@ interface JobCardProps {
   awaitingClientChoice?: boolean;
   acceptBlocked?: boolean;
   acceptBlockedMessage?: string;
+  showDismissHint?: boolean;
 }
 
 const DetailRow: React.FC<{
@@ -60,6 +61,7 @@ export const JobCard: React.FC<JobCardProps> = ({
   awaitingClientChoice = false,
   acceptBlocked = false,
   acceptBlockedMessage,
+  showDismissHint = false,
 }) => {
   const hasClientPhoto = jobHasRequestPhoto(job);
   const urgencyLevel = normalizeUrgencyLevel(job.urgency_level);
@@ -92,6 +94,12 @@ export const JobCard: React.FC<JobCardProps> = ({
 
   return (
     <View style={styles.card}>
+      {showDismissHint ? (
+        <View style={styles.dismissHintRow} pointerEvents="none">
+          <Ionicons name="chevron-back" size={12} color="#9CA3AF" />
+          <Text style={styles.dismissHintText}>Deslizá a la izquierda para apartar</Text>
+        </View>
+      ) : null}
       <ChambaPressable onPress={onPress} style={styles.cardBody}>
         <View style={styles.headerRow}>
           <CategoryIconCircle category={job.category} size={44} />
@@ -192,6 +200,21 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     marginBottom: SPACING.sm + 4,
     overflow: 'hidden',
+  },
+  dismissHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingTop: 8,
+    paddingBottom: 2,
+    paddingHorizontal: 12,
+  },
+  dismissHintText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#9CA3AF',
+    letterSpacing: 0.1,
   },
   cardBody: {
     padding: 16,

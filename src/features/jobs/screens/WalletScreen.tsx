@@ -15,20 +15,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WorkerTopBar } from '@components/worker/WorkerTopBar';
 import { WorkerWalletCard } from '@components/worker/WorkerWalletCard';
 import { ChambaSlidingToggle } from '@components/chamba/ChambaSlidingToggle';
-import { EmptyState } from '@components/EmptyState';
-import { useMyJobs } from '../hooks/useJobs';
-import { useAssignmentsStore } from '@store/assignmentsStore';
+import { useWorkerWallet } from '../hooks/useWorkerWallet';
 import { useAuthStore } from '@store/authStore';
 import { CHAMBA, CARD_STEP_SHADOW } from '@constants/chambaUI';
 import { M3, SPACING } from '@constants/stitchStyles';
 import { formatCurrency, formatDate, getCategoryLabel } from '@utils/formatters';
 import { computeWorkerWalletSummary } from '@utils/workerWalletSummary';
 import {
+  buildWorkerWalletChartSeries,
   buildWorkerWalletTransactions,
-  getWalletChartSeriesOrPlaceholder,
+  resolveEarningDate,
   type WalletChartPeriod,
 } from '@utils/workerWalletChartData';
-import type { JobAssignment } from '@/types';
+import type { WorkerWalletEarning } from '../services/workerWalletService';
 
 const PERIOD_TABS = [
   { id: 'day' as const, label: 'Día' },
@@ -37,35 +36,35 @@ const PERIOD_TABS = [
 ];
 
 const CHART_HEIGHT = 220;
+const EMPTY_EARNINGS_MESSAGE =
+  'Aún no tienes ganancias registradas. ¡Empieza a aceptar chambas para ver tu saldo!';
 
 export const WalletScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const profile = useAuthStore((s) => s.profile);
-  const refreshStore = useAssignmentsStore((s) => s.refresh);
   const {
-    data,
+    data: earnings = [],
     isLoading,
     isRefetching,
     refetch,
     error,
-  } = useMyJobs();
-  const assignments: JobAssignment[] = data ?? [];
+  } = useWorkerWallet();
   const [period, setPeriod] = useState<WalletChartPeriod>('week');
 
   const walletSummary = useMemo(
-    () => computeWorkerWalletSummary(assignments),
-    [assignments],
+    () => computeWorkerWalletSummary(earnings),
+    [earnings],
   );
 
   const chartSeries = useMemo(
-    () => getWalletChartSeriesOrPlaceholder(assignments, period),
-    [assignments, period],
+    () => buildWorkerWalletChartSeries(earnings, period),
+    [earnings, period],
   );
 
   const transactions = useMemo(
-    () => buildWorkerWalletTransactions(assignments),
-    [assignments],
+    () => buildWorkerWalletTransactions(earnings),
+    [earnings],
   );
 
   const chartWidth = Math.max(windowWidth - SPACING.md * 2 - 36, 280);
@@ -100,10 +99,12 @@ export const WalletScreen: React.FC = () => {
   useFocusEffect(
     useCallback(() => {
       if (profile?.id) {
-        void refreshStore(profile.id);
+        void refetch();
       }
-    }, [refreshStore, profile?.id]),
+    }, [refetch, profile?.id]),
   );
+
+  const isEmpty = !isLoading && earnings.length === 0;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -119,12 +120,16 @@ export const WalletScreen: React.FC = () => {
         <View style={styles.header}>
           <Text style={styles.headerEyebrow}>Billetera</Text>
           <Text style={styles.headerTitle}>Tu saldo CHAMBA</Text>
-          <Text style={styles.balanceLabel}>Saldo total acreditado</Text>
-          <Text style={styles.balanceAmount}>{formatCurrency(walletSummary.totalPaid)}</Text>
+          <Text style={styles.balanceLabel}>Saldo disponible</Text>
+          {isLoading ? (
+            <ActivityIndicator size="small" color={M3.primary} style={styles.balanceLoader} />
+          ) : (
+            <Text style={styles.balanceAmount}>{formatCurrency(walletSummary.totalAvailable)}</Text>
+          )}
           <Text style={styles.balanceHint}>
-            {walletSummary.paidCount > 0
-              ? `${walletSummary.paidCount} pago${walletSummary.paidCount === 1 ? '' : 's'} confirmado${walletSummary.paidCount === 1 ? '' : 's'}`
-              : 'Completa chambas para ver ingresos acreditados'}
+            {walletSummary.completedCount > 0
+              ? `${walletSummary.completedCount} servicio${walletSummary.completedCount === 1 ? '' : 's'} completado${walletSummary.completedCount === 1 ? '' : 's'}`
+              : 'Completa chambas para ver tus ganancias'}
           </Text>
         </View>
 
@@ -150,20 +155,13 @@ export const WalletScreen: React.FC = () => {
                 style={styles.periodToggle}
               />
 
-              {!chartSeries.hasRealData && (
-                <View style={styles.chartPlaceholderBanner}>
-                  <Ionicons name="analytics-outline" size={18} color={CHAMBA.muted} />
-                  <Text style={styles.chartPlaceholderText}>
-                    Aún no hay suficientes pagos para mostrar tendencia real
-                  </Text>
-                </View>
-              )}
-
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <LineChart
                   data={{
                     labels: chartSeries.labels,
-                    datasets: [{ data: chartSeries.values.length > 0 ? chartSeries.values : [0] }],
+                    datasets: [{
+                      data: chartSeries.values.length > 0 ? chartSeries.values : [0],
+                    }],
                   }}
                   width={Math.max(chartWidth, chartSeries.labels.length * 52)}
                   height={CHART_HEIGHT}
@@ -182,15 +180,14 @@ export const WalletScreen: React.FC = () => {
 
             <View style={styles.transactionsSection}>
               <Text style={styles.sectionTitle}>Histórico de transacciones</Text>
-              {transactions.length === 0 ? (
-                <EmptyState
-                  icon="wallet-outline"
-                  title="Sin transacciones aún"
-                  subtitle="Los pagos acreditados de tus chambas completadas aparecerán aquí."
-                />
+              {isEmpty || transactions.length === 0 ? (
+                <View style={styles.emptyTransactions}>
+                  <Ionicons name="wallet-outline" size={28} color={CHAMBA.muted} />
+                  <Text style={styles.emptyTransactionsText}>{EMPTY_EARNINGS_MESSAGE}</Text>
+                </View>
               ) : (
                 transactions.map((item) => (
-                  <TransactionRow key={item.id} assignment={item} />
+                  <TransactionRow key={item.id} earning={item} />
                 ))
               )}
             </View>
@@ -201,13 +198,9 @@ export const WalletScreen: React.FC = () => {
   );
 };
 
-const TransactionRow: React.FC<{ assignment: JobAssignment }> = ({ assignment }) => {
-  const job = assignment.job;
-  const title = job?.title ?? `Trabajo ${assignment.job_id.slice(0, 8)}`;
-  const subtitle = job?.category
-    ? getCategoryLabel(job.category)
-    : 'Servicio completado';
-  const paidAt = assignment.completed_at ?? assignment.assigned_at;
+const TransactionRow: React.FC<{ earning: WorkerWalletEarning }> = ({ earning }) => {
+  const paidAt = resolveEarningDate(earning);
+  const subtitle = getCategoryLabel(earning.category);
 
   return (
     <View style={styles.transactionRow}>
@@ -215,13 +208,13 @@ const TransactionRow: React.FC<{ assignment: JobAssignment }> = ({ assignment })
         <Ionicons name="checkmark-circle" size={20} color={CHAMBA.primary} />
       </View>
       <View style={styles.transactionContent}>
-        <Text style={styles.transactionTitle} numberOfLines={1}>{title}</Text>
+        <Text style={styles.transactionTitle} numberOfLines={1}>{earning.title}</Text>
         <Text style={styles.transactionSubtitle}>
-          {subtitle} · {formatDate(paidAt)}
+          {subtitle}{paidAt ? ` · ${formatDate(paidAt.toISOString())}` : ''}
         </Text>
       </View>
       <Text style={styles.transactionAmount}>
-        +{formatCurrency(job?.worker_payout ?? 0)}
+        +{formatCurrency(earning.workerPayout)}
       </Text>
     </View>
   );
@@ -254,6 +247,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: CHAMBA.muted,
     fontWeight: '500',
+  },
+  balanceLoader: {
+    alignSelf: 'flex-start',
+    marginTop: 8,
   },
   balanceAmount: {
     fontSize: 40,
@@ -296,28 +293,29 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   periodToggle: { marginBottom: 12 },
-  chartPlaceholderBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 8,
-  },
-  chartPlaceholderText: {
-    flex: 1,
-    fontSize: 12,
-    color: CHAMBA.muted,
-    lineHeight: 17,
-  },
   chart: {
     marginLeft: -8,
     borderRadius: 12,
   },
   transactionsSection: {
     marginTop: 18,
+  },
+  emptyTransactions: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    backgroundColor: CHAMBA.white,
+    borderRadius: 14,
+    gap: 10,
+    ...CARD_STEP_SHADOW,
+  },
+  emptyTransactionsText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: CHAMBA.muted,
+    textAlign: 'center',
+    lineHeight: 19,
   },
   transactionRow: {
     flexDirection: 'row',

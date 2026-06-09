@@ -21,6 +21,7 @@ import type { ClientOrderJob } from '@/types';
 
 interface Props {
   job: ClientOrderJob;
+  pendingApplicationsCount?: number;
   onOpenChat?: (jobId: string, readOnly: boolean) => void;
   onPressCompleted?: (jobId: string) => void;
 }
@@ -38,6 +39,7 @@ const callWorker = (phone: string | null | undefined) => {
 
 export const ClientActiveServiceCard: React.FC<Props> = ({
   job,
+  pendingApplicationsCount = 0,
   onOpenChat,
   onPressCompleted,
 }) => {
@@ -76,7 +78,10 @@ export const ClientActiveServiceCard: React.FC<Props> = ({
 
       {/* Tracker de estado */}
       <View style={styles.trackerSection}>
-        <ClientServiceStatusTracker job={job} />
+        <ClientServiceStatusTracker
+          job={job}
+          pendingApplicationsCount={pendingApplicationsCount}
+        />
       </View>
 
       {/* Técnico asignado + contacto */}

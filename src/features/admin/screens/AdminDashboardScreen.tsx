@@ -16,6 +16,7 @@ import { useCatalog } from '@features/catalog/hooks/useCatalog';
 import { fetchAdminJobs, type AdminJob } from '../services/adminService';
 import {
   computeDashboardKpis,
+  getOpenJobsForModeration,
   getRadarJobs,
   getJobElapsedHours,
   isRadarAlert,
@@ -73,6 +74,7 @@ export const AdminDashboardScreen: React.FC = () => {
   const jobs: AdminJob[] = data ?? [];
 
   const kpis = useMemo(() => computeDashboardKpis(jobs), [jobs]);
+  const openJobs = useMemo(() => getOpenJobsForModeration(jobs), [jobs]);
   const radarJobs = useMemo(() => getRadarJobs(jobs), [jobs]);
   const alertCount = useMemo(
     () => radarJobs.filter(isRadarAlert).length,
@@ -120,6 +122,31 @@ export const AdminDashboardScreen: React.FC = () => {
         </View>
         <TopServicesCard items={kpis.topServices} getLabel={getLabel} />
       </View>
+
+      <View style={styles.moderationHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={[chambaStyles.sectionTitle, { marginBottom: 4 }]}>
+            Moderación
+          </Text>
+          <Text style={styles.radarSub}>
+            {openJobs.length} solicitud{openJobs.length === 1 ? '' : 'es'} abierta{openJobs.length === 1 ? '' : 's'} — retira spam o errores antes de que un técnico postule
+          </Text>
+        </View>
+      </View>
+
+      {openJobs.length === 0 ? (
+        <View style={styles.moderationEmpty}>
+          <Text style={styles.moderationEmptyText}>No hay solicitudes abiertas pendientes de moderación</Text>
+        </View>
+      ) : (
+        openJobs.slice(0, 8).map((job) => (
+          <OpenJobModerationCard
+            key={job.id}
+            job={job}
+            onPress={() => navigation.navigate('JobDetail', { jobId: job.id })}
+          />
+        ))
+      )}
 
       <View style={styles.radarHeader}>
         <View style={{ flex: 1 }}>
@@ -184,6 +211,38 @@ export const AdminDashboardScreen: React.FC = () => {
         ListEmptyComponent={listEmpty}
       />
     </SafeAreaView>
+  );
+};
+
+const OpenJobModerationCard: React.FC<{ job: AdminJob; onPress: () => void }> = ({ job, onPress }) => {
+  const creatorName = job.creator?.full_name?.trim() || 'Cliente';
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.88}
+      style={styles.openJobCard}
+    >
+      <View style={styles.openJobMain}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.radarTitle} numberOfLines={2}>{job.title}</Text>
+          <Text style={styles.radarMeta}>
+            {getCategoryLabel(job.category)} · {formatRelativeTime(job.created_at)}
+          </Text>
+          <Text style={styles.radarPay}>{formatCurrency(job.pay_amount)}</Text>
+          <Text style={styles.radarWorker} numberOfLines={1}>
+            Cliente: {creatorName}
+          </Text>
+        </View>
+        <View style={styles.radarRight}>
+          <StatusBadge status={job.status} size="sm" />
+          <View style={styles.openJobPill}>
+            <Ionicons name="shield-outline" size={12} color={CHAMBA.blue} />
+            <Text style={styles.openJobPillText}>Revisar</Text>
+          </View>
+        </View>
+      </View>
+    </TouchableOpacity>
   );
 };
 
@@ -300,6 +359,53 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: CHAMBA.muted,
+  },
+  moderationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 8,
+  },
+  moderationEmpty: {
+    backgroundColor: CHAMBA.white,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 8,
+    ...CARD_STEP_SHADOW,
+  },
+  moderationEmptyText: {
+    fontSize: 13,
+    color: CHAMBA.muted,
+    textAlign: 'center',
+  },
+  openJobCard: {
+    backgroundColor: CHAMBA.white,
+    borderRadius: 18,
+    marginBottom: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+    ...CARD_STEP_SHADOW,
+  },
+  openJobMain: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 16,
+    gap: 12,
+  },
+  openJobPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  openJobPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: CHAMBA.blue,
   },
   radarHeader: {
     flexDirection: 'row',

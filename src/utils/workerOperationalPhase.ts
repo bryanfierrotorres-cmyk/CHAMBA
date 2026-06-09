@@ -1,4 +1,5 @@
-import type { Job, JobStatus, WorkerOperationalPhase } from '@/types';
+import type { Job, JobStatus, WorkerOperationalPhase, JobAssignment } from '@/types';
+import { isWorkerCommitmentActive, isWorkerPendingClientSelection } from '@utils/jobActiveLimits';
 
 export const OPERATIONAL_STEPS: {
   phase: WorkerOperationalPhase;
@@ -46,6 +47,25 @@ export const isWorkerAssignmentHistory = (job?: Partial<Job> | null): boolean =>
   const status = job?.status;
   return status === 'completed' || status === 'cancelled';
 };
+
+/** Asignación visible en Agenda → Activas (en curso o postulación pendiente). */
+export const isWorkerAgendaActive = (row: JobAssignment): boolean => {
+  const status = row.job?.status;
+  if (status === 'completed' || status === 'cancelled') {
+    const phase = row.job?.operational_phase;
+    if (status === 'completed' && phase && phase !== 'completed') {
+      return true;
+    }
+    return false;
+  }
+  if (status === 'taken' || status === 'in_progress') return true;
+  if (isWorkerCommitmentActive(row) || isWorkerAssignmentActive(row.job)) return true;
+  return isWorkerPendingClientSelection(row);
+};
+
+/** Historial solo si el servicio terminó de verdad. */
+export const isWorkerAgendaHistory = (row: JobAssignment): boolean =>
+  isWorkerAssignmentHistory(row.job) && !isWorkerAgendaActive(row);
 
 export const getNextOperationalPhase = (
   current: WorkerOperationalPhase,

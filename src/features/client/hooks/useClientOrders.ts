@@ -7,13 +7,9 @@ export const clientOrdersQueryKey = (clientId: string) => ['client-orders', clie
 
 const ACTIVE_CLIENT_STATUSES = new Set<JobStatus>(['open', 'taken', 'in_progress']);
 
-/** True si hay solicitudes activas que pueden cambiar de fase (técnico en camino, etc.). */
+/** True si hay solicitudes que pueden cambiar (postulaciones, fases, etc.). */
 export const clientOrdersNeedLivePoll = (jobs: ClientOrderJob[] | undefined): boolean =>
-  !!jobs?.some(
-    (j) =>
-      ACTIVE_CLIENT_STATUSES.has(j.status)
-      && (j.status === 'taken' || j.status === 'in_progress' || !!j.assigned_worker_id),
-  );
+  !!jobs?.some((j) => ACTIVE_CLIENT_STATUSES.has(j.status));
 
 type JobStatusPatch = {
   id: string;
@@ -58,7 +54,7 @@ export function useClientOrders() {
     enabled: !!profile?.id && profile.role === 'client',
     staleTime: 4_000,
     refetchInterval: (query) =>
-      clientOrdersNeedLivePoll(query.state.data) ? 8_000 : false,
+      clientOrdersNeedLivePoll(query.state.data) ? 5_000 : false,
     refetchIntervalInBackground: true,
   });
 }

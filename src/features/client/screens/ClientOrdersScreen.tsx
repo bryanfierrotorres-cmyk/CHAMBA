@@ -18,8 +18,14 @@ import { useAuthStore } from '@store/authStore';
 import { useClientOrders } from '@features/client/hooks/useClientOrders';
 import { WorkerRatingPrompt } from '@components/reviews/WorkerRatingPrompt';
 import { ClientJobApplicantPanel } from '@components/client/ClientJobApplicantPanel';
+import { useJobWorkerApplications } from '@features/client/hooks/useJobWorkerApplications';
 import { CARD_STEP_SHADOW } from '@constants/chambaUI';
-import type { ClientOrderJob, JobStatus, ClientOrdersStackParamList } from '@/types';
+import {
+  isClientOrderActive,
+  isClientOrderHistory,
+  isClientOrderPending,
+} from '@utils/clientOrderClassification';
+import type { ClientOrderJob, ClientOrdersStackParamList } from '@/types';
 
 type OrdersNav = NativeStackNavigationProp<ClientOrdersStackParamList, 'ClientOrdersList'>;
 
@@ -30,10 +36,6 @@ const ORDER_FILTER_TABS = [
   { id: 'activas' as const, label: 'Activas' },
   { id: 'historial' as const, label: 'Historial' },
 ];
-
-const PENDING_STATUSES = new Set<JobStatus>(['open']);
-const ACTIVE_STATUSES = new Set<JobStatus>(['taken', 'in_progress']);
-const HISTORY_STATUSES = new Set<JobStatus>(['completed', 'cancelled']);
 
 const EMPTY_COPY: Record<OrderFilter, { title: string; subtitle: string }> = {
   pendientes: {
@@ -52,12 +54,12 @@ const EMPTY_COPY: Record<OrderFilter, { title: string; subtitle: string }> = {
 
 const filterClientOrders = (jobs: ClientOrderJob[], filter: OrderFilter): ClientOrderJob[] => {
   if (filter === 'pendientes') {
-    return jobs.filter((j) => PENDING_STATUSES.has(j.status));
+    return jobs.filter((j) => isClientOrderPending(j));
   }
   if (filter === 'activas') {
-    return jobs.filter((j) => ACTIVE_STATUSES.has(j.status));
+    return jobs.filter((j) => isClientOrderActive(j));
   }
-  return jobs.filter((j) => HISTORY_STATUSES.has(j.status));
+  return jobs.filter((j) => isClientOrderHistory(j));
 };
 
 /** Calificación solo cuando el servicio está finalizado. */
@@ -94,26 +96,34 @@ interface OrderCardProps {
 
 const OrderCard: React.FC<OrderCardProps> = ({
   job, clientId, clientName, onOpenCompleted, onApplicantDecision, onOpenChat,
-}) => (
-  <View style={styles.orderWrap}>
-    <ClientActiveServiceCard
-      job={job}
-      onOpenChat={onOpenChat}
-      onPressCompleted={onOpenCompleted}
-    />
+}) => {
+  const ownerClientId = job.created_by || clientId;
+  const isOpen = job.status === 'open';
+  const { data: apps = [] } = useJobWorkerApplications(job.id, ownerClientId, isOpen);
+  const pendingCount = apps.filter((a) => a.selection_status === 'pending').length;
 
-    {job.status === 'open' && (
-      <ClientJobApplicantPanel
-        jobId={job.id}
-        clientId={clientId}
-        jobStatus={job.status}
-        onDecision={onApplicantDecision}
+  return (
+    <View style={styles.orderWrap}>
+      <ClientActiveServiceCard
+        job={job}
+        pendingApplicationsCount={pendingCount}
+        onOpenChat={onOpenChat}
+        onPressCompleted={onOpenCompleted}
       />
-    )}
 
-    <ClientOrderReview job={job} clientId={clientId} clientName={clientName} />
-  </View>
-);
+      {isOpen && (
+        <ClientJobApplicantPanel
+          jobId={job.id}
+          clientId={ownerClientId}
+          jobStatus={job.status}
+          onDecision={onApplicantDecision}
+        />
+      )}
+
+      <ClientOrderReview job={job} clientId={clientId} clientName={clientName} />
+    </View>
+  );
+};
 
 export const ClientOrdersScreen: React.FC = () => {
   const navigation = useNavigation<OrdersNav>();

@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { CompactJobCard } from '@components/worker/radar/CompactJobCard';
+import { SwipeableRadarJobCard } from '@components/worker/radar/SwipeableRadarJobCard';
 import { RADAR_BORDER, RADAR_DEEP_BLUE, RADAR_MUTED } from '@components/worker/radar/radarTheme';
 import { RadarFullMap } from '@components/worker/radar/RadarFullMap';
 import { FloatingRadarHeader } from '@components/worker/radar/FloatingRadarHeader';
@@ -98,20 +99,28 @@ const FeedItem: React.FC<FeedItemProps> = ({
   job, isApproved, acceptingJobId, acceptedJobIds, processJobIds, awaitingClientChoice,
   acceptBlocked,
   onPressDetail, onAccept, onDismiss, canDismiss,
-}) => (
-  <CompactJobCard
-    job={job}
-    onPressDetail={onPressDetail}
-    onDismiss={() => onDismiss(job)}
-    onAccept={() => onAccept(job)}
-    canDismiss={canDismiss}
-    canAccept={isApproved && !awaitingClientChoice}
-    isAccepting={acceptingJobId === job.id}
-    awaitingClientChoice={awaitingClientChoice}
-    isAccepted={acceptedJobIds.has(job.id) && !processJobIds.has(job.id)}
-    acceptBlocked={acceptBlocked}
-  />
-);
+}) => {
+  const card = (
+    <CompactJobCard
+      job={job}
+      onPressDetail={onPressDetail}
+      onAccept={() => onAccept(job)}
+      canAccept={isApproved && !awaitingClientChoice}
+      isAccepting={acceptingJobId === job.id}
+      awaitingClientChoice={awaitingClientChoice}
+      isAccepted={acceptedJobIds.has(job.id) && !processJobIds.has(job.id)}
+      acceptBlocked={acceptBlocked}
+    />
+  );
+
+  if (!canDismiss) return card;
+
+  return (
+    <SwipeableRadarJobCard enabled onDismiss={() => onDismiss(job)}>
+      {card}
+    </SwipeableRadarJobCard>
+  );
+};
 
 export const HomeScreen: React.FC = () => {
   const navigation = useNavigation<StackNav>();
@@ -386,7 +395,7 @@ export const HomeScreen: React.FC = () => {
         <View style={styles.swipeHintBanner}>
           <Ionicons name="list-outline" size={15} color={RADAR_MUTED} />
           <Text style={styles.swipeHintText}>
-            Deslizá la lista para ver más solicitudes · Tocá ✕ para apartar
+            Deslizá la lista para ver más · Deslizá ← en una ficha para apartar
           </Text>
         </View>
       )}

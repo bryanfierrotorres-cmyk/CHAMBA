@@ -109,6 +109,8 @@ export interface JobWorkerApplication {
 
 export type JobStatus = 'open' | 'taken' | 'in_progress' | 'completed' | 'cancelled';
 
+export type JobModerationReason = 'spam' | 'mistake' | 'admin';
+
 /** Urgencia del servicio para decisión del técnico. */
 export type UrgencyLevel = 'hoy' | 'manana' | 'programado';
 
@@ -157,6 +159,9 @@ export interface Job {
   assigned_worker_id?: string | null;
   created_at: string;
   updated_at: string;
+  moderated_by?: string | null;
+  moderation_reason?: JobModerationReason | null;
+  moderated_at?: string | null;
   creator?: Partial<UserProfile>;
 }
 

@@ -10,6 +10,8 @@ import {
   clientOrdersQueryKey,
   patchClientOrderRowInCache,
 } from '@features/client/hooks/useClientOrders';
+import { invalidateJobApplications } from '@features/client/hooks/useJobWorkerApplications';
+import { fetchJobWorkerApplications } from '@features/client/services/clientJobSelectionService';
 import type { JobStatus } from '@/types';
 
 export interface ClientStatusToast {
@@ -141,21 +143,30 @@ export function useClientJobStatusRealtime(): ClientStatusToast | null {
             };
             if (row.selection_status !== 'pending' || !row.job_id) return;
 
-            const { data: jobRow } = await supabase
-              .from('jobs')
-              .select('id, title, created_by, status, operational_phase')
-              .eq('id', row.job_id)
-              .maybeSingle();
+            const clientId = clientIdRef.current;
+            if (!clientId) return;
 
-            if (jobRow?.created_by !== clientId) return;
+            const cached = queryClient.getQueryData<Array<{ id: string; title?: string }>>(
+              clientOrdersQueryKey(clientId),
+            );
+            let ownsJob = cached?.some((j) => j.id === row.job_id) ?? false;
 
-            const title = jobRow.title?.trim()
-              ? `"${jobRow.title.trim()}"`
-              : 'Tu solicitud';
+            if (!ownsJob) {
+              try {
+                await fetchJobWorkerApplications(row.job_id, clientId);
+                ownsJob = true;
+              } catch {
+                return;
+              }
+            }
+
+            const jobTitle = cached?.find((j) => j.id === row.job_id)?.title?.trim();
+            const title = jobTitle ? `"${jobTitle}"` : 'Tu solicitud';
             pushToast(
               row.job_id,
               `${title}: un técnico postuló. Revisá su perfil en Mis Solicitudes.`,
             );
+            invalidateJobApplications(queryClient, row.job_id);
             refreshClientOrders(queryClient, clientId);
           },
         )

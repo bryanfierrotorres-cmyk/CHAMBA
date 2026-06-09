@@ -17,6 +17,8 @@ import { Card } from '@components/Card';
 import { ScreenBackButton } from '@components/navigation/ScreenBackButton';
 import { useJobDetail, useAcceptJob } from '../hooks/useJobs';
 import { useWorkerCommitmentLimit } from '@features/jobs/hooks/useJobActiveLimits';
+import { useAdminRemoveJob } from '@features/admin/hooks/useAdminRemoveJob';
+import type { AdminModerationReason } from '@features/admin/services/adminService';
 import { useAuthStore } from '@store/authStore';
 import { getLocalAssignments } from '@utils/localAssignments';
 import { WORKER_COLORS as COLORS, FONT_SIZE, SPACING, BORDER_RADIUS } from '@constants/workerTheme';
@@ -95,6 +97,7 @@ export const JobDetailScreen: React.FC = () => {
   const profile                          = useAuthStore((s) => s.profile);
   const { data: job, isLoading }         = useJobDetail(jobId);
   const { mutateAsync: accept, isPending } = useAcceptJob();
+  const { mutate: removeOpenJob, isPending: isRemoving } = useAdminRemoveJob();
   const workerLimit = useWorkerCommitmentLimit();
   const [accepted, setAccepted]          = useState(false);
   const [awaitingClientChoice, setAwaitingClientChoice] = useState(false);
@@ -208,6 +211,53 @@ export const JobDetailScreen: React.FC = () => {
             Alert.alert('No disponible', msg);
           }
         },
+      },
+    ]);
+  };
+
+  const runAdminRemove = (reason: AdminModerationReason) => {
+    removeOpenJob(
+      { jobId: job.id, reason },
+      {
+        onSuccess: () => {
+          if (Platform.OS === 'web') {
+            alert('Servicio retirado. Desaparecerá del radar de técnicos.');
+            navigation.goBack();
+            return;
+          }
+          Alert.alert('Listo', 'Servicio retirado. Desaparecerá del radar de técnicos.', [
+            { text: 'OK', onPress: () => navigation.goBack() },
+          ]);
+        },
+        onError: (err) => {
+          const msg = err instanceof Error ? err.message : 'No se pudo retirar el servicio';
+          if (Platform.OS === 'web') {
+            alert(msg);
+            return;
+          }
+          Alert.alert('Error', msg);
+        },
+      },
+    );
+  };
+
+  const confirmAdminRemove = (reason: AdminModerationReason) => {
+    const isSpam = reason === 'spam';
+    const title = isSpam ? 'Marcar como spam' : 'Retirar solicitud';
+    const message =
+      'El servicio desaparecerá del radar de técnicos de inmediato. Esta acción no se puede deshacer.';
+
+    if (Platform.OS === 'web') {
+      if (confirm(`${title}\n\n${message}`)) runAdminRemove(reason);
+      return;
+    }
+
+    Alert.alert(title, message, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Confirmar',
+        style: 'destructive',
+        onPress: () => runAdminRemove(reason),
       },
     ]);
   };
@@ -395,7 +445,13 @@ export const JobDetailScreen: React.FC = () => {
         </SectionPanel>
         )}
 
-        <View style={{ height: isAdmin ? 40 + insets.bottom : 100 }} />
+        <View style={{
+          height: isAdmin && job.status === 'open'
+            ? 140 + insets.bottom
+            : isAdmin
+              ? 40 + insets.bottom
+              : 100,
+        }} />
       </ScrollView>
 
       {/* ── Sticky action button ─────────────────────────────── */}
@@ -433,6 +489,35 @@ export const JobDetailScreen: React.FC = () => {
               size="lg"
             />
           )}
+        </View>
+      )}
+
+      {isAdmin && job.status === 'open' && (
+        <View style={[styles.adminModerationBar, { paddingBottom: insets.bottom + SPACING.md }]}>
+          <TouchableOpacity
+            style={[styles.adminModerationBtn, styles.adminModerationBtnDanger]}
+            onPress={() => confirmAdminRemove('spam')}
+            disabled={isRemoving}
+            activeOpacity={0.88}
+          >
+            {isRemoving ? (
+              <ActivityIndicator size="small" color="#B91C1C" />
+            ) : (
+              <>
+                <Ionicons name="ban-outline" size={18} color="#B91C1C" />
+                <Text style={styles.adminModerationBtnDangerText}>Marcar como spam</Text>
+              </>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.adminModerationBtn, styles.adminModerationBtnNeutral]}
+            onPress={() => confirmAdminRemove('mistake')}
+            disabled={isRemoving}
+            activeOpacity={0.88}
+          >
+            <Ionicons name="trash-outline" size={18} color={CHAMBA.navy} />
+            <Text style={styles.adminModerationBtnNeutralText}>Retirar solicitud</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -764,6 +849,48 @@ const styles = StyleSheet.create({
     color: COLORS.success,
     fontSize: FONT_SIZE.md,
     fontWeight: '700',
+  },
+  adminModerationBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
+    gap: SPACING.sm,
+    backgroundColor: CHAMBA.white,
+    borderTopWidth: 1,
+    borderTopColor: CHAMBA.border,
+    ...CARD_STEP_SHADOW,
+  },
+  adminModerationBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: 48,
+    borderRadius: BORDER_RADIUS.lg,
+    paddingHorizontal: SPACING.md,
+  },
+  adminModerationBtnDanger: {
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  adminModerationBtnDangerText: {
+    color: '#B91C1C',
+    fontSize: FONT_SIZE.md,
+    fontWeight: '700',
+  },
+  adminModerationBtnNeutral: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: CHAMBA.border,
+  },
+  adminModerationBtnNeutralText: {
+    color: CHAMBA.navy,
+    fontSize: FONT_SIZE.md,
+    fontWeight: '600',
   },
 });
 

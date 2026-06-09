@@ -37,12 +37,12 @@ import { confirmAction, showMessage } from '@utils/confirmAction';
 import { JobChatEntryButton } from '@components/chat/JobChatEntryButton';
 import { showJobChatEntry } from '@features/chat/utils/chatHelpers';
 import {
-  isWorkerCommitmentActive,
   isWorkerPendingClientSelection,
 } from '@utils/jobActiveLimits';
 import {
+  isWorkerAgendaActive,
+  isWorkerAgendaHistory,
   isActiveOperationalJob,
-  isWorkerAssignmentHistory,
   getPhaseAction,
   resolveOperationalPhase,
 } from '@utils/workerOperationalPhase';
@@ -76,12 +76,10 @@ export const MyJobsScreen: React.FC = () => {
     const active: JobAssignment[] = [];
     const history: JobAssignment[] = [];
     for (const item of assignments) {
-      if (isWorkerCommitmentActive(item)) {
+      if (isWorkerAgendaHistory(item)) {
+        history.push(item);
+      } else if (isWorkerAgendaActive(item)) {
         active.push(item);
-      } else if (isWorkerAssignmentHistory(item.job)) {
-        history.push(item);
-      } else {
-        history.push(item);
       }
     }
     active.sort(sortByRecentAssignment);

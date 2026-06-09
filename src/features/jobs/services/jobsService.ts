@@ -119,11 +119,20 @@ const normalizeJobRow = (row: Job & { address?: string; lat?: number; lng?: numb
   const lat = raw.location?.lat ?? raw.lat ?? 0;
   const lng = raw.location?.lng ?? raw.lng ?? 0;
 
+  const creator = raw.creator && typeof raw.creator === 'object'
+    ? {
+        id: raw.creator.id,
+        full_name: raw.creator.full_name,
+        avatar_url: raw.creator.avatar_url ?? null,
+      }
+    : raw.creator;
+
   return {
     ...row,
     status: (row.status ?? 'open') as JobStatus,
     category: (fromDbJobCategory(row.category as string) ?? row.category) as JobCategory,
     media_urls: Array.isArray(row.media_urls) ? row.media_urls : [],
+    creator,
     location: {
       address,
       lat,
@@ -528,6 +537,22 @@ const tryRpcAccept = async (
   };
 };
 
+/** Confirma en BD que la postulación existe (evita éxito falso solo en caché local). */
+const fetchRemoteAssignmentForJob = async (
+  jobId: string,
+  workerId: string,
+): Promise<JobAssignment | null> => {
+  const { data, error } = await supabase
+    .from('job_assignments')
+    .select('*')
+    .eq('job_id', jobId)
+    .eq('worker_id', workerId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data as JobAssignment;
+};
+
 const buildAssignment = (
   jobId: string,
   workerId: string,
@@ -791,21 +816,31 @@ export const acceptJob = async (
     }
 
     if (!rpc.ok) {
-      const localExisting = (await getLocalAssignments(effectiveWorkerId)).find(
-        (a) => a.job_id === jobId,
-      );
-      if (localExisting) {
+      const alreadyMine =
+        rpc.error?.includes('Ya postulaste')
+        || rpc.error?.includes('Ya tomaste')
+        || rpc.error?.includes('anteriormente');
+
+      const remoteRow = await fetchRemoteAssignmentForJob(jobId, effectiveWorkerId);
+      if (remoteRow) {
+        const remoteStatus =
+          remoteRow.selection_status === 'approved' ? 'approved' : 'pending';
+        const assignment = buildAssignment(
+          jobId,
+          effectiveWorkerId,
+          remoteRow.id,
+          jobSnapshot ?? null,
+          remoteStatus,
+        );
+        await upsertLocalAssignment(assignment, assignment.job ?? null);
         return {
           success: true,
-          assignmentId: localExisting.id,
-          assignment: localExisting,
+          assignmentId: remoteRow.id,
+          assignment,
+          pendingClientSelection: remoteStatus === 'pending',
         };
       }
 
-      const alreadyMine =
-        rpc.error?.includes('Ya postulaste') ||
-        rpc.error?.includes('Ya tomaste') ||
-        rpc.error?.includes('anteriormente');
       if (alreadyMine) {
         const assignment = buildAssignment(
           jobId,
@@ -815,13 +850,18 @@ export const acceptJob = async (
           'pending',
         );
         await upsertLocalAssignment(assignment, assignment.job ?? null);
-        return { success: true, assignmentId: assignment.id, assignment };
+        return {
+          success: true,
+          assignmentId: assignment.id,
+          assignment,
+          pendingClientSelection: true,
+        };
       }
 
       const takenError =
-        rpc.error?.includes('tomado') ||
-        rpc.error?.includes('taken') ||
-        rpc.error?.includes('lock');
+        rpc.error?.includes('tomado')
+        || rpc.error?.includes('taken')
+        || rpc.error?.includes('lock');
 
       if (takenError && CONFIG.pilot.enabled) {
         const remoteMine = (await fetchAssignmentsViaWorkerColumn(effectiveWorkerId))
@@ -834,15 +874,6 @@ export const acceptJob = async (
             assignment: remoteMine,
           };
         }
-        const localMine = (await getLocalAssignments(effectiveWorkerId))
-          .find((a) => a.job_id === jobId);
-        if (localMine) {
-          return {
-            success: true,
-            assignmentId: localMine.id,
-            assignment: localMine,
-          };
-        }
       }
 
       if (
@@ -853,7 +884,7 @@ export const acceptJob = async (
       }
 
       if (!CONFIG.pilot.enabled) {
-        throw new Error(rpc.error ?? 'No se pudo tomar el trabajo');
+        throw new Error(rpc.error ?? 'No se pudo postular al trabajo');
       }
 
       const fallback = await acceptJobPilotFallback(jobId, effectiveWorkerId);

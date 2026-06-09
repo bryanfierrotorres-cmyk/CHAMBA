@@ -44,11 +44,11 @@ export const isWorkerCommitmentActive = (row: AssignmentRow): boolean => {
   if (selection === 'rejected') return false;
 
   if (job.status === 'open') {
-    return selection === 'pending';
+    return selection === 'pending' || selection === 'approved';
   }
 
   if (job.status === 'taken' || job.status === 'in_progress') {
-    return selection === 'approved' || selection == null;
+    return selection !== 'rejected';
   }
 
   return false;
