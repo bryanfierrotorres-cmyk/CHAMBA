@@ -94,9 +94,8 @@ const PremiumField: React.FC<PremiumFieldProps> = ({
 
 export const LoginScreen: React.FC = () => {
   const navigation = useNavigation<LoginNav>();
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const isCompactLayout = screenWidth < COMPACT_BREAKPOINT;
-  const heroImageHeight = Math.min(screenWidth * 0.58, 300);
 
   const { phoneSignIn, pilotSignIn, error, setError } = useAuthStore();
   const [adminAccessVisible, setAdminAccessVisible] = useState(false);
@@ -195,12 +194,24 @@ export const LoginScreen: React.FC = () => {
       ? 'Solicitá servicios para tu hogar o negocio'
       : 'Aceptá chambas y cobrá el 95% de cada trabajo';
 
+  const bgImageStyle = [
+    styles.bgImageCover,
+    Platform.OS === 'web'
+      ? { objectPosition: 'center 16%' as const }
+      : {
+          height: screenHeight * 1.22,
+          top: -screenHeight * 0.11,
+        },
+  ];
+
+  const showHeroExtras = !isCompactLayout;
+
   return (
     <View style={styles.root}>
       <Image
         source={LOGIN_BG}
         accessibilityIgnoresInvertColors
-        style={styles.bgImageCover}
+        style={bgImageStyle}
         resizeMode="cover"
       />
       <LinearGradient
@@ -218,36 +229,66 @@ export const LoginScreen: React.FC = () => {
         <ScrollView
           contentContainerStyle={[
             styles.scroll,
-            isCompactLayout && { paddingTop: Math.min(heroImageHeight * 0.22, 56) },
+            { minHeight: screenHeight },
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Animated.View style={[styles.hero, { opacity: heroOp, transform: [{ translateY: heroY }] }]}>
-            <TouchableOpacity
-              style={styles.logoWrap}
-              onPress={() => setAdminAccessVisible((v) => !v)}
-              activeOpacity={1}
-              accessibilityLabel="Logo CHAMBA"
+          <View style={styles.layoutColumn}>
+            <Animated.View
+              style={[
+                styles.hero,
+                isCompactLayout && styles.heroCompact,
+                { opacity: heroOp, transform: [{ translateY: heroY }] },
+              ]}
             >
-              <LinearGradient
-                colors={['rgba(13,148,136,0.35)', 'rgba(2,132,199,0.35)']}
-                style={styles.logoBg}
+              {showHeroExtras ? (
+                <TouchableOpacity
+                  style={styles.logoWrap}
+                  onPress={() => setAdminAccessVisible((v) => !v)}
+                  activeOpacity={1}
+                  accessibilityLabel="Logo CHAMBA"
+                >
+                  <LinearGradient
+                    colors={['rgba(13,148,136,0.35)', 'rgba(2,132,199,0.35)']}
+                    style={styles.logoBg}
+                  >
+                    <Ionicons name="flash" size={36} color="#5EEAD4" />
+                  </LinearGradient>
+                </TouchableOpacity>
+              ) : null}
+
+              <TouchableOpacity
+                onPress={() => setAdminAccessVisible((v) => !v)}
+                activeOpacity={1}
+                accessibilityLabel="CHAMBA"
+                disabled={showHeroExtras}
               >
-                <Ionicons name="flash" size={36} color="#5EEAD4" />
-              </LinearGradient>
-            </TouchableOpacity>
-            <Text style={styles.appName}>CHAMBA</Text>
-            <Text style={styles.tagline}>Encuentra personal confiable en minutos</Text>
+                <Text style={[styles.appName, isCompactLayout && styles.appNameCompact]}>
+                  CHAMBA
+                </Text>
+              </TouchableOpacity>
 
-            <View style={styles.pilotChip}>
-              <View style={styles.pilotDot} />
-              <MaterialCommunityIcons name="rocket-launch-outline" size={14} color="#99F6E4" />
-              <Text style={styles.pilotText}>Modo Piloto · Acceso Express</Text>
-            </View>
-          </Animated.View>
+              {showHeroExtras ? (
+                <>
+                  <Text style={styles.tagline}>Encuentra personal confiable en minutos</Text>
+                  <View style={styles.pilotChip}>
+                    <View style={styles.pilotDot} />
+                    <MaterialCommunityIcons name="rocket-launch-outline" size={14} color="#99F6E4" />
+                    <Text style={styles.pilotText}>Modo Piloto · Acceso Express</Text>
+                  </View>
+                </>
+              ) : null}
+            </Animated.View>
 
-          <Animated.View
+            <View
+              style={[
+                styles.subjectStage,
+                { minHeight: Math.max(screenHeight * 0.32, isCompactLayout ? 180 : 140) },
+              ]}
+            />
+
+            <Animated.View
             style={[
               styles.card,
               {
@@ -414,6 +455,7 @@ export const LoginScreen: React.FC = () => {
               </TouchableOpacity>
             )}
           </Animated.View>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -529,10 +571,21 @@ const styles = StyleSheet.create({
   scroll: {
     flexGrow: 1,
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 60 : 48,
+    paddingTop: Platform.OS === 'ios' ? 52 : 40,
     paddingBottom: SPACING['2xl'],
   },
-  hero: { alignItems: 'center', marginBottom: SPACING.xl },
+  layoutColumn: {
+    flex: 1,
+    minHeight: '100%',
+  },
+  hero: { alignItems: 'center' },
+  heroCompact: {
+    paddingTop: 4,
+  },
+  subjectStage: {
+    width: '100%',
+    flex: 1,
+  },
   logoWrap: { marginBottom: SPACING.md },
   logoBg: {
     width: 80,
@@ -552,6 +605,11 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 4,
+  },
+  appNameCompact: {
+    fontSize: 34,
+    letterSpacing: 3,
+    marginBottom: 0,
   },
   tagline: {
     color: '#FFFFFF',
