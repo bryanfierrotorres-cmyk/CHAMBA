@@ -22,8 +22,15 @@ export const RootNavigator: React.FC = () => {
   const { profile, isHydrated, session, isPhoneAuth } = useAuthStore();
   const { loadProfile, loadStats }       = useProfileStore();
   const [splashDone, setSplashDone]      = useState(false);
+  /** Nunca bloquear la app más de 5s esperando hidratación (Supabase lento / web). */
+  const [hydrationBypass, setHydrationBypass] = useState(false);
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
   const detachHistoryRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setHydrationBypass(true), 5_000);
+    return () => clearTimeout(t);
+  }, []);
 
   const onNavReady = useCallback(() => {
     if (Platform.OS !== 'web') return;
@@ -43,11 +50,13 @@ export const RootNavigator: React.FC = () => {
     }
   }, [profile?.id, profile?.role]);
 
-  // ── Splash: esperar animación + sesión restaurada ──────────────
-  if (!splashDone || !isHydrated) {
+  const authReady = isHydrated || hydrationBypass;
+
+  // ── Splash: animación breve; no bloquear si hidratación tarda ─
+  if (!splashDone || !authReady) {
     return (
       <SplashScreen
-        authReady={isHydrated}
+        authReady={authReady}
         onFinish={() => setSplashDone(true)}
       />
     );

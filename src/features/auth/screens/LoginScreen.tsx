@@ -27,6 +27,8 @@ import { textInputWebFocusStyle } from '@constants/textInputFocus';
 import { formatNicaPhone, isValidNicaPhone } from '@utils/phoneNicaragua';
 import type { AuthStackParamList, UserRole } from '@/types';
 
+type LoginNav = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
+
 const LOGIN_PRIMARY = '#1E293B';
 const LOGIN_PRIMARY_PRESSED = '#334155';
 

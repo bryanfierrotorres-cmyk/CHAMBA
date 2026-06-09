@@ -135,7 +135,9 @@ function AppBootstrap() {
         } else if (session?.user) {
           const { fetchProfileByPhone } = await import('@utils/profileSync');
           const metaPhone = session.user.phone?.replace(/\D/g, '').slice(-8);
-          const byPhone = metaPhone ? await fetchProfileByPhone(metaPhone) : null;
+          const byPhone = metaPhone
+            ? await withTimeout(fetchProfileByPhone(metaPhone), 6_000, null)
+            : null;
           if (byPhone) {
             let restored = byPhone;
             if (restored.role === 'worker') {
@@ -170,6 +172,12 @@ function AppBootstrap() {
 
       subscription = onAuthStateChange(async (event, session) => {
         if (event === 'SIGNED_OUT') {
+          const { isPhoneAuth, profile: phoneProfile } = useAuthStore.getState();
+          // Cerrar sesión Auth stale no debe expulsar login por teléfono.
+          if (isPhoneAuth && phoneProfile) {
+            setSession(null);
+            return;
+          }
           reset();
           return;
         }

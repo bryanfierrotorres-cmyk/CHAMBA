@@ -584,7 +584,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       let profile: UserProfile;
 
-      const remoteByPhone = await fetchProfileByPhone(cleanPhone).catch(() => null);
+      const remoteByPhone = await withTimeout(
+        fetchProfileByPhone(cleanPhone),
+        8_000,
+      ).catch(() => null);
       const profileFromRemote = !!remoteByPhone;
 
       if (remoteByPhone) {

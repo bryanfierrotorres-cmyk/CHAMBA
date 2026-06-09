@@ -3,7 +3,10 @@ import { supabase } from '@services/supabase';
 import { pilotPhoneEmail } from '@constants/pilot';
 import { readPublicEnv } from '@utils/env';
 import { fetchProfileByPhone, normalizePhone } from '@utils/profileSync';
+import { withTimeout } from '@utils/withTimeout';
 import type { UserProfile } from '@/types';
+
+const PHONE_AUTH_SESSION_MS = 8_000;
 
 /** Contraseña compartida para cuentas teléfono en piloto / QA (no OTP). */
 export const getPhoneAuthPassword = (): string =>
@@ -93,7 +96,13 @@ export const ensurePhoneAuthSession = async (
     return inflightSession.promise;
   }
 
-  const promise = ensurePhoneAuthSessionInner(profile);
+  const promise = withTimeout(
+    ensurePhoneAuthSessionInner(profile),
+    PHONE_AUTH_SESSION_MS,
+  ).catch((err: unknown) => {
+    console.warn('[ensurePhoneAuthSession] timeout o error:', err);
+    return null;
+  });
   inflightSession = { profileId: profile.id, promise };
   try {
     return await promise;

@@ -1,6 +1,9 @@
 import { supabase } from '@services/supabase';
 import { CONFIG } from '@constants/config';
 import { pilotPhoneEmail, getPilotProfileId } from '@constants/pilot';
+import { withTimeout } from '@utils/withTimeout';
+
+export { pilotPhoneEmail };
 import { applyPilotProfile } from '@utils/pilotAccess';
 import { useAuthStore } from '@store/authStore';
 import { migrateLocalAssignmentsWorkerId } from '@utils/localAssignments';
@@ -41,6 +44,7 @@ export const namesMatch = (a: string, b: string): boolean =>
   a.trim().toLowerCase() === b.trim().toLowerCase();
 
 const PROFILE_PHONE_CACHE_MS = 45_000;
+const PROFILE_PHONE_FETCH_MS = 6_000;
 const profileByPhoneCache = new Map<
   string,
   { at: number; profile: UserProfile | null }
@@ -63,32 +67,33 @@ export const fetchProfileByPhone = async (
     return cached.profile;
   }
 
+  const cacheAndReturn = (profile: UserProfile | null): UserProfile | null => {
+    profileByPhoneCache.set(normalized, { at: Date.now(), profile });
+    return profile;
+  };
+
   try {
-    const { data, error } = await supabase.rpc('get_profile_by_phone', {
-      p_phone: normalized,
-    });
+    const { data, error } = await withTimeout(
+      supabase.rpc('get_profile_by_phone', { p_phone: normalized }),
+      PROFILE_PHONE_FETCH_MS,
+    );
     if (!error && data) {
       const row = typeof data === 'string' ? JSON.parse(data) : data;
       if (row?.id) {
-        const profile = row as UserProfile;
-        profileByPhoneCache.set(normalized, { at: Date.now(), profile });
-        return profile;
+        return cacheAndReturn(row as UserProfile);
       }
     }
   } catch {
-    // RPC puede no existir aún en Supabase remoto
+    // RPC puede no existir, tardar o fallar por red
   }
 
   try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('phone', normalized)
-      .maybeSingle();
+    const { data, error } = await withTimeout(
+      supabase.from('profiles').select('*').eq('phone', normalized).maybeSingle(),
+      PROFILE_PHONE_FETCH_MS,
+    );
     if (!error && data) {
-      const profile = data as UserProfile;
-      profileByPhoneCache.set(normalized, { at: Date.now(), profile });
-      return profile;
+      return cacheAndReturn(data as UserProfile);
     }
   } catch {
     // RLS puede bloquear SELECT anónimo
@@ -97,15 +102,12 @@ export const fetchProfileByPhone = async (
   if (normalized.length === 8) {
     const formatted = `${normalized.slice(0, 4)}-${normalized.slice(4)}`;
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('phone', formatted)
-        .maybeSingle();
+      const { data, error } = await withTimeout(
+        supabase.from('profiles').select('*').eq('phone', formatted).maybeSingle(),
+        PROFILE_PHONE_FETCH_MS,
+      );
       if (!error && data) {
-        const profile = data as UserProfile;
-        profileByPhoneCache.set(normalized, { at: Date.now(), profile });
-        return profile;
+        return cacheAndReturn(data as UserProfile);
       }
     } catch {
       // ignorar
