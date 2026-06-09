@@ -121,7 +121,7 @@ export const CompactJobCard = React.memo<CompactJobCardProps>(function CompactJo
   awaitingClientChoice = false,
   isAccepted = false,
   acceptBlocked = false,
-}) => {
+}) {
   const price = formatCurrency(job.worker_payout || job.pay_amount);
   const client = useMemo(
     () => getClientDisplay(job),
