@@ -13,9 +13,8 @@ import { applyPilotProfile } from '@utils/pilotAccess';
 import {
   normalizePhone,
   syncProfileWithDatabase,
-  findExactProfileMatch,
-  findProfileByPhone,
   fetchProfileByPhone,
+  fetchProfileByPhoneQuick,
   ensureProfileInDb,
   toDbRole,
   phonesMatch,
@@ -555,18 +554,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  // ── phoneSignIn — experimental: name + phone, no Supabase Auth ──
+  // ── phoneSignIn — nombre + teléfono: entra al instante, sync en background ──
   phoneSignIn: async (fullName, phone, role) => {
     set({ isLoading: true, error: null });
     try {
-      await withTimeout(phoneSignInInner(fullName, phone, role, get, set), 20_000);
+      await phoneSignInInner(fullName, phone, role, get, set);
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error && err.name === 'TimeoutError'
-          ? 'La conexión tardó demasiado. Revisá tu internet e intentá de nuevo.'
-          : err instanceof Error
-            ? err.message
-            : 'Error al iniciar sesión';
+      const msg = err instanceof Error ? err.message : 'Error al iniciar sesión';
       set({ error: msg, isLoading: false });
       throw new Error(msg);
     }
@@ -641,18 +635,13 @@ type AuthSet = (
   partial: Partial<AuthState> | ((state: AuthState) => Partial<AuthState>),
 ) => void;
 
-async function phoneSignInInner(
-  fullName: string,
-  phone: string,
+function buildPhoneLoginProfile(
+  id: string,
+  cleanName: string,
+  cleanPhone: string,
   role: UserRole,
-  get: () => AuthState,
-  set: AuthSet,
-): Promise<void> {
-  const cleanName  = fullName.trim();
-  const cleanPhone = normalizePhone(phone);
-  const dbRole     = toDbRole(role);
-
-  const buildLocalProfile = (id: string): UserProfile => ({
+): UserProfile {
+  return {
     id,
     full_name:          cleanName,
     phone:              cleanPhone,
@@ -671,121 +660,104 @@ async function phoneSignInInner(
     fcm_token:          null,
     created_at:         new Date().toISOString(),
     updated_at:         new Date().toISOString(),
-  } as UserProfile);
+  } as UserProfile;
+}
 
-  let profile: UserProfile;
+function assertPhoneLoginRole(role: UserRole, existing: UserProfile): void {
+  if (role === existing.role || existing.role === 'admin') return;
+  const msg =
+    role === 'worker'
+      ? 'Este celular está registrado como cliente. Para recibir chambas, registrate como técnico con otro número o pedí al admin que active tu perfil de trabajador.'
+      : 'Este celular está registrado como técnico. Elegí el rol Trabajador para ingresar.';
+  throw new Error(msg);
+}
 
-  const remoteByPhone = await withTimeout(
-    fetchProfileByPhone(cleanPhone),
-    8_000,
-  ).catch(() => null);
-  const profileFromRemote = !!remoteByPhone;
+/** Sync Supabase Auth + BD sin bloquear la UI de login. */
+function syncPhoneLoginInBackground(
+  seed: UserProfile,
+  get: () => AuthState,
+  set: AuthSet,
+): void {
+  void (async () => {
+    try {
+      let profile = seed;
+      try {
+        profile = await withTimeout(syncProfileWithDatabase(seed), 8_000);
+      } catch {
+        profile = seed;
+      }
 
-  if (remoteByPhone) {
-    if (role !== remoteByPhone.role && remoteByPhone.role !== 'admin') {
-      const msg =
-        role === 'worker'
-          ? 'Este celular está registrado como cliente. Para recibir chambas, registrate como técnico con otro número o pedí al admin que active tu perfil de trabajador.'
-          : 'Este celular está registrado como técnico. Elegí el rol Trabajador para ingresar.';
-      set({ error: msg, isLoading: false });
-      throw new Error(msg);
+      if (profile.role === 'worker') {
+        profile = applyPilotProfile(profile);
+      }
+
+      await safePersistPilotProfile(profile);
+
+      const current = get().profile;
+      if (current && phonesMatch(current.phone, profile.phone)) {
+        set({ profile });
+      }
+
+      const session = await ensurePhoneAuthSession(profile);
+      if (!session) return;
+
+      const live = get().profile;
+      if (!live || !phonesMatch(live.phone, profile.phone)) return;
+
+      set({ session, profile, isPhoneAuth: false });
+    } catch (err) {
+      console.warn('[phoneSignIn] sync en background:', err);
     }
+  })();
+}
+
+async function phoneSignInInner(
+  fullName: string,
+  phone: string,
+  role: UserRole,
+  get: () => AuthState,
+  set: AuthSet,
+): Promise<void> {
+  const cleanName  = fullName.trim();
+  const cleanPhone = normalizePhone(phone);
+
+  if (cleanPhone.length !== 8) {
+    throw new Error('Ingresá exactamente 8 dígitos de tu celular');
+  }
+
+  let profile: UserProfile | null = await fetchProfileByPhoneQuick(cleanPhone, 4_000);
+
+  if (profile) {
+    assertPhoneLoginRole(role, profile);
     profile = {
-      ...remoteByPhone,
-      role: remoteByPhone.role === 'admin' ? role : remoteByPhone.role,
+      ...profile,
+      role: profile.role === 'admin' ? role : profile.role,
       full_name: cleanName,
-      is_approved: !!remoteByPhone.is_approved,
+      is_approved: !!profile.is_approved,
     };
   } else {
-    let safeMatches: UserProfile[] = [];
     try {
-      const formattedPhone =
-        cleanPhone.length === 8
-          ? `${cleanPhone.slice(0, 4)}-${cleanPhone.slice(4)}`
-          : cleanPhone;
-      const { data: matches, error: searchErr } = await withTimeout(
-        supabase
-          .from('profiles')
-          .select('*')
-          .or(`phone.eq.${cleanPhone},phone.eq.${formattedPhone},full_name.eq.${cleanName}`)
-          .limit(5),
-        6_000,
-      );
-      if (!searchErr && matches) safeMatches = matches as UserProfile[];
-    } catch {
-      safeMatches = [];
-    }
-
-    if (safeMatches.length > 0) {
-      const exact = findExactProfileMatch(safeMatches, cleanName, cleanPhone);
-      const byPhone = findProfileByPhone(safeMatches, cleanPhone)
-        ?? safeMatches.find((r) => phonesMatch(r.phone, cleanPhone));
-
-      if (exact) {
-        if (role !== exact.role && exact.role !== 'admin') {
-          const msg =
-            role === 'worker'
-              ? 'Este nombre y celular pertenecen a una cuenta de cliente. No podés ingresar como técnico con los mismos datos.'
-              : 'Esta cuenta es de técnico. Elegí el rol Trabajador.';
-          set({ error: msg, isLoading: false });
-          throw new Error(msg);
-        }
-        profile = { ...exact, full_name: cleanName, is_approved: !!exact.is_approved };
-      } else if (byPhone) {
-        if (role !== byPhone.role && byPhone.role !== 'admin') {
-          const msg =
-            role === 'worker'
-              ? 'Este celular ya está registrado como cliente. Usá otro número para el perfil de técnico.'
-              : 'Este celular está registrado como técnico. Elegí el rol Trabajador.';
-          set({ error: msg, isLoading: false });
-          throw new Error(msg);
-        }
-        profile = { ...byPhone, full_name: cleanName, is_approved: !!byPhone.is_approved };
-      } else if (CONFIG.pilot.enabled) {
-        profile = buildLocalProfile(uuid4());
-      } else {
-        throw new Error(
-          'Este nombre o número ya está registrado. Por favor usa tus datos correctos o intenta con otro nombre.',
-        );
-      }
-    } else {
-      const newId = uuid4();
-      const localProfile = buildLocalProfile(newId);
-
-      try {
-        const { data: inserted, error: insertErr } = await withTimeout(
-          supabase
-            .from('profiles')
-            .insert({
-              id:          newId,
-              full_name:   cleanName,
-              phone:       cleanPhone,
-              email:       pilotPhoneEmail(cleanPhone),
-              role:        dbRole,
-              is_approved: false,
-              ...(role === 'worker'
-                ? { worker_status: 'incomplete' as const }
-                : {}),
-            })
-            .select()
-            .single(),
-          6_000,
-        );
-
-        if (insertErr) {
-          console.warn('[phoneSignIn] DB insert blocked, using local-only profile:', insertErr.message);
-          profile = localProfile;
-        } else {
+      const raw = await AsyncStorage.getItem(PILOT_STORAGE_KEY);
+      if (raw) {
+        const stored = JSON.parse(raw) as UserProfile;
+        if (phonesMatch(stored.phone, cleanPhone)) {
+          assertPhoneLoginRole(role, stored);
           profile = {
-            ...(inserted as UserProfile),
-            role,
-            is_approved: !!(inserted as UserProfile).is_approved,
+            ...stored,
+            full_name: cleanName,
+            role: stored.role === 'admin' ? role : stored.role,
           };
         }
-      } catch (insertErr) {
-        console.warn('[phoneSignIn] insert offline, perfil local:', insertErr);
-        profile = localProfile;
       }
+    } catch {
+      // ignorar caché local corrupta
+    }
+
+    if (!profile) {
+      if (!CONFIG.pilot.enabled) {
+        throw new Error('Número no registrado. Creá tu cuenta en «Crear cuenta» e intentá de nuevo.');
+      }
+      profile = buildPhoneLoginProfile(uuid4(), cleanName, cleanPhone, role);
     }
   }
 
@@ -793,19 +765,6 @@ async function phoneSignInInner(
     profile = applyPilotProfile(profile);
   }
 
-  if (!profileFromRemote) {
-    try {
-      profile = await withTimeout(syncProfileWithDatabase(profile), 6_000);
-    } catch {
-      // Mantener perfil local si Supabase no responde
-    }
-
-    if (profile.role === 'worker') {
-      profile = applyPilotProfile(profile);
-    }
-  }
-
-  await safePersistPilotProfile(profile);
   set({
     profile,
     session: null,
@@ -814,14 +773,7 @@ async function phoneSignInInner(
     error: null,
   });
 
-  void ensurePhoneAuthSession(profile)
-    .then(async (session) => {
-      if (session) {
-        const synced = await syncProfileWithDatabase(get().profile ?? profile);
-        set({ session, profile: synced, isPhoneAuth: false });
-      }
-    })
-    .catch(() => undefined);
+  syncPhoneLoginInBackground(profile, get, set);
 }
 
 // ─── Selectors ──────────────────────────────────────────────────

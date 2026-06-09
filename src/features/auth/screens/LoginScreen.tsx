@@ -182,11 +182,13 @@ export const LoginScreen: React.FC = () => {
     }
 
     setPendingAction('chamba');
+    const spinnerFailsafe = setTimeout(() => setPendingAction(null), 6_000);
     try {
       await phoneSignIn(fullName.trim(), phone, role);
     } catch {
       shake();
     } finally {
+      clearTimeout(spinnerFailsafe);
       setPendingAction(null);
     }
   };

@@ -118,6 +118,40 @@ export const fetchProfileByPhone = async (
   return null;
 };
 
+/** Login: un solo RPC con timeout corto (sin 3 fallbacks secuenciales). */
+export const fetchProfileByPhoneQuick = async (
+  phone: string,
+  timeoutMs = 4_000,
+): Promise<UserProfile | null> => {
+  const normalized = normalizePhone(phone);
+  if (!normalized) return null;
+
+  const cached = profileByPhoneCache.get(normalized);
+  if (cached && Date.now() - cached.at < PROFILE_PHONE_CACHE_MS) {
+    return cached.profile;
+  }
+
+  try {
+    const { data, error } = await withTimeout(
+      supabase.rpc('get_profile_by_phone', { p_phone: normalized }),
+      timeoutMs,
+    );
+    if (!error && data) {
+      const row = typeof data === 'string' ? JSON.parse(data) : data;
+      if (row?.id) {
+        const profile = row as UserProfile;
+        profileByPhoneCache.set(normalized, { at: Date.now(), profile });
+        return profile;
+      }
+    }
+  } catch {
+    // timeout o red
+  }
+
+  profileByPhoneCache.set(normalized, { at: Date.now(), profile: null });
+  return null;
+};
+
 /**
  * Si el teléfono ya existe en Supabase, usa ese perfil (ID canónico).
  * Evita que "Luis Papa" quede con UUID local distinto a "luis papa" en BD.
