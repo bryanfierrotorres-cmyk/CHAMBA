@@ -105,13 +105,9 @@ function AppBootstrap() {
     let cancelled = false;
     let subscription: { unsubscribe: () => void } | null = null;
 
-    const hydrationFailsafe = setTimeout(() => {
-      if (!cancelled && !useAuthStore.getState().isHydrated) {
-        console.warn('[App] hydration timeout — continuing without session');
-        setLoading(false);
-        setHydrated(true);
-      }
-    }, 4500);
+    // Desbloquear UI de inmediato; la sesión se restaura en segundo plano.
+    setLoading(false);
+    setHydrated(true);
 
     const bootstrap = async () => {
       try {
@@ -161,7 +157,6 @@ function AppBootstrap() {
       } catch (err) {
         console.warn('[App] bootstrap error:', err);
       } finally {
-        clearTimeout(hydrationFailsafe);
         if (!cancelled) {
           setLoading(false);
           setHydrated(true);
@@ -182,22 +177,27 @@ function AppBootstrap() {
           return;
         }
 
-        const { isPhoneAuth, isHydrated } = useAuthStore.getState();
+        if (event === 'TOKEN_REFRESHED' && session) {
+          setSession(session);
+          return;
+        }
+
+        const { isPhoneAuth, profile: currentProfile } = useAuthStore.getState();
         if (isPhoneAuth) return;
 
         if (session?.user) {
           setSession(session);
-          await fetchProfile(session.user.id);
-          if (!isHydrated) setHydrated(true);
+          if (!currentProfile || currentProfile.id !== session.user.id) {
+            await fetchProfile(session.user.id);
+          }
         }
       });
     };
 
-    bootstrap();
+    void bootstrap();
 
     return () => {
       cancelled = true;
-      clearTimeout(hydrationFailsafe);
       subscription?.unsubscribe();
     };
   }, []);

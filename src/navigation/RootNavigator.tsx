@@ -19,16 +19,15 @@ const webLinking: LinkingOptions<RootStackParamList> | undefined =
   Platform.OS === 'web' ? { enabled: false, prefixes: [] } : undefined;
 
 export const RootNavigator: React.FC = () => {
-  const { profile, isHydrated, session, isPhoneAuth } = useAuthStore();
+  const { profile, session, isPhoneAuth } = useAuthStore();
   const { loadProfile, loadStats }       = useProfileStore();
   const [splashDone, setSplashDone]      = useState(false);
-  /** Nunca bloquear la app más de 5s esperando hidratación (Supabase lento / web). */
-  const [hydrationBypass, setHydrationBypass] = useState(false);
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
   const detachHistoryRef = useRef<(() => void) | null>(null);
 
+  /** Splash decorativo — nunca bloquear el acceso a login/home. */
   useEffect(() => {
-    const t = setTimeout(() => setHydrationBypass(true), 5_000);
+    const t = setTimeout(() => setSplashDone(true), 2_500);
     return () => clearTimeout(t);
   }, []);
 
@@ -50,13 +49,10 @@ export const RootNavigator: React.FC = () => {
     }
   }, [profile?.id, profile?.role]);
 
-  const authReady = isHydrated || hydrationBypass;
-
-  // ── Splash: animación breve; no bloquear si hidratación tarda ─
-  if (!splashDone || !authReady) {
+  if (!splashDone) {
     return (
       <SplashScreen
-        authReady={authReady}
+        authReady
         onFinish={() => setSplashDone(true)}
       />
     );

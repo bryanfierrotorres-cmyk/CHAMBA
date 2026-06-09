@@ -131,8 +131,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ profile });
     } catch (err: any) {
       console.error('[AuthStore] fetchProfile error:', err.message);
-      const { profile: current, isPhoneAuth } = get();
+      const { profile: current, isPhoneAuth, session } = get();
       if (isPhoneAuth || current?.id === userId) return;
+      if (current && session?.user?.id === userId) return;
+      if (current && session?.access_token) return;
       set({ profile: null });
     }
   },
@@ -557,175 +559,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   phoneSignIn: async (fullName, phone, role) => {
     set({ isLoading: true, error: null });
     try {
-      const cleanName  = fullName.trim();
-      const cleanPhone = normalizePhone(phone);
-      const dbRole     = toDbRole(role);
-
-      const buildLocalProfile = (id: string): UserProfile => ({
-        id,
-        full_name:          cleanName,
-        phone:              cleanPhone,
-        email:              pilotPhoneEmail(cleanPhone),
-        role,
-        is_approved:        false,
-        worker_status:      role === 'worker' ? 'incomplete' : null,
-        cedula_url:         null,
-        record_policia_url: null,
-        category_1:         null,
-        category_2:         null,
-        category_1_approved: false,
-        category_2_approved: false,
-        avatar_url:         null,
-        stripe_account_id:  null,
-        fcm_token:          null,
-        created_at:         new Date().toISOString(),
-        updated_at:         new Date().toISOString(),
-      } as UserProfile);
-
-      let profile: UserProfile;
-
-      const remoteByPhone = await withTimeout(
-        fetchProfileByPhone(cleanPhone),
-        8_000,
-      ).catch(() => null);
-      const profileFromRemote = !!remoteByPhone;
-
-      if (remoteByPhone) {
-        if (role !== remoteByPhone.role && remoteByPhone.role !== 'admin') {
-          const msg =
-            role === 'worker'
-              ? 'Este celular está registrado como cliente. Para recibir chambas, registrate como técnico con otro número o pedí al admin que active tu perfil de trabajador.'
-              : 'Este celular está registrado como técnico. Elegí el rol Trabajador para ingresar.';
-          set({ error: msg, isLoading: false });
-          throw new Error(msg);
-        }
-        profile = {
-          ...remoteByPhone,
-          role: remoteByPhone.role === 'admin' ? role : remoteByPhone.role,
-          full_name: cleanName,
-          is_approved: !!remoteByPhone.is_approved,
-        };
-      } else {
-        let safeMatches: UserProfile[] = [];
-        try {
-          const formattedPhone =
-            cleanPhone.length === 8
-              ? `${cleanPhone.slice(0, 4)}-${cleanPhone.slice(4)}`
-              : cleanPhone;
-          const { data: matches, error: searchErr } = await supabase
-            .from('profiles')
-            .select('*')
-            .or(`phone.eq.${cleanPhone},phone.eq.${formattedPhone},full_name.eq.${cleanName}`)
-            .limit(5);
-          if (!searchErr && matches) safeMatches = matches as UserProfile[];
-        } catch {
-          safeMatches = [];
-        }
-
-        if (safeMatches.length > 0) {
-          const exact = findExactProfileMatch(safeMatches, cleanName, cleanPhone);
-          const byPhone = findProfileByPhone(safeMatches, cleanPhone)
-            ?? safeMatches.find((r) => phonesMatch(r.phone, cleanPhone));
-
-          if (exact) {
-            if (role !== exact.role && exact.role !== 'admin') {
-              const msg =
-                role === 'worker'
-                  ? 'Este nombre y celular pertenecen a una cuenta de cliente. No podés ingresar como técnico con los mismos datos.'
-                  : 'Esta cuenta es de técnico. Elegí el rol Trabajador.';
-              set({ error: msg, isLoading: false });
-              throw new Error(msg);
-            }
-            profile = { ...exact, full_name: cleanName, is_approved: !!exact.is_approved };
-          } else if (byPhone) {
-            if (role !== byPhone.role && byPhone.role !== 'admin') {
-              const msg =
-                role === 'worker'
-                  ? 'Este celular ya está registrado como cliente. Usá otro número para el perfil de técnico.'
-                  : 'Este celular está registrado como técnico. Elegí el rol Trabajador.';
-              set({ error: msg, isLoading: false });
-              throw new Error(msg);
-            }
-            profile = { ...byPhone, full_name: cleanName, is_approved: !!byPhone.is_approved };
-          } else if (CONFIG.pilot.enabled) {
-            profile = buildLocalProfile(uuid4());
-          } else {
-            throw new Error(
-              'Este nombre o número ya está registrado. Por favor usa tus datos correctos o intenta con otro nombre.',
-            );
-          }
-        } else {
-          const newId = uuid4();
-          const localProfile = buildLocalProfile(newId);
-
-          try {
-            const { data: inserted, error: insertErr } = await supabase
-              .from('profiles')
-              .insert({
-                id:          newId,
-                full_name:   cleanName,
-                phone:       cleanPhone,
-                email:       pilotPhoneEmail(cleanPhone),
-                role:        dbRole,
-                is_approved: false,
-                ...(role === 'worker'
-                  ? { worker_status: 'incomplete' as const }
-                  : {}),
-              })
-              .select()
-              .single();
-
-            if (insertErr) {
-              console.warn('[phoneSignIn] DB insert blocked, using local-only profile:', insertErr.message);
-              profile = localProfile;
-            } else {
-              profile = {
-                ...(inserted as UserProfile),
-                role,
-                is_approved: !!(inserted as UserProfile).is_approved,
-              };
-            }
-          } catch (insertErr) {
-            console.warn('[phoneSignIn] insert offline, perfil local:', insertErr);
-            profile = localProfile;
-          }
-        }
-      }
-
-      if (profile.role === 'worker') {
-        profile = applyPilotProfile(profile);
-      }
-
-      if (!profileFromRemote) {
-        try {
-          profile = await syncProfileWithDatabase(profile);
-        } catch {
-          // Mantener perfil local si Supabase no responde
-        }
-
-        if (profile.role === 'worker') {
-          profile = applyPilotProfile(profile);
-        }
-      }
-
-      await safePersistPilotProfile(profile);
-      set({
-        profile,
-        session: null,
-        isPhoneAuth: true,
-        isLoading: false,
-        error: null,
-      });
-
-      void ensurePhoneAuthSession(profile)
-        .then(async (session) => {
-          if (session) {
-            set({ session, isPhoneAuth: false });
-          }
-        })
-        .catch(() => undefined);
-    } catch (err: any) {
-      const msg = err.message ?? 'Error al iniciar sesión';
+      await withTimeout(phoneSignInInner(fullName, phone, role, get, set), 20_000);
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error && err.name === 'TimeoutError'
+          ? 'La conexión tardó demasiado. Revisá tu internet e intentá de nuevo.'
+          : err instanceof Error
+            ? err.message
+            : 'Error al iniciar sesión';
       set({ error: msg, isLoading: false });
       throw new Error(msg);
     }
@@ -795,6 +636,193 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       error:       null,
     })),
 }));
+
+type AuthSet = (
+  partial: Partial<AuthState> | ((state: AuthState) => Partial<AuthState>),
+) => void;
+
+async function phoneSignInInner(
+  fullName: string,
+  phone: string,
+  role: UserRole,
+  get: () => AuthState,
+  set: AuthSet,
+): Promise<void> {
+  const cleanName  = fullName.trim();
+  const cleanPhone = normalizePhone(phone);
+  const dbRole     = toDbRole(role);
+
+  const buildLocalProfile = (id: string): UserProfile => ({
+    id,
+    full_name:          cleanName,
+    phone:              cleanPhone,
+    email:              pilotPhoneEmail(cleanPhone),
+    role,
+    is_approved:        false,
+    worker_status:      role === 'worker' ? 'incomplete' : null,
+    cedula_url:         null,
+    record_policia_url: null,
+    category_1:         null,
+    category_2:         null,
+    category_1_approved: false,
+    category_2_approved: false,
+    avatar_url:         null,
+    stripe_account_id:  null,
+    fcm_token:          null,
+    created_at:         new Date().toISOString(),
+    updated_at:         new Date().toISOString(),
+  } as UserProfile);
+
+  let profile: UserProfile;
+
+  const remoteByPhone = await withTimeout(
+    fetchProfileByPhone(cleanPhone),
+    8_000,
+  ).catch(() => null);
+  const profileFromRemote = !!remoteByPhone;
+
+  if (remoteByPhone) {
+    if (role !== remoteByPhone.role && remoteByPhone.role !== 'admin') {
+      const msg =
+        role === 'worker'
+          ? 'Este celular está registrado como cliente. Para recibir chambas, registrate como técnico con otro número o pedí al admin que active tu perfil de trabajador.'
+          : 'Este celular está registrado como técnico. Elegí el rol Trabajador para ingresar.';
+      set({ error: msg, isLoading: false });
+      throw new Error(msg);
+    }
+    profile = {
+      ...remoteByPhone,
+      role: remoteByPhone.role === 'admin' ? role : remoteByPhone.role,
+      full_name: cleanName,
+      is_approved: !!remoteByPhone.is_approved,
+    };
+  } else {
+    let safeMatches: UserProfile[] = [];
+    try {
+      const formattedPhone =
+        cleanPhone.length === 8
+          ? `${cleanPhone.slice(0, 4)}-${cleanPhone.slice(4)}`
+          : cleanPhone;
+      const { data: matches, error: searchErr } = await withTimeout(
+        supabase
+          .from('profiles')
+          .select('*')
+          .or(`phone.eq.${cleanPhone},phone.eq.${formattedPhone},full_name.eq.${cleanName}`)
+          .limit(5),
+        6_000,
+      );
+      if (!searchErr && matches) safeMatches = matches as UserProfile[];
+    } catch {
+      safeMatches = [];
+    }
+
+    if (safeMatches.length > 0) {
+      const exact = findExactProfileMatch(safeMatches, cleanName, cleanPhone);
+      const byPhone = findProfileByPhone(safeMatches, cleanPhone)
+        ?? safeMatches.find((r) => phonesMatch(r.phone, cleanPhone));
+
+      if (exact) {
+        if (role !== exact.role && exact.role !== 'admin') {
+          const msg =
+            role === 'worker'
+              ? 'Este nombre y celular pertenecen a una cuenta de cliente. No podés ingresar como técnico con los mismos datos.'
+              : 'Esta cuenta es de técnico. Elegí el rol Trabajador.';
+          set({ error: msg, isLoading: false });
+          throw new Error(msg);
+        }
+        profile = { ...exact, full_name: cleanName, is_approved: !!exact.is_approved };
+      } else if (byPhone) {
+        if (role !== byPhone.role && byPhone.role !== 'admin') {
+          const msg =
+            role === 'worker'
+              ? 'Este celular ya está registrado como cliente. Usá otro número para el perfil de técnico.'
+              : 'Este celular está registrado como técnico. Elegí el rol Trabajador.';
+          set({ error: msg, isLoading: false });
+          throw new Error(msg);
+        }
+        profile = { ...byPhone, full_name: cleanName, is_approved: !!byPhone.is_approved };
+      } else if (CONFIG.pilot.enabled) {
+        profile = buildLocalProfile(uuid4());
+      } else {
+        throw new Error(
+          'Este nombre o número ya está registrado. Por favor usa tus datos correctos o intenta con otro nombre.',
+        );
+      }
+    } else {
+      const newId = uuid4();
+      const localProfile = buildLocalProfile(newId);
+
+      try {
+        const { data: inserted, error: insertErr } = await withTimeout(
+          supabase
+            .from('profiles')
+            .insert({
+              id:          newId,
+              full_name:   cleanName,
+              phone:       cleanPhone,
+              email:       pilotPhoneEmail(cleanPhone),
+              role:        dbRole,
+              is_approved: false,
+              ...(role === 'worker'
+                ? { worker_status: 'incomplete' as const }
+                : {}),
+            })
+            .select()
+            .single(),
+          6_000,
+        );
+
+        if (insertErr) {
+          console.warn('[phoneSignIn] DB insert blocked, using local-only profile:', insertErr.message);
+          profile = localProfile;
+        } else {
+          profile = {
+            ...(inserted as UserProfile),
+            role,
+            is_approved: !!(inserted as UserProfile).is_approved,
+          };
+        }
+      } catch (insertErr) {
+        console.warn('[phoneSignIn] insert offline, perfil local:', insertErr);
+        profile = localProfile;
+      }
+    }
+  }
+
+  if (profile.role === 'worker') {
+    profile = applyPilotProfile(profile);
+  }
+
+  if (!profileFromRemote) {
+    try {
+      profile = await withTimeout(syncProfileWithDatabase(profile), 6_000);
+    } catch {
+      // Mantener perfil local si Supabase no responde
+    }
+
+    if (profile.role === 'worker') {
+      profile = applyPilotProfile(profile);
+    }
+  }
+
+  await safePersistPilotProfile(profile);
+  set({
+    profile,
+    session: null,
+    isPhoneAuth: true,
+    isLoading: false,
+    error: null,
+  });
+
+  void ensurePhoneAuthSession(profile)
+    .then(async (session) => {
+      if (session) {
+        const synced = await syncProfileWithDatabase(get().profile ?? profile);
+        set({ session, profile: synced, isPhoneAuth: false });
+      }
+    })
+    .catch(() => undefined);
+}
 
 // ─── Selectors ──────────────────────────────────────────────────
 
