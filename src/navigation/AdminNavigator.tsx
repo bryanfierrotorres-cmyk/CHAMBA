@@ -13,6 +13,7 @@ import { AdminProfileScreen }   from '@features/admin/screens/AdminProfileScreen
 import { JobDetailScreen }      from '@features/jobs/screens/JobDetailScreen';
 import { webAppShellStyle, webFixedTabBarStyle, webTabScenePadding } from '@constants/webMobileLayout';
 import { CHAMBA } from '@constants/chambaUI';
+import { useAuthSessionWarmup } from '@/hooks/useAuthSessionWarmup';
 import type { AdminTabParamList, JobStackParamList } from '@/types';
 
 const Tab   = createBottomTabNavigator<AdminTabParamList>();
@@ -119,6 +120,7 @@ const tabStyles = StyleSheet.create({
 
 export const AdminNavigator: React.FC = () => {
   const insets = useSafeAreaInsets();
+  useAuthSessionWarmup();
 
   return (
     <View style={webAppShellStyle}>

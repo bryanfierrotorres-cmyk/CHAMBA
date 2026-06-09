@@ -37,6 +37,8 @@ import {
   pilotPhoneEmail,
 } from '@utils/profileSync';
 import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
+import { withTimeout } from '@utils/withTimeout';
+import { useAuthStore } from '@store/authStore';
 import type { UserProfile } from '@/types';
 import { assertClientJobPlatformReady } from '@services/clientJobPlatform';
 import { resolveJobScheduling } from '@utils/jobScheduling';
@@ -1377,30 +1379,68 @@ const fetchClientOrdersForId = async (clientId: string): Promise<ClientOrderJob[
   });
 };
 
+const mapClientOrdersPanelRow = (row: ClientOrderJob & {
+  assigned_worker?: AssignedWorkerSummary | AssignedWorkerSummary[] | null;
+}): ClientOrderJob => {
+  const { assigned_worker: rawWorker, ...rest } = row;
+  const assigned_worker = unwrapAssignedWorker(rawWorker);
+  const job = normalizeJobRow(rest as Job);
+  return {
+    ...job,
+    assigned_worker_id: row.assigned_worker_id ?? assigned_worker?.id ?? null,
+    assigned_worker,
+  };
+};
+
 /** Pedidos del cliente con técnico asignado (para calificar). */
 export const fetchClientOrders = async (clientId: string): Promise<ClientOrderJob[]> => {
   if (!clientId) return [];
 
   await assertClientJobPlatformReady();
 
-  const { data: { session } } = await supabase.auth.getSession();
-  const authId = session?.user?.id;
-  const ids =
-    authId && authId !== clientId ? [clientId, authId] : [clientId];
-
-  const byId = new Map<string, ClientOrderJob>();
-  for (const id of ids) {
-    const rows = await fetchClientOrdersForId(id);
-    for (const row of rows) {
-      byId.set(row.id, row);
+  let effectiveId = clientId;
+  const profile = useAuthStore.getState().profile;
+  if (profile) {
+    try {
+      const synced = await withTimeout(syncProfileWithDatabase(profile), 3_000).catch(() => profile);
+      effectiveId = synced.id;
+    } catch {
+      effectiveId = clientId;
     }
   }
 
-  const jobs = Array.from(byId.values()).sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-  );
+  try {
+    const { data, error } = await withTimeout(
+      supabase.rpc('get_client_orders_panel', { p_client_id: effectiveId }),
+      8_000,
+    );
+    if (!error && data) {
+      const rows = Array.isArray(data)
+        ? data
+        : typeof data === 'string'
+          ? (JSON.parse(data) as unknown[])
+          : [];
+      if (rows.length > 0) {
+        return rows.map((row) => mapClientOrdersPanelRow(row as ClientOrderJob));
+      }
+    }
+    if (error) {
+      console.warn('[fetchClientOrders] panel RPC:', error.message);
+    }
+  } catch (err) {
+    console.warn('[fetchClientOrders] panel RPC timeout:', err);
+  }
 
-  return attachWorkersToClientJobs(jobs);
+  try {
+    const jobs = await withTimeout(fetchClientOrdersForId(effectiveId), 8_000);
+    return await withTimeout(attachWorkersToClientJobs(jobs), 4_000);
+  } catch {
+    try {
+      return await fetchClientOrdersForId(effectiveId);
+    } catch {
+      return [];
+    }
+  }
 };
 
 /** Resumen de chamba completada para el cliente (historial). */

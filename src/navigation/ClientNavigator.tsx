@@ -17,6 +17,7 @@ import { PendingAccountScreen } from '@components/auth/PendingAccountScreen';
 import { ClientJobPlatformGate } from '@components/client/ClientJobPlatformGate';
 import { ClientJobStatusToast } from '@components/client/ClientJobStatusToast';
 import { useAuthStore } from '@store/authStore';
+import { useAuthSessionWarmup } from '@/hooks/useAuthSessionWarmup';
 import { webAppShellStyle, webFixedTabBarStyle, webTabScenePadding } from '@constants/webMobileLayout';
 import type { ClientTabParamList, ClientStackParamList, ClientOrdersStackParamList } from '@/types';
 
@@ -246,6 +247,7 @@ const tabStyles = StyleSheet.create({
 export const ClientNavigator: React.FC = () => {
   const insets = useSafeAreaInsets();
   const profile = useAuthStore((s) => s.profile);
+  useAuthSessionWarmup();
   const isPendingApproval = profile?.role === 'client' && !profile.is_approved;
 
   if (isPendingApproval) {

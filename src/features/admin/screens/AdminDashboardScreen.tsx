@@ -64,14 +64,16 @@ export const AdminDashboardScreen: React.FC = () => {
   const profile = useAuthStore((s) => s.profile);
   const { getLabel } = useCatalog();
 
-  const { data, isLoading, refetch, isRefetching } = useQuery<AdminJob[]>({
+  const { data, isLoading, isFetching, refetch, isRefetching } = useQuery<AdminJob[]>({
     queryKey: ['admin', 'control', 'jobs'],
     queryFn: fetchAdminJobs,
     staleTime: 45_000,
     refetchInterval: 60_000,
-    placeholderData: (prev) => prev,
+    placeholderData: [],
+    retry: 0,
   });
   const jobs: AdminJob[] = data ?? [];
+  const showInitialLoader = isLoading && isFetching && jobs.length === 0;
 
   const kpis = useMemo(() => computeDashboardKpis(jobs), [jobs]);
   const openJobs = useMemo(() => getOpenJobsForModeration(jobs), [jobs]);
@@ -168,7 +170,7 @@ export const AdminDashboardScreen: React.FC = () => {
     </View>
   );
 
-  const listEmpty = isLoading && jobs.length === 0 ? (
+  const listEmpty = showInitialLoader ? (
     <View style={[styles.center, { paddingVertical: 40 }]}>
       <ActivityIndicator size="large" color={CHAMBA.blue} />
       <Text style={styles.loadingText}>Sincronizando radar…</Text>

@@ -1,4 +1,6 @@
 import { supabase } from '@services/supabase';
+import { useAuthStore } from '@store/authStore';
+import { withTimeout } from '@utils/withTimeout';
 import type { Job, JobModerationReason, UserProfile } from '@/types';
 
 export type AdminModerationReason = Exclude<JobModerationReason, 'admin'>;
@@ -106,21 +108,63 @@ export interface DashboardStats {
  * Fetch all jobs with their worker assignments (for the admin control panel).
  * Returns jobs ordered by created_at desc, each with nested assignments.
  */
-export const fetchAdminJobs = async (): Promise<AdminJob[]> => {
-  const { data, error } = await supabase
-    .from('jobs')
-    .select(`
-      *,
-      creator:profiles!created_by(id, full_name),
-      assignments:job_assignments(
-        id, worker_id, assigned_at, completed_at, payment_status,
-        worker:profiles!worker_id(id, full_name, phone, avatar_url)
-      )
-    `)
-    .order('created_at', { ascending: false });
+const parseAdminJobsRpc = (raw: unknown): AdminJob[] => {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw as AdminJob[];
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? (parsed as AdminJob[]) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
 
-  if (error) throw new Error(error.message);
-  return (data ?? []) as AdminJob[];
+export const fetchAdminJobs = async (): Promise<AdminJob[]> => {
+  const adminId = useAuthStore.getState().profile?.id;
+
+  if (adminId) {
+    try {
+      const { data, error } = await withTimeout(
+        supabase.rpc('get_admin_control_jobs', { p_admin_id: adminId }),
+        8_000,
+      );
+      if (!error && data) {
+        const rows = parseAdminJobsRpc(data);
+        if (rows.length > 0) return rows;
+      }
+      if (error) {
+        console.warn('[fetchAdminJobs] RPC:', error.message);
+      }
+    } catch (err) {
+      console.warn('[fetchAdminJobs] RPC timeout:', err);
+    }
+  }
+
+  try {
+    const { data, error } = await withTimeout(
+      supabase
+        .from('jobs')
+        .select(`
+          *,
+          creator:profiles!created_by(id, full_name),
+          assignments:job_assignments(
+            id, worker_id, assigned_at, completed_at, payment_status,
+            worker:profiles!worker_id(id, full_name, phone, avatar_url)
+          )
+        `)
+        .order('created_at', { ascending: false }),
+      8_000,
+    );
+
+    if (error) throw new Error(error.message);
+    return (data ?? []) as AdminJob[];
+  } catch (err) {
+    console.warn('[fetchAdminJobs] fallback:', err);
+    return [];
+  }
 };
 
 export const adminRemoveOpenJob = async (

@@ -54,6 +54,8 @@ export function useClientOrders() {
     queryKey: clientOrdersQueryKey(clientId ?? ''),
     queryFn: () => fetchClientOrders(clientId!),
     enabled: !!clientId && clientRole === 'client',
+    placeholderData: [],
+    retry: 0,
     staleTime: QUERY_STALE_FEED_MS,
     refetchOnWindowFocus: false,
     refetchInterval: (query) =>

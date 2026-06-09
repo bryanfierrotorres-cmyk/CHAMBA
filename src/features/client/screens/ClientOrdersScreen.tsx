@@ -242,7 +242,7 @@ export const ClientOrdersScreen: React.FC = () => {
             <Text style={styles.errorRetryText}>Reintentar</Text>
           </TouchableOpacity>
         </View>
-      ) : isLoading ? (
+      ) : isLoading && jobs.length === 0 ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#0284C7" />
         </View>
