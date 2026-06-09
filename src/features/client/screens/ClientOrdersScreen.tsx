@@ -18,14 +18,22 @@ import { useAuthStore } from '@store/authStore';
 import { useClientOrders } from '@features/client/hooks/useClientOrders';
 import { WorkerRatingPrompt } from '@components/reviews/WorkerRatingPrompt';
 import { ClientJobApplicantPanel } from '@components/client/ClientJobApplicantPanel';
-import { useJobWorkerApplications } from '@features/client/hooks/useJobWorkerApplications';
+import {
+  useClientOpenJobsApplicationsRealtime,
+  useJobWorkerApplications,
+} from '@features/client/hooks/useJobWorkerApplications';
 import { CARD_STEP_SHADOW } from '@constants/chambaUI';
 import {
   isClientOrderActive,
   isClientOrderHistory,
   isClientOrderPending,
 } from '@utils/clientOrderClassification';
-import type { ClientOrderJob, ClientOrdersStackParamList } from '@/types';
+import type {
+  AssignedWorkerSummary,
+  ClientOrderJob,
+  ClientOrdersStackParamList,
+  JobWorkerApplication,
+} from '@/types';
 
 type OrdersNav = NativeStackNavigationProp<ClientOrdersStackParamList, 'ClientOrdersList'>;
 
@@ -66,13 +74,21 @@ const filterClientOrders = (jobs: ClientOrderJob[], filter: OrderFilter): Client
 const canRateWorker = (job: ClientOrderJob): boolean =>
   job.status === 'completed' && !!job.assigned_worker;
 
+const resolveAssignedWorker = (
+  raw: ClientOrderJob['assigned_worker'] | AssignedWorkerSummary[] | null | undefined,
+): AssignedWorkerSummary | null => {
+  if (!raw) return null;
+  if (Array.isArray(raw)) return raw[0] ?? null;
+  return raw;
+};
+
 const ClientOrderReview: React.FC<{
   job: ClientOrderJob;
   clientId: string;
   clientName: string;
 }> = ({ job, clientId, clientName }) => {
-  const worker = job.assigned_worker;
-  if (!worker || !canRateWorker(job)) return null;
+  const worker = resolveAssignedWorker(job.assigned_worker);
+  if (!worker?.id || !canRateWorker(job)) return null;
 
   return (
     <WorkerRatingPrompt
@@ -99,8 +115,16 @@ const OrderCard: React.FC<OrderCardProps> = ({
 }) => {
   const ownerClientId = job.created_by || clientId;
   const isOpen = job.status === 'open';
-  const { data: apps = [] } = useJobWorkerApplications(job.id, ownerClientId, isOpen);
-  const pendingCount = apps.filter((a) => a.selection_status === 'pending').length;
+  const {
+    data: apps = [],
+    isLoading: appsLoading,
+    error: appsError,
+    refetch: refetchApps,
+  } = useJobWorkerApplications(job.id, ownerClientId, isOpen);
+  const pendingCount = apps.filter(
+    (a: JobWorkerApplication) => a.selection_status === 'pending',
+  ).length;
+  const appsErrorMessage = appsError instanceof Error ? appsError.message : null;
 
   return (
     <View style={styles.orderWrap}>
@@ -116,6 +140,10 @@ const OrderCard: React.FC<OrderCardProps> = ({
           jobId={job.id}
           clientId={ownerClientId}
           jobStatus={job.status}
+          applications={apps}
+          loading={appsLoading}
+          error={appsErrorMessage}
+          onRefetch={() => void refetchApps()}
           onDecision={onApplicantDecision}
         />
       )}
@@ -138,6 +166,8 @@ export const ClientOrdersScreen: React.FC = () => {
     isRefetching,
     error: ordersError,
   } = useClientOrders();
+
+  useClientOpenJobsApplicationsRealtime(jobs, profile?.id);
 
   useFocusEffect(
     useCallback(() => {
@@ -206,7 +236,7 @@ export const ClientOrdersScreen: React.FC = () => {
             </View>
           ) : (
             filteredJobs.map((job) =>
-              profile ? (
+              profile?.id && job?.id ? (
                 <OrderCard
                   key={job.id}
                   job={job}

@@ -14,10 +14,18 @@ import { JobChatEntryButton } from '@components/chat/JobChatEntryButton';
 import { showJobChatEntry } from '@features/chat/utils/chatHelpers';
 import { CARD_STEP_SHADOW, CHAMBA } from '@constants/chambaUI';
 import { CHAT_THEME } from '@features/chat/constants/chatTheme';
-import { formatCurrency, formatDate, getCategoryLabel } from '@utils/formatters';
+import { coerceNumber, formatCurrency, formatDate, getCategoryLabel } from '@utils/formatters';
 import { formatNicaPhoneDisplay } from '@utils/phoneNicaragua';
 import { getCategoryVisual } from '@utils/categoryVisual';
-import type { ClientOrderJob } from '@/types';
+import type { AssignedWorkerSummary, ClientOrderJob } from '@/types';
+
+const resolveAssignedWorker = (
+  raw: AssignedWorkerSummary | AssignedWorkerSummary[] | null | undefined,
+): AssignedWorkerSummary | null => {
+  if (!raw) return null;
+  if (Array.isArray(raw)) return raw[0] ?? null;
+  return raw;
+};
 
 interface Props {
   job: ClientOrderJob;
@@ -43,32 +51,28 @@ export const ClientActiveServiceCard: React.FC<Props> = ({
   onOpenChat,
   onPressCompleted,
 }) => {
-  const worker = job.assigned_worker;
+  const worker = resolveAssignedWorker(job.assigned_worker);
   const visual = getCategoryVisual(job.category);
-  const title = job.title?.trim() || getCategoryLabel(job.category);
-  const isVariablePrice = job.status === 'open' && !job.pay_amount;
+  const title = job.title?.trim() || getCategoryLabel(job.category) || 'Servicio';
+  const payAmount = coerceNumber(job.pay_amount, 0);
+  const isVariablePrice = job.status === 'open' && payAmount <= 0;
   const isCompleted = job.status === 'completed';
   const isCancelled = job.status === 'cancelled';
   const showWorkerHero = !!worker && !isCancelled && job.status !== 'open';
   const canChat = !!worker && !!onOpenChat && showJobChatEntry(job.status) && !isCancelled;
+  const createdLabel = job.created_at ? formatDate(job.created_at) : '—';
 
-  const CardWrapper = isCompleted && onPressCompleted ? TouchableOpacity : View;
-  const cardWrapperProps = isCompleted && onPressCompleted
-    ? { activeOpacity: 0.88, onPress: () => onPressCompleted(job.id) }
-    : {};
-
-  return (
-    <CardWrapper style={styles.card} {...cardWrapperProps}>
-      {/* Resumen del servicio */}
+  const cardBody = (
+    <>
       <View style={styles.summaryRow}>
         <View style={[styles.serviceIcon, { backgroundColor: visual.color }]}>
           {visual.icon}
         </View>
         <View style={styles.summaryText}>
           <Text style={styles.serviceTitle} numberOfLines={2}>{title}</Text>
-          <Text style={styles.serviceMeta}>{formatDate(job.created_at)}</Text>
+          <Text style={styles.serviceMeta}>{createdLabel}</Text>
           <Text style={isVariablePrice ? styles.priceVariable : styles.price}>
-            {isVariablePrice ? 'Bajo cotización' : formatCurrency(job.pay_amount)}
+            {isVariablePrice ? 'Bajo cotización' : formatCurrency(payAmount)}
           </Text>
         </View>
         {isCompleted && (
@@ -76,7 +80,6 @@ export const ClientActiveServiceCard: React.FC<Props> = ({
         )}
       </View>
 
-      {/* Tracker de estado */}
       <View style={styles.trackerSection}>
         <ClientServiceStatusTracker
           job={job}
@@ -84,8 +87,7 @@ export const ClientActiveServiceCard: React.FC<Props> = ({
         />
       </View>
 
-      {/* Técnico asignado + contacto */}
-      {showWorkerHero && (
+      {showWorkerHero && worker && (
         <View style={styles.techSection}>
           <Text style={styles.techSectionLabel}>QUIÉN TE ATIENDE</Text>
           <View style={styles.techRow}>
@@ -138,8 +140,22 @@ export const ClientActiveServiceCard: React.FC<Props> = ({
       {isCompleted && (
         <Text style={styles.completedHint}>Toca para ver resumen completo y fotos</Text>
       )}
-    </CardWrapper>
+    </>
   );
+
+  if (isCompleted && onPressCompleted) {
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        activeOpacity={0.88}
+        onPress={() => onPressCompleted(job.id)}
+      >
+        {cardBody}
+      </TouchableOpacity>
+    );
+  }
+
+  return <View style={styles.card}>{cardBody}</View>;
 };
 
 const styles = StyleSheet.create({

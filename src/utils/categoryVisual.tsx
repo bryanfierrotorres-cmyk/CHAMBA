@@ -9,8 +9,8 @@ export interface CategoryVisual {
 }
 
 /** Icono + color de categoría alineados con el panel cliente (Mis Solicitudes). */
-export function getCategoryVisual(category: string): CategoryVisual {
-  const slug = category.toLowerCase();
+export function getCategoryVisual(category?: string | null): CategoryVisual {
+  const slug = (category ?? '').toLowerCase();
 
   if (slug.includes('sofa') || slug.includes('limpieza')) {
     return {

@@ -1,4 +1,3 @@
-import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '@services/supabase';
 import type { JobWorkerApplication } from '@/types';
 
@@ -65,42 +64,4 @@ export const clientRejectWorkerApplication = async (
   if (error) throw new Error(error.message);
   const body = data as { success?: boolean; error?: string } | null;
   if (!body?.success) throw new Error(body?.error ?? 'No se pudo rechazar la postulación');
-};
-
-/** Realtime: nueva postulación o cambio de estado en job_assignments. */
-export const subscribeToJobWorkerApplications = (
-  jobId: string,
-  onChange: () => void,
-): (() => void) => {
-  const channel: RealtimeChannel = supabase
-    .channel(`job-applications-${jobId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'job_assignments',
-        filter: `job_id=eq.${jobId}`,
-      },
-      () => onChange(),
-    )
-    .on(
-      'postgres_changes',
-      {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'job_assignments',
-        filter: `job_id=eq.${jobId}`,
-      },
-      () => onChange(),
-    )
-    .subscribe((status, err) => {
-      if (__DEV__ && (status === 'CHANNEL_ERROR' || err)) {
-        console.warn('[JobApplicationsRealtime]', jobId, err?.message ?? status);
-      }
-    });
-
-  return () => {
-    void supabase.removeChannel(channel);
-  };
 };

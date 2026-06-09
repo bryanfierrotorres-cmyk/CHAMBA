@@ -18,13 +18,16 @@ import {
   clientApproveWorkerApplication,
   clientRejectWorkerApplication,
 } from '@features/client/services/clientJobSelectionService';
-import { useJobWorkerApplications } from '@features/client/hooks/useJobWorkerApplications';
 import type { JobWorkerApplication } from '@/types';
 
 interface ClientJobApplicantPanelProps {
   jobId: string;
   clientId: string;
   jobStatus: string;
+  applications: JobWorkerApplication[];
+  loading?: boolean;
+  error?: string | null;
+  onRefetch?: () => void | Promise<unknown>;
   onDecision?: () => void;
 }
 
@@ -32,17 +35,14 @@ export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = (
   jobId,
   clientId,
   jobStatus,
+  applications: apps,
+  loading = false,
+  error = null,
+  onRefetch,
   onDecision,
 }) => {
-  const enabled = jobStatus === 'open';
-  const {
-    data: apps = [],
-    isLoading: loading,
-    error: queryError,
-    refetch,
-  } = useJobWorkerApplications(jobId, clientId, enabled);
   const [actingId, setActingId] = useState<string | null>(null);
-  const error = queryError instanceof Error ? queryError.message : null;
+  const refetch = onRefetch ?? (() => undefined);
 
   const pending = apps.filter((a) => a.selection_status === 'pending');
   const canChoose = jobStatus === 'open' && pending.length > 0;

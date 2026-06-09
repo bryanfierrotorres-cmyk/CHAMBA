@@ -1,0 +1,504 @@
+-- CHAMBA 039 — Lanzamiento: RLS nativo en chat (sin row_security off) + worker_reviews en producción
+SET statement_timeout = '120s';
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 1. CHAT — helpers basados en auth.uid() (cliente o técnico asignado)
+-- ═══════════════════════════════════════════════════════════════════════════
+
+CREATE OR REPLACE FUNCTION job_chat_is_participant(p_servicio_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM jobs j
+    WHERE j.id = p_servicio_id
+      AND j.status <> 'cancelled'
+      AND (
+        j.created_by = auth.uid()
+        OR j.assigned_worker_id = auth.uid()
+        OR EXISTS (
+          SELECT 1
+          FROM job_assignments ja
+          WHERE ja.job_id = j.id
+            AND ja.worker_id = auth.uid()
+            AND ja.selection_status = 'approved'
+        )
+      )
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION job_chat_is_writable(p_servicio_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM jobs j
+    WHERE j.id = p_servicio_id
+      AND j.status IN ('taken', 'in_progress')
+      AND (
+        j.created_by = auth.uid()
+        OR j.assigned_worker_id = auth.uid()
+        OR EXISTS (
+          SELECT 1
+          FROM job_assignments ja
+          WHERE ja.job_id = j.id
+            AND ja.worker_id = auth.uid()
+            AND ja.selection_status = 'approved'
+        )
+      )
+  );
+$$;
+
+-- Helpers explícitos (RPC / validación cruzada)
+CREATE OR REPLACE FUNCTION job_chat_user_can_access(
+  p_servicio_id UUID,
+  p_user_id UUID
+)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM jobs j
+    WHERE j.id = p_servicio_id
+      AND j.status <> 'cancelled'
+      AND (
+        j.created_by = p_user_id
+        OR j.assigned_worker_id = p_user_id
+        OR EXISTS (
+          SELECT 1
+          FROM job_assignments ja
+          WHERE ja.job_id = j.id
+            AND ja.worker_id = p_user_id
+            AND ja.selection_status = 'approved'
+        )
+      )
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION job_chat_user_can_write(
+  p_servicio_id UUID,
+  p_user_id UUID
+)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM jobs j
+    WHERE j.id = p_servicio_id
+      AND j.status IN ('taken', 'in_progress')
+      AND (
+        j.created_by = p_user_id
+        OR j.assigned_worker_id = p_user_id
+        OR EXISTS (
+          SELECT 1
+          FROM job_assignments ja
+          WHERE ja.job_id = j.id
+            AND ja.worker_id = p_user_id
+            AND ja.selection_status = 'approved'
+        )
+      )
+  );
+$$;
+
+-- Tabla mensajes (idempotente)
+CREATE TABLE IF NOT EXISTS mensajes (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  servicio_id  UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  remitente_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  texto        TEXT NOT NULL CHECK (
+    char_length(trim(texto)) > 0 AND char_length(texto) <= 2000
+  ),
+  creado_al    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_mensajes_servicio_creado
+  ON mensajes (servicio_id, creado_al ASC);
+
+ALTER TABLE mensajes ENABLE ROW LEVEL SECURITY;
+
+-- RLS nativo: solo participantes autenticados del servicio
+DROP POLICY IF EXISTS mensajes_select_participant ON mensajes;
+CREATE POLICY mensajes_select_participant ON mensajes
+  FOR SELECT
+  TO authenticated
+  USING (
+    auth.uid() IS NOT NULL
+    AND job_chat_is_participant(servicio_id)
+  );
+
+DROP POLICY IF EXISTS mensajes_insert_participant ON mensajes;
+CREATE POLICY mensajes_insert_participant ON mensajes
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    auth.uid() IS NOT NULL
+    AND remitente_id = auth.uid()
+    AND job_chat_is_writable(servicio_id)
+  );
+
+-- Realtime (filtros por servicio_id)
+ALTER TABLE mensajes REPLICA IDENTITY FULL;
+
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE mensajes;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+-- RPC chat: sin row_security off — respeta RLS + auth.uid()
+CREATE OR REPLACE FUNCTION send_job_chat_message(
+  p_servicio_id UUID,
+  p_remitente_id UUID,
+  p_texto TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+SET row_security = on
+AS $$
+DECLARE
+  v_msg   mensajes%ROWTYPE;
+  v_text  TEXT;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'Sesión requerida para enviar mensajes',
+      'code', 'auth_required'
+    );
+  END IF;
+
+  IF auth.uid() IS DISTINCT FROM p_remitente_id THEN
+    RETURN jsonb_build_object('success', false, 'error', 'No autorizado');
+  END IF;
+
+  v_text := trim(p_texto);
+
+  IF char_length(v_text) = 0 OR char_length(v_text) > 2000 THEN
+    RETURN jsonb_build_object('success', false, 'error', 'El mensaje debe tener entre 1 y 2000 caracteres');
+  END IF;
+
+  IF NOT job_chat_user_can_write(p_servicio_id, auth.uid()) THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'No podés enviar mensajes en este servicio (debe estar en curso y vos ser parte del mismo)'
+    );
+  END IF;
+
+  INSERT INTO mensajes (servicio_id, remitente_id, texto)
+  VALUES (p_servicio_id, auth.uid(), v_text)
+  RETURNING * INTO v_msg;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'message', jsonb_build_object(
+      'id', v_msg.id,
+      'servicio_id', v_msg.servicio_id,
+      'remitente_id', v_msg.remitente_id,
+      'texto', v_msg.texto,
+      'creado_al', v_msg.creado_al
+    )
+  );
+EXCEPTION
+  WHEN insufficient_privilege THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'No autorizado por política de seguridad',
+      'code', 'rls_denied'
+    );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION get_job_chat_messages(
+  p_servicio_id UUID,
+  p_caller_id UUID
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+SET row_security = on
+AS $$
+DECLARE
+  v_messages JSONB;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'Sesión requerida para leer mensajes',
+      'code', 'auth_required'
+    );
+  END IF;
+
+  IF auth.uid() IS DISTINCT FROM p_caller_id THEN
+    RETURN jsonb_build_object('success', false, 'error', 'No autorizado');
+  END IF;
+
+  IF NOT job_chat_user_can_access(p_servicio_id, auth.uid()) THEN
+    RETURN jsonb_build_object('success', false, 'error', 'No tenés acceso a esta conversación');
+  END IF;
+
+  SELECT COALESCE(
+    jsonb_agg(
+      jsonb_build_object(
+        'id', m.id,
+        'servicio_id', m.servicio_id,
+        'remitente_id', m.remitente_id,
+        'texto', m.texto,
+        'creado_al', m.creado_al
+      )
+      ORDER BY m.creado_al ASC
+    ),
+    '[]'::jsonb
+  )
+  INTO v_messages
+  FROM mensajes m
+  WHERE m.servicio_id = p_servicio_id;
+
+  RETURN jsonb_build_object('success', true, 'messages', v_messages);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION send_job_chat_message(UUID, UUID, TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION get_job_chat_messages(UUID, UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION send_job_chat_message(UUID, UUID, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION get_job_chat_messages(UUID, UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION job_chat_user_can_access(UUID, UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION job_chat_user_can_write(UUID, UUID) TO authenticated;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 2. WORKER_REVIEWS — tabla + RLS en producción
+-- ═══════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS worker_profiles (
+  worker_id           UUID PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
+  bio                 TEXT,
+  skills              TEXT[] NOT NULL DEFAULT '{}',
+  id_document_url     TEXT,
+  id_verified         BOOLEAN NOT NULL DEFAULT FALSE,
+  rating_avg          NUMERIC(3, 2),
+  total_reviews       INTEGER NOT NULL DEFAULT 0,
+  total_jobs_done     INTEGER NOT NULL DEFAULT 0,
+  availability_status TEXT NOT NULL DEFAULT 'offline',
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS worker_reviews (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  worker_id      UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  reviewer_id    UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  reviewer_role  TEXT NOT NULL CHECK (reviewer_role IN ('admin', 'client')),
+  rating         INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  comment        TEXT NOT NULL CHECK (char_length(trim(comment)) >= 3),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (worker_id, reviewer_id)
+);
+
+CREATE INDEX IF NOT EXISTS worker_reviews_worker_idx ON worker_reviews(worker_id);
+CREATE INDEX IF NOT EXISTS worker_reviews_reviewer_idx ON worker_reviews(reviewer_id);
+
+COMMENT ON TABLE worker_reviews IS 'Reseñas de técnicos por clientes y admin';
+COMMENT ON COLUMN worker_reviews.reviewer_id IS 'ID del cliente o admin que califica (equiv. client_id cuando reviewer_role=client)';
+
+CREATE OR REPLACE FUNCTION fn_refresh_worker_rating(p_worker UUID)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_avg NUMERIC;
+  v_cnt INTEGER;
+BEGIN
+  SELECT ROUND(AVG(rating)::numeric, 2), COUNT(*)::int
+    INTO v_avg, v_cnt
+    FROM worker_reviews
+   WHERE worker_id = p_worker;
+
+  INSERT INTO worker_profiles (worker_id, skills, rating_avg, total_reviews, availability_status)
+  VALUES (p_worker, '{}', v_avg, COALESCE(v_cnt, 0), 'offline')
+  ON CONFLICT (worker_id) DO UPDATE
+    SET rating_avg = EXCLUDED.rating_avg,
+        total_reviews = EXCLUDED.total_reviews,
+        updated_at = NOW();
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION trg_worker_reviews_refresh_rating()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  PERFORM fn_refresh_worker_rating(COALESCE(NEW.worker_id, OLD.worker_id));
+  RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_worker_reviews_rating ON worker_reviews;
+CREATE TRIGGER trg_worker_reviews_rating
+  AFTER INSERT OR UPDATE OR DELETE ON worker_reviews
+  FOR EACH ROW EXECUTE FUNCTION trg_worker_reviews_refresh_rating();
+
+ALTER TABLE worker_reviews ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "reviews: public read" ON worker_reviews;
+CREATE POLICY "reviews: public read"
+  ON worker_reviews FOR SELECT
+  TO authenticated, anon
+  USING (true);
+
+DROP POLICY IF EXISTS "reviews: client insert own" ON worker_reviews;
+CREATE POLICY "reviews: client insert own"
+  ON worker_reviews FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    reviewer_id = auth.uid()
+    AND reviewer_role = 'client'
+    AND EXISTS (
+      SELECT 1 FROM profiles p
+      WHERE p.id = auth.uid() AND p.role::text = 'client'
+    )
+  );
+
+DROP POLICY IF EXISTS "reviews: reviewer update own" ON worker_reviews;
+CREATE POLICY "reviews: reviewer update own"
+  ON worker_reviews FOR UPDATE
+  TO authenticated
+  USING (reviewer_id = auth.uid())
+  WITH CHECK (reviewer_id = auth.uid());
+
+DROP POLICY IF EXISTS "reviews: admin all" ON worker_reviews;
+CREATE POLICY "reviews: admin all"
+  ON worker_reviews FOR ALL
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM profiles p
+      WHERE p.id = auth.uid() AND p.role::text = 'admin'
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM profiles p
+      WHERE p.id = auth.uid() AND p.role::text = 'admin'
+    )
+  );
+
+CREATE OR REPLACE FUNCTION submit_worker_review(
+  p_worker_id     UUID,
+  p_reviewer_id   UUID,
+  p_reviewer_role TEXT,
+  p_rating        INTEGER,
+  p_comment       TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+SET row_security = on
+AS $$
+DECLARE
+  v_row worker_reviews%ROWTYPE;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Sesión requerida');
+  END IF;
+
+  IF auth.uid() IS DISTINCT FROM p_reviewer_id THEN
+    RETURN jsonb_build_object('success', false, 'error', 'No autorizado');
+  END IF;
+
+  IF p_rating < 1 OR p_rating > 5 THEN
+    RETURN jsonb_build_object('success', false, 'error', 'La calificación debe ser entre 1 y 5');
+  END IF;
+  IF char_length(trim(p_comment)) < 3 THEN
+    RETURN jsonb_build_object('success', false, 'error', 'El comentario debe tener al menos 3 caracteres');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM profiles WHERE id = p_worker_id AND role::text = 'worker') THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Trabajador no encontrado');
+  END IF;
+  IF p_reviewer_role NOT IN ('admin', 'client') THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Rol de revisor inválido');
+  END IF;
+
+  INSERT INTO worker_reviews (worker_id, reviewer_id, reviewer_role, rating, comment)
+  VALUES (p_worker_id, auth.uid(), p_reviewer_role, p_rating, trim(p_comment))
+  ON CONFLICT (worker_id, reviewer_id) DO UPDATE
+    SET rating = EXCLUDED.rating,
+        comment = EXCLUDED.comment,
+        reviewer_role = EXCLUDED.reviewer_role,
+        updated_at = NOW()
+  RETURNING * INTO v_row;
+
+  PERFORM fn_refresh_worker_rating(p_worker_id);
+
+  RETURN jsonb_build_object('success', true, 'review', to_jsonb(v_row));
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION get_worker_reviews(p_worker_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+SET row_security = on
+AS $$
+DECLARE v_result JSONB;
+BEGIN
+  SELECT COALESCE(
+    jsonb_agg(
+      jsonb_build_object(
+        'id', r.id,
+        'worker_id', r.worker_id,
+        'reviewer_id', r.reviewer_id,
+        'reviewer_role', r.reviewer_role,
+        'rating', r.rating,
+        'comment', r.comment,
+        'created_at', r.created_at,
+        'updated_at', r.updated_at,
+        'reviewer', jsonb_build_object(
+          'full_name', p.full_name,
+          'avatar_url', p.avatar_url
+        )
+      )
+      ORDER BY r.created_at DESC
+    ),
+    '[]'::jsonb
+  )
+  INTO v_result
+  FROM worker_reviews r
+  JOIN profiles p ON p.id = r.reviewer_id
+  WHERE r.worker_id = p_worker_id;
+
+  RETURN v_result;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION submit_worker_review(UUID, UUID, TEXT, INTEGER, TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION get_worker_reviews(UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION submit_worker_review(UUID, UUID, TEXT, INTEGER, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION get_worker_reviews(UUID) TO authenticated, anon;

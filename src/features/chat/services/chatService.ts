@@ -85,6 +85,10 @@ export async function fetchJobMessages(
         return body.messages;
       }
       if (!body.success) {
+        if (body.error?.includes('Sesión requerida') || (body as { code?: string }).code === 'auth_required') {
+          console.warn('[fetchJobMessages] sin sesión Auth, intento directo con RLS');
+          return fetchJobMessagesDirect(servicioId);
+        }
         throw new Error(body.error ?? 'No se pudieron cargar los mensajes');
       }
     }
@@ -143,6 +147,11 @@ export async function sendJobMessage(
       return body.message;
     }
     if (!body.success) {
+      const code = (body as { code?: string }).code;
+      if (code === 'auth_required' || code === 'rls_denied' || body.error?.includes('Sesión requerida')) {
+        console.warn('[sendJobMessage] RPC rechazó por sesión/RLS, intento directo');
+        return sendJobMessageDirect(servicioId, remitenteId, trimmed);
+      }
       throw new Error(body.error ?? 'No se pudo enviar el mensaje');
     }
   }

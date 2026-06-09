@@ -13,6 +13,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { ChambaSlidingToggle } from '@components/chamba/ChambaSlidingToggle';
 import { ChambaServiceOptionRow } from '@components/chamba/ChambaServiceOptionRow';
 import { B2bHireModeCards, type B2bHireMode } from '@components/client/B2bHireModeCards';
@@ -59,8 +60,12 @@ type Nav = NativeStackNavigationProp<ClientStackParamList, 'CategoryGrid'>;
 type ActiveTab = 'hogar' | 'empresa';
 
 const CYAN = CHAMBA.cyan;
-const ICON_BG = '#E0F2FE';
 const BLUE = CHAMBA.blue;
+
+/** Altura del difuminado bajo el área segura (header + toggle + búsqueda). */
+const HEADER_GRADIENT_BODY = 210;
+
+const HEADER_GRADIENT_COLORS = ['#D4E9FC', '#F0F6FF', 'rgba(255,255,255,0)'] as const;
 
 const premiumSortIndex = (slug: string): number => {
   const i = EMPRESA_PREMIUM_ORDER.indexOf(slug as (typeof EMPRESA_PREMIUM_ORDER)[number]);
@@ -156,39 +161,46 @@ export const ClientHomeScreen: React.FC = () => {
   }, [activeExpressTiles, selectedExpressCat, catalog.serviceTypes]);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <View>
-          <View style={styles.locationRow}>
-            <Ionicons name="location-sharp" size={16} color={CYAN} />
-            <Text style={styles.locationTitle}> Ubicación</Text>
+    <View style={styles.screenRoot}>
+      <LinearGradient
+        pointerEvents="none"
+        colors={[...HEADER_GRADIENT_COLORS]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={[
+          styles.headerGradient,
+          { height: insets.top + HEADER_GRADIENT_BODY },
+        ]}
+      />
+
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.headerStack}>
+          <View style={styles.header}>
+            <View>
+              <View style={styles.locationRow}>
+                <Ionicons name="location-sharp" size={16} color={CYAN} />
+                <Text style={styles.locationTitle}> Ubicación</Text>
+              </View>
+              <Text style={styles.locationText}>Managua, Altamira</Text>
+            </View>
+            <Text style={styles.logoText}>CHAMBA</Text>
+            <Avatar uri={profile?.avatar_url} name={profile?.full_name ?? firstName} size={36} />
           </View>
-          <Text style={styles.locationText}>Managua, Altamira</Text>
-        </View>
-        <Text style={styles.logoText}>CHAMBA</Text>
-        <Avatar uri={profile?.avatar_url} name={profile?.full_name ?? firstName} size={36} />
-      </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scrollContainer, { paddingBottom: insets.bottom + 100 }]}
-        keyboardShouldPersistTaps="handled"
-      >
-        <ChambaSlidingToggle<ActiveTab>
-          options={[
-            { id: 'hogar', label: 'Para tu Hogar' },
-            { id: 'empresa', label: 'Para tu Negocio' },
-          ]}
-          active={activeTab}
-          onChange={(id) => {
-            setActiveTab(id);
-            setSelectedExpressCat(null);
-          }}
-          style={styles.modeToggle}
-        />
+          <ChambaSlidingToggle<ActiveTab>
+            options={[
+              { id: 'hogar', label: 'Para tu Hogar' },
+              { id: 'empresa', label: 'Para tu Negocio' },
+            ]}
+            active={activeTab}
+            onChange={(id) => {
+              setActiveTab(id);
+              setSelectedExpressCat(null);
+            }}
+            style={styles.modeToggle}
+          />
 
-        {activeTab === 'hogar' && (
-          <View>
+          {activeTab === 'hogar' && (
             <View style={styles.searchContainer}>
               <Ionicons name="search" size={20} color={CHAMBA.muted} style={styles.searchIcon} />
               <TextInput
@@ -199,8 +211,17 @@ export const ClientHomeScreen: React.FC = () => {
                 onChangeText={setSearchQuery}
               />
             </View>
+          )}
+        </View>
 
-            <ClientHomeHeroCarousel slides={CLIENT_HOGAR_HERO_SLIDES} />
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.scrollContainer, { paddingBottom: insets.bottom + 100 }]}
+          keyboardShouldPersistTaps="handled"
+        >
+          {activeTab === 'hogar' && (
+            <View>
+              <ClientHomeHeroCarousel slides={CLIENT_HOGAR_HERO_SLIDES} />
 
             <View style={styles.sectionHeader}>
               <View style={chambaStyles.sectionHeader}>
@@ -305,29 +326,47 @@ export const ClientHomeScreen: React.FC = () => {
             )}
           </View>
         )}
-      </ScrollView>
-    </SafeAreaView>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: CHAMBA.bg },
+  screenRoot: {
+    flex: 1,
+    backgroundColor: CHAMBA.bg,
+  },
+  headerGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 0,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  headerStack: {
+    zIndex: 1,
+    paddingHorizontal: 20,
+  },
   scrollContainer: { paddingHorizontal: 20, paddingBottom: 100 },
 
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
     paddingVertical: 12,
-    backgroundColor: CHAMBA.bg,
+    backgroundColor: 'transparent',
   },
   locationRow: { flexDirection: 'row', alignItems: 'center' },
   locationTitle: { fontSize: 11, color: CHAMBA.muted },
   locationText: { fontSize: 13, fontWeight: '700', color: CHAMBA.navy },
   logoText: { fontSize: 20, fontWeight: '900', color: CHAMBA.teal, letterSpacing: 1 },
 
-  modeToggle: { marginVertical: 16 },
+  modeToggle: { marginTop: 4, marginBottom: 16 },
 
   searchContainer: {
     flexDirection: 'row',
@@ -338,6 +377,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 1,
     borderColor: CHAMBA.border,
+    zIndex: 1,
   },
   searchIcon: { marginRight: 8 },
   searchInput: { flex: 1, height: 44, fontSize: 14, color: CHAMBA.navy },

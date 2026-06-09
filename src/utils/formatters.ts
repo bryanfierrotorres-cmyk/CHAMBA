@@ -91,10 +91,12 @@ export const getClientOrderStatusLabel = (
 };
 
 /** Returns display label for job category / service slug (catálogo canónico primero). */
-export const getCategoryLabel = (category: JobCategory): string =>
-  getConfiguredServiceLabel(category)
-  ?? CATEGORY_LABELS[category]
-  ?? category;
+export const getCategoryLabel = (category?: JobCategory | string | null): string => {
+  if (!category) return 'Servicio';
+  return getConfiguredServiceLabel(category)
+    ?? CATEGORY_LABELS[category as JobCategory]
+    ?? category;
+};
 
 /** Returns category emoji. */
 export const getCategoryEmoji = (category: JobCategory): string => {

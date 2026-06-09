@@ -113,6 +113,14 @@ type AcceptWorkerContext = Pick<
 
 const PAGE_SIZE = 20;
 
+const unwrapAssignedWorker = (
+  raw: AssignedWorkerSummary | AssignedWorkerSummary[] | null | undefined,
+): AssignedWorkerSummary | null => {
+  if (!raw) return null;
+  if (Array.isArray(raw)) return raw[0] ?? null;
+  return raw;
+};
+
 const normalizeJobRow = (row: Job & { address?: string; lat?: number; lng?: number }): Job => {
   const raw = row as Job & { address?: string; lat?: number; lng?: number };
   const address = raw.location?.address ?? raw.address ?? '';
@@ -1356,14 +1364,15 @@ const fetchClientOrdersForId = async (clientId: string): Promise<ClientOrderJob[
   }
 
   return (data ?? []).map((row) => {
-    const { assigned_worker, ...rest } = row as ClientOrderJob & {
-      assigned_worker?: AssignedWorkerSummary | null;
+    const { assigned_worker: rawWorker, ...rest } = row as ClientOrderJob & {
+      assigned_worker?: AssignedWorkerSummary | AssignedWorkerSummary[] | null;
     };
+    const assigned_worker = unwrapAssignedWorker(rawWorker);
     const job = normalizeJobRow(rest as Job);
     return {
       ...job,
       assigned_worker_id: (row as ClientOrderJob).assigned_worker_id ?? assigned_worker?.id ?? null,
-      assigned_worker: assigned_worker ?? null,
+      assigned_worker,
     };
   });
 };
@@ -1413,11 +1422,12 @@ export const fetchClientJobSummary = async (
     throw new Error(jobErr?.message ?? 'Solicitud no encontrada');
   }
 
-  const { assigned_worker, ...rest } = jobRow as ClientOrderJob & {
-    assigned_worker?: AssignedWorkerSummary | null;
+  const { assigned_worker: rawWorker, ...rest } = jobRow as ClientOrderJob & {
+    assigned_worker?: AssignedWorkerSummary | AssignedWorkerSummary[] | null;
   };
+  const assigned_worker = unwrapAssignedWorker(rawWorker);
   const job = normalizeJobRow(rest as Job) as ClientOrderJob;
-  job.assigned_worker = assigned_worker ?? null;
+  job.assigned_worker = assigned_worker;
   job.assigned_worker_id = job.assigned_worker_id ?? assigned_worker?.id ?? null;
 
   let completed_at: string | null =
