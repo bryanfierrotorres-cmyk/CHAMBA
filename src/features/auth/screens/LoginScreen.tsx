@@ -30,7 +30,7 @@ import type { AuthStackParamList, UserRole } from '@/types';
 const LOGIN_PRIMARY = '#1E293B';
 const LOGIN_PRIMARY_PRESSED = '#334155';
 
-const LOGIN_BG = require('../../../../assets/login-hero-bg.png');
+const LOGIN_BG = require('../../../../assets/Gemini_Generated_Image_9bxg669bxg669bxg.png');
 
 const COMPACT_BREAKPOINT = 640;
 
@@ -200,18 +200,14 @@ export const LoginScreen: React.FC = () => {
       <Image
         source={LOGIN_BG}
         accessibilityIgnoresInvertColors
-        style={
-          isCompactLayout
-            ? [styles.bgImageCompact, { height: heroImageHeight }]
-            : styles.bgImageCover
-        }
-        resizeMode={isCompactLayout ? 'contain' : 'cover'}
+        style={styles.bgImageCover}
+        resizeMode="cover"
       />
-      <View
-        style={[
-          styles.bgOverlay,
-          isCompactLayout && { height: heroImageHeight, bottom: undefined },
-        ]}
+      <LinearGradient
+        colors={['rgba(0,0,0,0.6)', 'transparent']}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={styles.bgTopGradient}
         pointerEvents="none"
       />
 
@@ -519,26 +515,16 @@ const styles = StyleSheet.create({
   flexFill: { flex: 1 },
   bgImageCover: {
     ...StyleSheet.absoluteFillObject,
-    width: '100%',
-    height: '100%',
     ...(Platform.OS === 'web'
       ? { objectFit: 'cover' as const, objectPosition: 'center center' }
       : {}),
   },
-  bgImageCompact: {
+  bgTopGradient: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    width: '100%',
-    alignSelf: 'center',
-    ...(Platform.OS === 'web'
-      ? { objectFit: 'contain' as const, objectPosition: 'top center' }
-      : {}),
-  },
-  bgOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    height: '52%',
   },
   scroll: {
     flexGrow: 1,
