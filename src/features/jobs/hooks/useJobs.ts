@@ -432,19 +432,38 @@ export const useAdvanceOperationalPhase = () => {
       jobId,
       nextPhase,
       job,
+      workerId,
     }: {
       jobId: string;
       nextPhase: WorkerOperationalPhase;
       job?: Job | Partial<Job> | null;
-    }) => advanceOperationalPhase(jobId, profile!.id, nextPhase, job as Job | null),
-
-    onMutate: async ({ jobId, nextPhase }) => {
-      const status = phaseToJobStatus(nextPhase);
-      useAssignmentsStore.getState().patchItem(
-        `${jobId}-${profile?.id}`,
-        {},
-        { operational_phase: nextPhase, status, updated_at: new Date().toISOString() },
+      workerId?: string;
+    }) => {
+      const currentProfile = useAuthStore.getState().profile;
+      const effectiveWorkerId = workerId ?? currentProfile?.id;
+      if (!effectiveWorkerId) {
+        return Promise.reject(new Error('Sesión de técnico requerida'));
+      }
+      return advanceOperationalPhase(
+        jobId,
+        effectiveWorkerId,
+        nextPhase,
+        job as Job | null,
+        currentProfile,
       );
+    },
+
+    onMutate: async ({ jobId, nextPhase, workerId }) => {
+      const status = phaseToJobStatus(nextPhase);
+      const profileId = useAuthStore.getState().profile?.id;
+      const patchWorkerId = workerId ?? profileId;
+      if (patchWorkerId) {
+        useAssignmentsStore.getState().patchItem(
+          `${jobId}-${patchWorkerId}`,
+          {},
+          { operational_phase: nextPhase, status, updated_at: new Date().toISOString() },
+        );
+      }
       const items = useAssignmentsStore.getState().items;
       const match = items.find((a) => a.job_id === jobId);
       if (match) {

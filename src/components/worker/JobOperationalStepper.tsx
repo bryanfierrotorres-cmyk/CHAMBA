@@ -5,6 +5,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
+  Platform,
+  type GestureResponderEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { M3, SPACING } from '@constants/stitchStyles';
@@ -63,7 +65,10 @@ export const JobOperationalStepper: React.FC<Props> = ({
   const action = getPhaseAction(phase);
   const isTerminal = phase === 'completed' || job.status === 'completed';
 
-  const handlePrimary = () => {
+  const handlePrimary = (e?: GestureResponderEvent) => {
+    if (Platform.OS === 'web') {
+      e?.stopPropagation?.();
+    }
     if (!phase || !action) return;
     if (phase === 'arrived') {
       void onFinalize?.();
@@ -107,7 +112,10 @@ export const JobOperationalStepper: React.FC<Props> = ({
           )}
           {onOpenChat && (
             <TouchableOpacity
-              onPress={onOpenChat}
+              onPress={(e) => {
+                if (Platform.OS === 'web') e?.stopPropagation?.();
+                onOpenChat();
+              }}
               style={styles.chatBtn}
               activeOpacity={0.88}
               accessibilityRole="button"

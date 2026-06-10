@@ -135,6 +135,7 @@ export const MyJobsScreen: React.FC = () => {
         jobId: item.job_id,
         nextPhase,
         job: item.job ?? null,
+        workerId: item.worker_id,
       });
       if (nextPhase === 'en_route') {
         showMessage('En camino', 'El cliente fue notificado de que vas al destino.');
@@ -352,38 +353,37 @@ const AssignmentCard: React.FC<{
   const chatReadOnly = job?.status === 'completed';
 
   return (
-    <ChambaPressable
-      onPress={onPress}
-      style={[styles.card, isHistory && styles.cardHistory]}
-    >
-      <View style={styles.cardRow}>
-        <View style={styles.cardContent}>
-          <View style={styles.badgeRow}>
-            {job?.status ? <StatusBadge status={job.status} size="sm" /> : null}
-          </View>
-          <Text style={styles.cardTitle} numberOfLines={2}>{title}</Text>
-          <Text style={styles.cardSubtitle}>{subtitle}</Text>
-          <Text style={styles.cardPrice}>
-            {hasJob ? formatCurrency(job.worker_payout ?? 0) : '—'}
-          </Text>
-          {!isHistory && !awaitingClient && (
-            <Text style={[styles.paymentLabel, { color: paymentColor }]}>{paymentLabel}</Text>
-          )}
-          {awaitingClient && (
-            <Text style={styles.pendingClientText}>
-              Postulación enviada — el cliente revisará tu perfil
+    <View style={[styles.card, isHistory && styles.cardHistory]}>
+      <ChambaPressable onPress={onPress} style={styles.cardPressBody}>
+        <View style={styles.cardRow}>
+          <View style={styles.cardContent}>
+            <View style={styles.badgeRow}>
+              {job?.status ? <StatusBadge status={job.status} size="sm" /> : null}
+            </View>
+            <Text style={styles.cardTitle} numberOfLines={2}>{title}</Text>
+            <Text style={styles.cardSubtitle}>{subtitle}</Text>
+            <Text style={styles.cardPrice}>
+              {hasJob ? formatCurrency(job.worker_payout ?? 0) : '—'}
             </Text>
+            {!isHistory && !awaitingClient && (
+              <Text style={[styles.paymentLabel, { color: paymentColor }]}>{paymentLabel}</Text>
+            )}
+            {awaitingClient && (
+              <Text style={styles.pendingClientText}>
+                Postulación enviada — el cliente revisará tu perfil
+              </Text>
+            )}
+          </View>
+
+          {category ? (
+            <CategoryIconCircle category={category} />
+          ) : (
+            <View style={[chambaStyles.iconCircleRight, styles.fallbackIcon]}>
+              <Ionicons name="receipt-outline" size={22} color="#FFF" />
+            </View>
           )}
         </View>
-
-        {category ? (
-          <CategoryIconCircle category={category} />
-        ) : (
-          <View style={[chambaStyles.iconCircleRight, styles.fallbackIcon]}>
-            <Ionicons name="receipt-outline" size={22} color="#FFF" />
-          </View>
-        )}
-      </View>
+      </ChambaPressable>
 
       {canChat && !showStepper && (
         <JobChatEntryButton
@@ -403,17 +403,20 @@ const AssignmentCard: React.FC<{
             canChat ? () => onOpenChat!(chatReadOnly) : undefined
           }
           isAdvancing={isBusy}
+          showQuickActions={false}
           compact
         />
       )}
 
       {isHistory && (
-        <View style={styles.historyFooter}>
-          <Ionicons name="chevron-forward" size={16} color={CHAMBA.muted} />
-          <Text style={styles.historyFooterText}>Ver detalle</Text>
-        </View>
+        <ChambaPressable onPress={onPress} style={styles.historyFooterPress}>
+          <View style={styles.historyFooter}>
+            <Ionicons name="chevron-forward" size={16} color={CHAMBA.muted} />
+            <Text style={styles.historyFooterText}>Ver detalle</Text>
+          </View>
+        </ChambaPressable>
       )}
-    </ChambaPressable>
+    </View>
   );
 };
 
@@ -463,6 +466,10 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     marginBottom: 14,
     ...CARD_ELEVATION,
+  },
+  cardPressBody: {
+    margin: -SPACING.md,
+    padding: SPACING.md,
   },
   cardHistory: {
     borderWidth: 1,
@@ -514,10 +521,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: 4,
-    marginTop: 10,
     paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: CHAMBA.border,
+  },
+  historyFooterPress: {
+    marginTop: 10,
   },
   historyFooterText: {
     fontSize: 12,

@@ -707,7 +707,18 @@ export const advanceOperationalPhase = async (
   workerId: string,
   nextPhase: WorkerOperationalPhase,
   jobSnapshot?: Job | null,
+  workerCtx?: UserProfile | null,
 ): Promise<void> => {
+  let effectiveWorkerId = workerId;
+  if (workerCtx) {
+    const resolved = await resolveWorkerProfileForActions(workerCtx);
+    effectiveWorkerId = resolved.id;
+    await ensurePhoneAuthSession(resolved);
+    if (resolved.id !== workerCtx.id) {
+      await persistPilotProfileIfChanged(workerCtx, resolved);
+    }
+  }
+
   const status = phaseToJobStatus(nextPhase);
 
   await patchLocalOperationalPhase(jobId, nextPhase, status);
@@ -723,19 +734,16 @@ export const advanceOperationalPhase = async (
 
   const { data, error } = await supabase.rpc('worker_advance_operational_phase', {
     p_job_id: jobId,
-    p_worker_id: workerId,
+    p_worker_id: effectiveWorkerId,
     p_phase: nextPhase,
   });
 
-  if (error || !(data as { success?: boolean })?.success) {
-    await supabase
-      .from('jobs')
-      .update({
-        operational_phase: nextPhase,
-        status,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', jobId);
+  const body = data as { success?: boolean; error?: string } | null;
+  if (error) {
+    throw new Error(error.message);
+  }
+  if (!body?.success) {
+    throw new Error(body?.error ?? 'No se pudo actualizar el estado del servicio');
   }
 
   if (job && (nextPhase === 'en_route' || nextPhase === 'arrived')) {
