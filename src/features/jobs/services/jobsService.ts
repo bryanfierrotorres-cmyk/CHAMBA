@@ -17,6 +17,8 @@ import {
   phaseToJobStatus,
 } from '@utils/workerOperationalPhase';
 import { validateClientPrice } from '@constants/servicePricing';
+import { captureWorkerApplicantLocation } from '@utils/captureWorkerApplicantLocation';
+import { SELECTION_STATUS } from '@constants/jobWorkflowStatus';
 import { fromDbJobCategory, toDbJobCategory, toDbJobCategoryQueryValues } from '@constants/chambaCategories';
 import {
   getLocalAssignments,
@@ -41,9 +43,9 @@ import {
   pilotPhoneEmail,
 } from '@utils/profileSync';
 import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
+import type { UserProfile } from '@/types';
 import { withTimeout } from '@utils/withTimeout';
 import { useAuthStore } from '@store/authStore';
-import type { UserProfile } from '@/types';
 import { assertClientJobPlatformReady } from '@services/clientJobPlatform';
 import { resolveJobScheduling } from '@utils/jobScheduling';
 import type { UrgencyLevel } from '@/types';
@@ -177,20 +179,28 @@ const parseRpcAssignmentRows = (data: unknown): JobAssignment[] => {
 
 /** Fallback cuando RLS bloquea SELECT directo en job_assignments. */
 const fetchAssignmentsViaRpc = async (workerId: string): Promise<JobAssignment[]> => {
-  const { data, error } = await supabase.rpc('get_worker_assignments', {
-    p_worker_id: workerId,
-  });
+  const rpcNames = ['get_worker_agenda_panel', 'get_worker_assignments'] as const;
 
-  if (error) {
-    console.warn('[fetchWorkerAssignments] RPC get_worker_assignments:', error.message);
-    return [];
+  for (const rpcName of rpcNames) {
+    const { data, error } = await supabase.rpc(rpcName, {
+      p_worker_id: workerId,
+    });
+
+    if (error) {
+      console.warn(`[fetchWorkerAssignments] RPC ${rpcName}:`, error.message);
+      continue;
+    }
+
+    const rows = parseRpcAssignmentRows(data);
+    if (rows.length > 0) {
+      return rows.map((row) => ({
+        ...row,
+        job: row.job ? normalizeJobRow(row.job as Job) : row.job,
+      }));
+    }
   }
 
-  const rows = parseRpcAssignmentRows(data);
-  return rows.map((row) => ({
-    ...row,
-    job: row.job ? normalizeJobRow(row.job as Job) : row.job,
-  }));
+  return [];
 };
 
 /** Fallback cuando RLS bloquea SELECT directo en job_assignments. */
@@ -235,6 +245,10 @@ const fetchAssignmentsViaWorkerColumn = async (
 
   return (data as Job[]).map((raw) => {
     const job = normalizeJobRow(raw);
+    const selectionStatus =
+      job.status === 'taken' || job.status === 'in_progress'
+        ? SELECTION_STATUS.APPROVED
+        : SELECTION_STATUS.PENDING;
     return {
       id: `${job.id}-${workerId}`,
       job_id: job.id,
@@ -243,6 +257,7 @@ const fetchAssignmentsViaWorkerColumn = async (
       completed_at: job.status === 'completed' ? (job.updated_at ?? null) : null,
       payment_status: 'pending' as const,
       payment_intent_id: null,
+      selection_status: selectionStatus,
       job,
     };
   });
@@ -458,8 +473,21 @@ export const fetchJobById = async (jobId: string): Promise<Job> => {
 /** Fetch all assignments for a worker (remoto + caché local piloto). */
 export const fetchWorkerAssignments = async (
   workerId: string,
+  profile?: UserProfile | null,
 ): Promise<JobAssignment[]> => {
-  let localFirst = await getLocalAssignments(workerId);
+  let effectiveWorkerId = workerId;
+
+  if (profile?.id) {
+    try {
+      const synced = await syncProfileWithDatabase(profile);
+      effectiveWorkerId = synced.id;
+      await ensurePhoneAuthSession(synced);
+    } catch (err) {
+      console.warn('[fetchWorkerAssignments] auth/sync:', err);
+    }
+  }
+
+  let localFirst = await getLocalAssignments(effectiveWorkerId);
   if (localFirst.length === 0 && CONFIG.pilot.enabled) {
     localFirst = await getAllLocalAssignments();
   }
@@ -467,22 +495,22 @@ export const fetchWorkerAssignments = async (
   let remote: JobAssignment[] = [];
 
   try {
-    const viaRpc = await fetchAssignmentsViaRpc(workerId);
+    const viaRpc = await fetchAssignmentsViaRpc(effectiveWorkerId);
     if (viaRpc.length > 0) {
       remote = viaRpc;
     } else {
       const { data, error } = await supabase
         .from('job_assignments')
         .select(`*, job:jobs(*)`)
-        .eq('worker_id', workerId)
+        .eq('worker_id', effectiveWorkerId)
         .order('assigned_at', { ascending: false });
 
       if (!error && (data ?? []).length > 0) {
         remote = (data ?? []) as JobAssignment[];
       } else {
-        remote = await fetchAssignmentsViaJobs(workerId);
+        remote = await fetchAssignmentsViaJobs(effectiveWorkerId);
         if (remote.length === 0) {
-          remote = await fetchAssignmentsViaWorkerColumn(workerId);
+          remote = await fetchAssignmentsViaWorkerColumn(effectiveWorkerId);
         }
       }
     }
@@ -491,14 +519,11 @@ export const fetchWorkerAssignments = async (
       ...a,
       job: a.job ? normalizeJobRow(a.job as Job) : a.job,
     }));
-
-    // No persistir todo el remoto en localStorage (evita quota exceeded).
-    // La caché local solo se escribe al aceptar/finalizar.
   } catch (err) {
     console.warn('[fetchWorkerAssignments]', err);
   }
 
-  const local = await getLocalAssignments(workerId);
+  const local = await getLocalAssignments(effectiveWorkerId);
   const localPool = local.length > 0 ? local : localFirst;
   const merged = mergeAssignments(remote, localPool);
   return merged.length > 0 ? merged : localPool;
@@ -533,16 +558,28 @@ const assertWorkerCanPostulate = async (workerId: string): Promise<void> => {
 const tryRpcAccept = async (
   jobId: string,
   workerId: string,
+  applicantCoords?: { lat: number; lng: number } | null,
 ): Promise<{
   ok: boolean;
   assignmentId?: string;
   error?: string;
   selectionStatus?: string;
 }> => {
-  const { data, error } = await supabase.rpc('accept_job', {
+  const rpcParams: {
+    p_job_id: string;
+    p_worker_id: string;
+    p_applicant_lat?: number;
+    p_applicant_lng?: number;
+  } = {
     p_job_id: jobId,
     p_worker_id: workerId,
-  });
+  };
+  if (applicantCoords) {
+    rpcParams.p_applicant_lat = applicantCoords.lat;
+    rpcParams.p_applicant_lng = applicantCoords.lng;
+  }
+
+  const { data, error } = await supabase.rpc('accept_job', rpcParams);
 
   if (error) {
     return { ok: false, error: error.message };
@@ -818,7 +855,8 @@ export const acceptJob = async (
 
     await assertWorkerCanPostulate(effectiveWorkerId);
 
-    let rpc = await tryRpcAccept(jobId, effectiveWorkerId);
+    const applicantCoords = await captureWorkerApplicantLocation();
+    let rpc = await tryRpcAccept(jobId, effectiveWorkerId, applicantCoords);
 
     const retriable =
       rpc.error?.includes('no encontrado') ||
@@ -833,7 +871,7 @@ export const acceptJob = async (
         await persistPilotProfileIfChanged(workerCtx as UserProfile, reResolved);
       }
       await ensureWorkerProfileInDb(reResolved);
-      rpc = await tryRpcAccept(jobId, effectiveWorkerId);
+      rpc = await tryRpcAccept(jobId, effectiveWorkerId, applicantCoords);
     }
 
     let assignmentId = rpc.assignmentId;
