@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CONFIG } from '@constants/config';
 import type { Job, JobAssignment, JobCategory, JobStatus, WorkerOperationalPhase } from '@/types';
+import { isWorkerPendingClientSelection } from '@utils/jobActiveLimits';
 import { preferOperationalPhase } from '@utils/workerOperationalPhase';
 
 const STORAGE_KEY = 'CHAMBA_WORKER_ASSIGNMENTS';
@@ -35,7 +35,7 @@ const compactJob = (job: Job | Partial<Job> | null | undefined): CompactJob | nu
     id: job.id,
     title: job.title ?? 'Chamba',
     category: (job.category ?? 'limpieza_sofas') as JobCategory,
-    status: (job.status ?? 'in_progress') as JobStatus,
+    status: (job.status ?? 'open') as JobStatus,
     operational_phase: job.operational_phase ?? null,
     pay_amount: job.pay_amount ?? 0,
     worker_payout: job.worker_payout ?? 0,
@@ -171,13 +171,52 @@ export const getAllLocalAssignments = async (): Promise<JobAssignment[]> =>
 
 export const getLocalAssignments = async (workerId: string): Promise<JobAssignment[]> => {
   const entries = await readAll();
-  let filtered = entries.filter((e) => e.assignment.worker_id === workerId);
+  return entries
+    .filter((e) => e.assignment.worker_id === workerId)
+    .map(toAssignment);
+};
 
-  if (filtered.length === 0 && CONFIG.pilot.enabled && entries.length > 0) {
-    filtered = entries;
-  }
+const OPTIMISTIC_LOCAL_MS = 10 * 60 * 1000;
 
-  return filtered.map(toAssignment);
+/** Solo postulaciones recientes aún no reflejadas en el servidor. */
+export const pickOptimisticLocalAssignments = (
+  remote: JobAssignment[],
+  local: JobAssignment[],
+): JobAssignment[] => {
+  const remoteIds = new Set(remote.map((a) => a.job_id));
+  const now = Date.now();
+  return local.filter((a) => {
+    if (remoteIds.has(a.job_id)) return false;
+    if (!isWorkerPendingClientSelection(a) || a.job?.status !== 'open') return false;
+    const assignedAt = new Date(a.assigned_at).getTime();
+    return Number.isFinite(assignedAt) && now - assignedAt < OPTIMISTIC_LOCAL_MS;
+  });
+};
+
+/** Remoto es fuente de verdad; local solo para optimismo tras postular. */
+export const mergeRemoteWithOptimisticLocal = (
+  remote: JobAssignment[],
+  local: JobAssignment[],
+): JobAssignment[] => mergeAssignments(remote, pickOptimisticLocalAssignments(remote, local));
+
+/** Elimina caché local huérfana (ej. chamba estática “en proceso / pendiente”). */
+export const pruneOrphanLocalAssignments = async (
+  workerId: string,
+  remote: JobAssignment[],
+): Promise<void> => {
+  const remoteIds = new Set(remote.map((a) => a.job_id));
+  const now = Date.now();
+  const entries = await readAll();
+  const kept = entries.filter((e) => {
+    if (e.assignment.worker_id !== workerId) return true;
+    if (remoteIds.has(e.assignment.job_id)) return true;
+    if (e.job?.status === 'open') {
+      const assignedAt = new Date(e.assignment.assigned_at).getTime();
+      return Number.isFinite(assignedAt) && now - assignedAt < OPTIMISTIC_LOCAL_MS;
+    }
+    return false;
+  });
+  if (kept.length !== entries.length) await writeAll(kept);
 };
 
 export const upsertLocalAssignment = async (
@@ -314,8 +353,8 @@ export const mergeAssignments = (
     });
   };
 
-  for (const a of local) ingest(a);
   for (const a of remote) ingest(a);
+  for (const a of local) ingest(a);
 
   return Array.from(byJobId.values()).sort(
     (x, y) => new Date(y.assigned_at).getTime() - new Date(x.assigned_at).getTime(),

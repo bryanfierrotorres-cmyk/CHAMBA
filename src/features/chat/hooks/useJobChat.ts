@@ -56,7 +56,7 @@ export function useJobChat(jobId: string) {
       store.setPhoneAuth(false);
     }
 
-    return fetchJobMessages(jobId, synced.id);
+    return fetchJobMessages(jobId, synced.id, synced);
   }, [jobId, profile]);
 
   const messagesQuery = useQuery({
@@ -187,7 +187,7 @@ export function useJobChat(jobId: string) {
           );
         }
         useAuthStore.getState().setSession(authSession);
-        const msg = await sendJobMessage(jobId, synced.id, text);
+        const msg = await sendJobMessage(jobId, synced.id, text, synced);
         appendMessage(msg);
       } catch (err: unknown) {
         const raw = err instanceof Error ? err.message : 'No se pudo enviar';

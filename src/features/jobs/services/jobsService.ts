@@ -24,11 +24,11 @@ import { SELECTION_STATUS } from '@constants/jobWorkflowStatus';
 import { fromDbJobCategory, toDbJobCategory, toDbJobCategoryQueryValues } from '@constants/chambaCategories';
 import {
   getLocalAssignments,
-  getAllLocalAssignments,
   upsertLocalAssignment,
+  mergeRemoteWithOptimisticLocal,
+  pruneOrphanLocalAssignments,
   patchLocalJobStatus,
   patchLocalOperationalPhase,
-  mergeAssignments,
 } from '@utils/localAssignments';
 import { CONFIG } from '@constants/config';
 import {
@@ -493,11 +493,6 @@ export const fetchWorkerAssignments = async (
     }
   }
 
-  let localFirst = await getLocalAssignments(effectiveWorkerId);
-  if (localFirst.length === 0 && CONFIG.pilot.enabled) {
-    localFirst = await getAllLocalAssignments();
-  }
-
   let remote: JobAssignment[] = [];
 
   try {
@@ -530,9 +525,11 @@ export const fetchWorkerAssignments = async (
   }
 
   const local = await getLocalAssignments(effectiveWorkerId);
-  const localPool = local.length > 0 ? local : localFirst;
-  const merged = mergeAssignments(remote, localPool);
-  return merged.length > 0 ? merged : localPool;
+  if (remote.length > 0) {
+    await pruneOrphanLocalAssignments(effectiveWorkerId, remote);
+  }
+  const merged = mergeRemoteWithOptimisticLocal(remote, local);
+  return merged.length > 0 ? merged : local;
 };
 
 const coerceRpcCount = (data: unknown): number | null => {

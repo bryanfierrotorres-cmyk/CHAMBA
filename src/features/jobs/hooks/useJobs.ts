@@ -32,7 +32,12 @@ import { useAuthStore } from '@store/authStore';
 
 import { useAssignmentsStore } from '@store/assignmentsStore';
 
-import { mergeAssignments, patchLocalJobStatus, getLocalAssignments } from '@utils/localAssignments';
+import {
+  mergeAssignments,
+  mergeRemoteWithOptimisticLocal,
+  patchLocalJobStatus,
+  getLocalAssignments,
+} from '@utils/localAssignments';
 
 import { CONFIG } from '@constants/config';
 import { QUERY_STALE_FEED_MS } from '@constants/queryCache';
@@ -332,13 +337,13 @@ export const useMyJobs = () => {
 
 
 
-  const data = useMemo(
-
-    () => mergeAssignments(query.data ?? [], storeItems),
-
-    [query.data, storeItems],
-
-  );
+  const data = useMemo(() => {
+    const remote = query.data ?? [];
+    if (remote.length > 0) {
+      return mergeRemoteWithOptimisticLocal(remote, storeItems);
+    }
+    return storeItems.length > 0 ? storeItems : remote;
+  }, [query.data, storeItems]);
 
 
 

@@ -28,8 +28,14 @@ import { uploadAvatar, updateProfile } from '@features/auth/services/authService
 import { subscribeToWorkerProfile }    from '../services/profileService';
 import { WorkerReviewsPanel }          from '@features/reviews/components/WorkerReviewsPanel';
 import { useMyJobs }                   from '@features/jobs/hooks/useJobs';
+import { useWorkerWallet }             from '@features/jobs/hooks/useWorkerWallet';
+import { WorkerWalletCard }            from '@components/worker/WorkerWalletCard';
+import { computeWorkerWalletSummary }  from '@utils/workerWalletSummary';
+import { isWorkerCommitmentActive, isWorkerPendingClientSelection } from '@utils/jobActiveLimits';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { WorkerTabParamList } from '@/types';
 import { M3, FONT_SIZE, SPACING, BORDER_RADIUS, CARD_ELEVATION } from '@constants/stitchStyles';
-import { formatCurrency, formatRatingAvg, getCategoryLabel, coerceNumber } from '@utils/formatters';
+import { formatCurrency, formatRatingAvg, getCategoryLabel } from '@utils/formatters';
 import { ProfileSectionBoundary } from '@components/ProfileSectionBoundary';
 import type { AvailabilityStatus } from '@/types';
 
@@ -109,12 +115,19 @@ export const ProfileScreen: React.FC = () => {
   const [avatarPreview, setAvatarPreview]       = useState<string | null>(null);
   const [refreshing, setRefreshing]           = useState(false);
   const { data: myJobs = [] } = useMyJobs();
+  const { data: walletEarnings = [], refetch: refetchWallet } = useWorkerWallet();
+  const walletSummary = React.useMemo(
+    () => computeWorkerWalletSummary(walletEarnings),
+    [walletEarnings],
+  );
+  const tabNavigation = navigation.getParent<BottomTabNavigationProp<WorkerTabParamList>>();
 
   const loadAll = async () => {
     if (!profile?.id) return;
     await Promise.all([
       loadProfile(profile.id),
       loadStats(profile.id),
+      refetchWallet(),
     ]);
   };
 
@@ -215,14 +228,15 @@ export const ProfileScreen: React.FC = () => {
   const ratingDisplay = formatRatingAvg(workerProfile?.rating_avg);
   const reviewCount = workerProfile?.total_reviews ?? 0;
 
-  const acceptedCount = myJobs.length > 0 ? myJobs.length : (stats?.acceptedJobs ?? 0);
-  const earnedFromJobs = myJobs
-    .filter((a) => a.completed_at || a.job?.status === 'completed')
-    .reduce((sum, a) => sum + coerceNumber(a.job?.worker_payout, 0), 0);
-  const earnedTotal = Math.max(stats?.totalEarned ?? 0, earnedFromJobs);
-  const completedCount = myJobs.filter(
-    (a) => a.completed_at || a.job?.status === 'completed',
-  ).length || (stats?.completedJobs ?? 0);
+  const acceptedCount = myJobs.filter((a) =>
+    a.selection_status !== 'rejected' && (
+      isWorkerCommitmentActive(a)
+      || isWorkerPendingClientSelection(a)
+      || a.job?.status === 'completed'
+    ),
+  ).length || (stats?.acceptedJobs ?? 0);
+  const earnedTotal = walletSummary.totalAvailable;
+  const completedCount = walletSummary.completedCount;
 
   const specialties: { id: string; label: string; icon: keyof typeof Ionicons.glyphMap; active: boolean }[] = [];
   if (profile.category_1) {
@@ -352,6 +366,19 @@ export const ProfileScreen: React.FC = () => {
               Tu cuenta está pendiente — podrás aceptar chambas cuando seas aprobado
             </Text>
           )}
+        </View>
+
+        <View style={styles.section}>
+          <SectionTitle label="Billetera" subtitle="Mismas ganancias que la pestaña Billetera" />
+          <WorkerWalletCard summary={walletSummary} />
+          <TouchableOpacity
+            style={styles.walletLink}
+            onPress={() => tabNavigation?.navigate('Wallet')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.walletLinkText}>Ver detalle y gráfico</Text>
+            <Ionicons name="chevron-forward" size={16} color={M3.primary} />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.section}>
@@ -811,5 +838,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: SPACING.md,
     marginTop: 4,
+  },
+  walletLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    marginTop: 8,
+    paddingVertical: 8,
+  },
+  walletLinkText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: M3.primary,
   },
 });

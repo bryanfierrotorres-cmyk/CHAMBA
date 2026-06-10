@@ -31,7 +31,6 @@ export const normalizeWorkerProfile = (row: WorkerProfile | Record<string, unkno
   };
 };
 
-import { getLocalAssignments } from '@utils/localAssignments';
 
 import {
 
@@ -332,93 +331,39 @@ export interface WorkerStats {
 
 
 type StatsRow = {
-
   payment_status: string;
-
   completed_at: string | null;
-
-  job: { worker_payout: number } | null;
-
+  selection_status?: string | null;
+  job: { worker_payout: number; status?: string } | null;
 };
 
+const isCompletedApproved = (r: StatsRow): boolean =>
+  r.selection_status !== 'rejected'
+  && r.completed_at != null
+  && r.job?.status === 'completed';
 
-
-const rowsToStats = (rows: StatsRow[]): WorkerStats => ({
-
-  totalEarned: rows
-
-    .filter((r) => r.payment_status === 'paid')
-
-    .reduce((s, r) => s + (r.job?.worker_payout ?? 0), 0),
-
-  completedJobs: rows.filter((r) => r.completed_at !== null).length,
-
-  acceptedJobs:  rows.length,
-
-  pendingPayments: rows.filter((r) => r.payment_status === 'pending').length,
-
-});
-
-
+const rowsToStats = (rows: StatsRow[]): WorkerStats => {
+  const completed = rows.filter(isCompletedApproved);
+  return {
+    totalEarned: completed.reduce((s, r) => s + (r.job?.worker_payout ?? 0), 0),
+    completedJobs: completed.length,
+    acceptedJobs: rows.filter((r) => r.selection_status === 'approved').length,
+    pendingPayments: completed.filter((r) => r.payment_status === 'pending').length,
+  };
+};
 
 export const fetchWorkerStats = async (workerId: string): Promise<WorkerStats> => {
+  const { data, error } = await supabase
+    .from('job_assignments')
+    .select('id, payment_status, completed_at, selection_status, job:jobs(worker_payout, status)')
+    .eq('worker_id', workerId)
+    .eq('selection_status', 'approved');
 
-  const byKey = new Map<string, StatsRow>();
-
-
-
-  try {
-
-    const { data, error } = await supabase
-
-      .from('job_assignments')
-
-      .select('id, payment_status, completed_at, job:jobs(worker_payout)')
-
-      .eq('worker_id', workerId);
-
-
-
-    if (!error && data) {
-
-      for (const row of (data ?? []) as unknown as Array<StatsRow & { id: string }>) {
-
-        byKey.set(row.id, row);
-
-      }
-
-    }
-
-  } catch {
-
-    // continuar con caché local
-
+  if (error) {
+    throw new Error(error.message);
   }
 
-
-
-  const local = await getLocalAssignments(workerId);
-
-  for (const a of local) {
-
-    if (byKey.has(a.id)) continue;
-
-    byKey.set(a.id, {
-
-      payment_status: a.payment_status,
-
-      completed_at:   a.completed_at,
-
-      job: a.job ? { worker_payout: a.job.worker_payout ?? 0 } : null,
-
-    });
-
-  }
-
-
-
-  return rowsToStats(Array.from(byKey.values()));
-
+  return rowsToStats((data ?? []) as unknown as StatsRow[]);
 };
 
 

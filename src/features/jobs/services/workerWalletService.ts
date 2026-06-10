@@ -75,7 +75,9 @@ export const fetchWorkerWalletEarnings = async (
     .from('job_assignments')
     .select(WALLET_EARNINGS_SELECT)
     .eq('worker_id', workerId)
+    .eq('selection_status', 'approved')
     .eq('job.status', 'completed')
+    .not('completed_at', 'is', null)
     .order('completed_at', { ascending: false, nullsFirst: false });
 
   if (error) {

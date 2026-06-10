@@ -1,10 +1,8 @@
 import { create } from 'zustand';
 import {
   getLocalAssignments,
-  getAllLocalAssignments,
   upsertLocalAssignment,
 } from '@utils/localAssignments';
-import { CONFIG } from '@constants/config';
 import type { Job, JobAssignment } from '@/types';
 
 interface AssignmentsState {
@@ -28,10 +26,7 @@ export const useAssignmentsStore = create<AssignmentsState>((set, get) => ({
   refresh: async (workerId) => {
     set({ isLoading: true, workerId });
     try {
-      let items = await getLocalAssignments(workerId);
-      if (items.length === 0 && CONFIG.pilot.enabled) {
-        items = await getAllLocalAssignments();
-      }
+      const items = await getLocalAssignments(workerId);
       set({ items, isLoading: false });
       return items;
     } catch {

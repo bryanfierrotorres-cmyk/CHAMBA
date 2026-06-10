@@ -1,5 +1,7 @@
 import { supabase } from '@services/supabase';
-import type { JobStatus, ServiceMessage } from '@/types';
+import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
+import { syncProfileWithDatabase } from '@utils/profileSync';
+import type { JobStatus, ServiceMessage, UserProfile } from '@/types';
 
 export interface JobChatContext {
   jobId: string;
@@ -12,6 +14,21 @@ export interface JobChatContext {
   workerName: string | null;
   workerAvatar: string | null;
 }
+
+const isAuthRequired = (body?: { error?: string; code?: string } | null): boolean =>
+  body?.code === 'auth_required'
+  || !!body?.error?.includes('Sesión requerida');
+
+const ensureActorSession = async (profile: UserProfile): Promise<string> => {
+  const synced = await syncProfileWithDatabase(profile);
+  const session = await ensurePhoneAuthSession(synced);
+  if (!session?.access_token) {
+    throw new Error(
+      'Sesión requerida para el chat. Cerrá la app y volvé a entrar con tu celular.',
+    );
+  }
+  return synced.id;
+};
 
 const isMissingRpc = (err: { code?: string; message?: string } | null): boolean =>
   !!err && (
@@ -72,23 +89,22 @@ async function fetchJobMessagesDirect(servicioId: string): Promise<ServiceMessag
 export async function fetchJobMessages(
   servicioId: string,
   callerId?: string,
+  profile?: UserProfile | null,
 ): Promise<ServiceMessage[]> {
-  if (callerId) {
+  const loadViaRpc = async (actorId: string): Promise<ServiceMessage[]> => {
     const { data, error } = await supabase.rpc('get_job_chat_messages', {
       p_servicio_id: servicioId,
-      p_caller_id: callerId,
+      p_caller_id: actorId,
     });
 
     if (!error && data) {
-      const body = data as { success?: boolean; error?: string; messages?: ServiceMessage[] };
+      const body = data as { success?: boolean; error?: string; messages?: ServiceMessage[]; code?: string };
       if (body.success && Array.isArray(body.messages)) {
         return body.messages;
       }
       if (!body.success) {
-        if (body.error?.includes('Sesión requerida') || (body as { code?: string }).code === 'auth_required') {
-          throw new Error(
-            'Sesión requerida para el chat. Cerrá la app y volvé a entrar, o ejecutá npm run db:apply-launch-rls en Supabase.',
-          );
+        if (isAuthRequired(body)) {
+          throw new Error('auth_required');
         }
         throw new Error(body.error ?? 'No se pudieron cargar los mensajes');
       }
@@ -100,6 +116,24 @@ export async function fetchJobMessages(
     }
 
     throw new Error(error?.message ?? 'No se pudieron cargar los mensajes');
+  };
+
+  if (callerId) {
+    try {
+      return await loadViaRpc(callerId);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '';
+      if (msg === 'auth_required' && profile) {
+        const actorId = await ensureActorSession(profile);
+        return loadViaRpc(actorId);
+      }
+      if (msg === 'auth_required') {
+        throw new Error(
+          'Sesión requerida para el chat. Cerrá la app y volvé a entrar con tu celular.',
+        );
+      }
+      throw err;
+    }
   }
 
   return fetchJobMessagesDirect(servicioId);
@@ -128,50 +162,67 @@ export async function sendJobMessage(
   servicioId: string,
   remitenteId: string,
   texto: string,
+  profile?: UserProfile | null,
 ): Promise<ServiceMessage> {
   const trimmed = texto.trim();
   if (!trimmed) throw new Error('Escribí un mensaje');
 
-  const { data, error } = await supabase.rpc('send_job_chat_message', {
-    p_servicio_id: servicioId,
-    p_remitente_id: remitenteId,
-    p_texto: trimmed,
-  });
+  const sendViaRpc = async (actorId: string): Promise<ServiceMessage> => {
+    const { data, error } = await supabase.rpc('send_job_chat_message', {
+      p_servicio_id: servicioId,
+      p_remitente_id: actorId,
+      p_texto: trimmed,
+    });
 
-  if (!error && data) {
-    const body = data as {
-      success?: boolean;
-      error?: string;
-      message?: ServiceMessage;
-    };
-    if (body.success && body.message) {
-      return body.message;
-    }
-    if (!body.success) {
-      const code = (body as { code?: string }).code;
-      if (code === 'auth_required' || body.error?.includes('Sesión requerida')) {
-        throw new Error(
-          'No se pudo enviar: tu sesión expiró. Salí y volvé a entrar a CHAMBA para chatear.',
-        );
+    if (!error && data) {
+      const body = data as {
+        success?: boolean;
+        error?: string;
+        message?: ServiceMessage;
+        code?: string;
+      };
+      if (body.success && body.message) {
+        return body.message;
       }
-      if (code === 'rls_denied' || body.error?.includes('No podés enviar')) {
-        throw new Error(body.error ?? 'No podés enviar mensajes en este servicio');
+      if (!body.success) {
+        if (isAuthRequired(body)) {
+          throw new Error('auth_required');
+        }
+        if (body.code === 'rls_denied' || body.error?.includes('No podés enviar')) {
+          throw new Error(body.error ?? 'No podés enviar mensajes en este servicio');
+        }
+        throw new Error(body.error ?? 'No se pudo enviar el mensaje');
       }
-      throw new Error(body.error ?? 'No se pudo enviar el mensaje');
     }
-  }
 
-  if (isMissingRpc(error)) {
-    throw new Error(
-      'Chat no configurado en el servidor. Ejecutá npm run db:sync-chat (migración 024) o pegá el SQL en Supabase.',
-    );
-  }
+    if (isMissingRpc(error)) {
+      throw new Error(
+        'Chat no configurado en el servidor. Ejecutá npm run db:apply-chat-phone-fix en Supabase.',
+      );
+    }
 
-  if (error?.message?.includes('row-level security')) {
-    throw new Error(
-      'No se pudo enviar: falta aplicar la migración 024 en Supabase (npm run db:sync-chat).',
-    );
-  }
+    if (error?.message?.includes('row-level security')) {
+      throw new Error(
+        'No se pudo enviar: aplicá npm run db:apply-chat-phone-fix y volvé a iniciar sesión.',
+      );
+    }
 
-  throw new Error(error?.message ?? 'No se pudo enviar el mensaje');
+    throw new Error(error?.message ?? 'No se pudo enviar el mensaje');
+  };
+
+  try {
+    return await sendViaRpc(remitenteId);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : '';
+    if (msg === 'auth_required' && profile) {
+      const actorId = await ensureActorSession(profile);
+      return sendViaRpc(actorId);
+    }
+    if (msg === 'auth_required') {
+      throw new Error(
+        'No se pudo enviar: tu sesión expiró. Salí y volvé a entrar a CHAMBA para chatear.',
+      );
+    }
+    throw err;
+  }
 }
