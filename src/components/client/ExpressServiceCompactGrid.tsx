@@ -18,6 +18,7 @@ export interface ExpressCompactItem {
   isCategory?: boolean;
   imageSource?: ImageSourcePropType | null;
   imageSize?: number;
+  imageOffsetY?: number;
 }
 
 interface ExpressServiceCompactGridProps {
@@ -38,6 +39,7 @@ export const ExpressServiceCompactGrid: React.FC<ExpressServiceCompactGridProps>
         onPress={item.onPress}
         imageSource={item.imageSource}
         imageSize={item.imageSize}
+        imageOffsetY={item.imageOffsetY}
         icon={item.icon}
         iconColor={item.iconColor}
         isCategory={item.isCategory}

@@ -27,6 +27,8 @@ export interface ServiceCardProps {
   imageSource?: ImageSourcePropType | null;
   /** Side del cuadro 3D; default 128px. */
   imageSize?: number;
+  /** Desplazamiento vertical del render dentro de la ficha (px). */
+  imageOffsetY?: number;
   /** Fallback vectorial para subcategorías sin asset 3D. */
   icon?: React.ReactNode;
   iconColor?: string;
@@ -43,6 +45,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
   style,
   imageSource,
   imageSize = SERVICE_CARD_IMAGE_SIZE,
+  imageOffsetY = 0,
   icon,
   iconColor = '#E2E8F0',
   isCategory = false,
@@ -56,7 +59,12 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
       <View
         style={[
           styles.imageWrap,
-          { width: imageSize, height: imageSize, backgroundColor: 'transparent' },
+          {
+            width: imageSize,
+            height: imageSize,
+            marginTop: imageOffsetY,
+            backgroundColor: 'transparent',
+          },
         ]}
       >
         <Image

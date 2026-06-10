@@ -18,11 +18,17 @@ const SERVICE_3D_ASSETS: Record<Service3dTileId, ImageSourcePropType> = {
   mandados: require('../../assets/services-3d/mandados.png'),
 };
 
-/** Tamaño del cuadro 3D por categoría (default 128px). */
-const SERVICE_3D_IMAGE_SIZES: Partial<Record<Service3dTileId, number>> = {
-  limpieza: 135,
-  ac: 154,
-  jardineria: 96,
+/** Tamaño y posición del render 3D por categoría (sin editar el PNG). */
+export interface Service3dImageLayout {
+  size: number;
+  /** Desplaza la imagen hacia abajo dentro de la ficha (px). */
+  offsetY?: number;
+}
+
+const SERVICE_3D_LAYOUT: Partial<Record<Service3dTileId, Service3dImageLayout>> = {
+  limpieza: { size: 135 },
+  ac: { size: 154 },
+  jardineria: { size: 124, offsetY: 14 },
 };
 
 const DEFAULT_3D_IMAGE_SIZE = 128;
@@ -35,10 +41,11 @@ export function getService3dAsset(tileId: string): ImageSourcePropType | null {
 }
 
 export function getService3dImageSize(tileId: string): number {
-  if (tileId in SERVICE_3D_IMAGE_SIZES) {
-    return SERVICE_3D_IMAGE_SIZES[tileId as Service3dTileId]!;
-  }
-  return DEFAULT_3D_IMAGE_SIZE;
+  return SERVICE_3D_LAYOUT[tileId as Service3dTileId]?.size ?? DEFAULT_3D_IMAGE_SIZE;
+}
+
+export function getService3dImageOffsetY(tileId: string): number {
+  return SERVICE_3D_LAYOUT[tileId as Service3dTileId]?.offsetY ?? 0;
 }
 
 export function hasService3dAsset(tileId: string): boolean {

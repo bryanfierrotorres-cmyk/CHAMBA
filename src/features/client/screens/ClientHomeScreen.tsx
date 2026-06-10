@@ -23,6 +23,7 @@ import {
   type ExpressCompactItem,
 } from '@components/client/ExpressServiceCompactGrid';
 import { PremiumSubcategoryList, SERVICE_LIST_BOTTOM_PAD } from '@components/client/PremiumSubcategoryList';
+import { useSupportBubbleScrollHandlers } from '@hooks/useSupportBubbleScrollHandlers';
 import { useAuthStore } from '@store/authStore';
 import { Avatar } from '@components/Avatar';
 import {
@@ -49,7 +50,7 @@ import {
   type ExpressTileDef,
 } from '@constants/clientHomeExpress';
 import { ClientHomeHeroCarousel } from '@components/client/ClientHomeHeroCarousel';
-import { getService3dAsset, getService3dImageSize } from '@constants/service3dAssets';
+import { getService3dAsset, getService3dImageSize, getService3dImageOffsetY } from '@constants/service3dAssets';
 import {
   CLIENT_EMPRESA_HERO_SLIDES,
   CLIENT_HOGAR_HERO_SLIDES,
@@ -82,6 +83,7 @@ export const ClientHomeScreen: React.FC = () => {
   const pilotSignIn = useAuthStore((s) => s.pilotSignIn);
   const catalog = useCatalog();
   const publishLimit = useClientPublishLimit();
+  const supportBubbleScroll = useSupportBubbleScrollHandlers();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('hogar');
   const [selectedExpressCat, setSelectedExpressCat] = useState<ExpressSubmenu | null>(null);
@@ -177,6 +179,7 @@ export const ClientHomeScreen: React.FC = () => {
         icon: renderExpressTileIcon(tile.id, selectedExpressCat),
         imageSource: selectedExpressCat ? null : getService3dAsset(tile.id),
         imageSize: selectedExpressCat ? undefined : getService3dImageSize(tile.id),
+        imageOffsetY: selectedExpressCat ? undefined : getService3dImageOffsetY(tile.id),
         onPress: () => onExpressPress(tile),
         isCategory,
         footer: isCategory
@@ -282,6 +285,7 @@ export const ClientHomeScreen: React.FC = () => {
             { paddingBottom: insets.bottom + 120 },
           ]}
           keyboardShouldPersistTaps="handled"
+          {...supportBubbleScroll}
         >
           {activeTab === 'hogar' && (
             <View>
