@@ -91,11 +91,15 @@ async function removeDarkBackground(filePath, { threshold = 52 } = {}) {
     }
   }
 
+  const outPath = filePath.replace(/\.png$/i, '_tmp.png');
   await sharp(data, {
     raw: { width, height, channels: 4 },
   })
     .png({ compressionLevel: 9, adaptiveFiltering: true, force: true })
-    .toFile(filePath);
+    .toFile(outPath);
+
+  const { renameSync } = await import('fs');
+  renameSync(outPath, filePath);
 
   let transparent = 0;
   for (let i = 3; i < data.length; i += 4) {

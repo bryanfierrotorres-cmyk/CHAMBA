@@ -13,7 +13,7 @@ const SERVICE_3D_ASSETS: Record<Service3dTileId, ImageSourcePropType> = {
   limpieza: require('../../assets/services-3d/limpieza.png'),
   car: require('../../assets/services-3d/car_wash.png'),
   ac: require('../../assets/services-3d/ac_mantenimiento.png'),
-  jardineria: require('../../assets/services-3d/jardineria.png'),
+  jardineria: require('../../assets/services-3d/jardineria_cuidado.png'),
   pet: require('../../assets/services-3d/mascotas_cuidado.png'),
   mandados: require('../../assets/services-3d/mandados.png'),
 };
