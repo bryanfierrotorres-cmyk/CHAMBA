@@ -1,0 +1,54 @@
+---
+description: Resiliencia flujo cliente↔técnico — estados, agenda, fases, precios (login teléfono)
+alwaysApply: true
+---
+
+# Flujo cliente ↔ técnico — no regresiones
+
+## Estados canónicos (una sola verdad)
+
+Usar **`src/constants/jobWorkflowStatus.ts`** — nunca mezclar strings sueltos.
+
+| Capa | Campo | Valores |
+|------|--------|---------|
+| Job | `jobs.status` | `open` → `taken` → `in_progress` → `completed` |
+| Postulación | `job_assignments.selection_status` | `pending` → **`approved`** / `rejected` |
+| Fase técnico | `jobs.operational_phase` | `accepted` → `en_route` → `arrived` → `completed` |
+
+**Prohibido:** tratar `accepted` como `jobs.status` o `selection_status`. Tras aprobar cliente: `taken` + `approved` + `operational_phase: accepted` (`CLIENT_APPROVED_JOB_STATE`).
+
+## Agenda técnico (Mis Chambas)
+
+1. **`WorkerNavigator`**: montar `useAuthSessionWarmup` + `useWorkerAssignmentsRealtime`.
+2. **`useMyJobs` / `fetchWorkerAssignments`**: `syncProfileWithDatabase` + `ensurePhoneAuthSession` antes del fetch; usar **`get_worker_agenda_panel`** (047) como RPC principal.
+3. Normalizar filas con **`normalizeWorkerAssignmentRow`** (taken + `assigned_worker_id` → `selection_status: approved`).
+4. Tras **`client_approve_worker_application`**: invalidar `JOB_KEYS.myJobs(workerId)` (`patchClientOrderAfterWorkerApproval`).
+
+**Prohibido:** RPC agenda que exija `auth.uid()` sin fallback login teléfono (como Radar en 017/045/047).
+
+## Fases operativas (Iniciar viaje, etc.)
+
+1. **`advanceOperationalPhase`**: siempre `resolveWorkerProfileForActions` + `ensurePhoneAuthSession`; pasar **`assignment.worker_id`**, no solo `profile.id` local.
+2. Si RPC `worker_advance_operational_phase` falla → **throw** con mensaje al técnico (no fallback silencioso a `UPDATE` que RLS bloquea).
+3. **UI Mis Chambas**: botones de fase/chat **fuera** de `ChambaPressable` (solo el encabezado de tarjeta es presionable). Stepper: `showQuickActions={false}` en tarjetas compactas.
+
+## Precio mínimo cliente (70%)
+
+1. Validar oferta con **`precios_catalogo`** vía `resolveOfferSuggestedPriceFromDb` — **sin** fallback estático 1400 (`servicesConfig`, `chambaCategories`, `clientHomeExpress`).
+2. `CreateJobFormScreen` / `createJob`: no habilitar envío hasta tener precio BD; `validateClientPrice` exige lookup dinámico.
+
+## Cupo técnico (2 chambas)
+
+Contar solo compromisos reales (048 + `isWorkerCommitmentActive`):
+
+- `open` + `pending` (job sin otro `assigned_worker_id`)
+- `taken`/`in_progress` + `approved` + **`assigned_worker_id = worker_id`**
+
+**Prohibido:** contar asignaciones huérfanas, rechazadas o `taken` sin `assigned_worker_id` al worker.
+
+## Checklist antes de merge (técnico + cliente)
+
+- [ ] Papa/Pepe ve chamba aprobada sin refresh manual
+- [ ] “Iniciar viaje” avanza fase y muestra error si RPC falla
+- [ ] Cliente aprueba → técnico recibe en agenda ≤8s
+- [ ] Precio mínimo refleja cambio admin en catálogo
