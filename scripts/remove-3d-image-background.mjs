@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Quita fondo negro/oscuro de PNG 3D (flood-fill desde bordes) → alpha transparente.
+ * Quita fondo negro/blanco de PNG 3D (flood-fill desde bordes) → alpha transparente.
  * Uso: node scripts/remove-3d-image-background.mjs [archivo.png ...]
  */
 import sharp from 'sharp';
@@ -18,7 +18,23 @@ const isBackgroundPixel = (r, g, b, threshold = 52) => {
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
   const sat = max === 0 ? 0 : (max - min) / max;
-  return max <= threshold || (max <= threshold + 28 && sat < 0.12);
+
+  // Fondo oscuro / negro
+  if (max <= threshold || (max <= threshold + 28 && sat < 0.12)) return true;
+
+  // Fondo claro / blanco (p. ej. Car Wash)
+  if (min >= 232 && max >= 238 && sat < 0.14) return true;
+
+  return false;
+};
+
+const isEdgeHaloPixel = (r, g, b, threshold = 52) => {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const sat = max === 0 ? 0 : (max - min) / max;
+  if (max <= threshold + 35) return true;
+  if (min >= 220 && max >= 230 && sat < 0.16) return true;
+  return false;
 };
 
 async function removeDarkBackground(filePath, { threshold = 52 } = {}) {
@@ -75,8 +91,9 @@ async function removeDarkBackground(filePath, { threshold = 52 } = {}) {
       const idx = y * width + x;
       const i = idx * 4;
       if (data[i + 3] === 0) continue;
+      if (!isEdgeHaloPixel(data[i], data[i + 1], data[i + 2], threshold)) continue;
       const max = Math.max(data[i], data[i + 1], data[i + 2]);
-      if (max > threshold + 35) continue;
+      const min = Math.min(data[i], data[i + 1], data[i + 2]);
 
       const neighbors = [
         data[(idx - 1) * 4 + 3],
@@ -85,7 +102,12 @@ async function removeDarkBackground(filePath, { threshold = 52 } = {}) {
         data[(idx + width) * 4 + 3],
       ];
       if (neighbors.some((a) => a === 0)) {
-        const t = Math.max(0, (max - threshold) / 35);
+        let t = 1;
+        if (max <= threshold + 35) {
+          t = Math.max(0, (max - threshold) / 35);
+        } else if (min >= 220) {
+          t = Math.max(0, (255 - min) / 35);
+        }
         data[i + 3] = Math.round(Math.min(data[i + 3], t * 255));
       }
     }
