@@ -22,6 +22,7 @@ import {
   ExpressServiceCompactGrid,
   type ExpressCompactItem,
 } from '@components/client/ExpressServiceCompactGrid';
+import { PremiumSubcategoryList, SERVICE_LIST_BOTTOM_PAD } from '@components/client/PremiumSubcategoryList';
 import { useAuthStore } from '@store/authStore';
 import { Avatar } from '@components/Avatar';
 import {
@@ -276,7 +277,10 @@ export const ClientHomeScreen: React.FC = () => {
 
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={[styles.scrollContainer, { paddingBottom: insets.bottom + 100 }]}
+          contentContainerStyle={[
+            styles.scrollContainer,
+            { paddingBottom: insets.bottom + 120 },
+          ]}
           keyboardShouldPersistTaps="handled"
         >
           {activeTab === 'hogar' && (
@@ -308,7 +312,21 @@ export const ClientHomeScreen: React.FC = () => {
               )}
             </View>
 
-            <ExpressServiceCompactGrid items={expressCompactItems} />
+            {selectedExpressCat ? (
+              <PremiumSubcategoryList
+                tiles={activeExpressTiles}
+                submenu={selectedExpressCat}
+                serviceTypes={catalog.serviceTypes}
+                getSuggestedPrice={(slug, fallback = 0) => {
+                  const fromCatalog = catalog.getSuggestedPrice(slug);
+                  return fromCatalog > 0 ? fromCatalog : fallback;
+                }}
+                onTilePress={onExpressPress}
+                listBottomPadding={SERVICE_LIST_BOTTOM_PAD + insets.bottom}
+              />
+            ) : (
+              <ExpressServiceCompactGrid items={expressCompactItems} />
+            )}
 
             <View style={[styles.sectionHeader, { marginTop: 8 }]}>
               <View style={chambaStyles.sectionHeader}>

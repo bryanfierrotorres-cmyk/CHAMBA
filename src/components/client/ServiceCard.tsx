@@ -53,10 +53,19 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
     pressScale={0.97}
   >
     {imageSource ? (
-      <View style={[styles.imageWrap, { width: imageSize, height: imageSize }]}>
+      <View
+        style={[
+          styles.imageWrap,
+          { width: imageSize, height: imageSize, backgroundColor: 'transparent' },
+        ]}
+      >
         <Image
           source={imageSource}
-          style={{ width: imageSize, height: imageSize }}
+          style={{
+            width: imageSize,
+            height: imageSize,
+            backgroundColor: 'transparent',
+          }}
           resizeMode="contain"
           accessibilityIgnoresInvertColors
         />
@@ -110,6 +119,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
+    overflow: 'visible',
   },
   textBlock: {
     width: '100%',
