@@ -1,0 +1,120 @@
+-- CHAMBA 055 — RPC admin para banners (mismo patrón que catálogo; sin depender solo de auth.uid())
+
+SET statement_timeout = '120s';
+
+CREATE OR REPLACE FUNCTION admin_assert_home_banner_admin(p_admin_id UUID)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM profiles
+    WHERE id = p_admin_id
+      AND role::text = 'admin'
+      AND is_approved = true
+  ) THEN
+    RAISE EXCEPTION 'Solo administradores';
+  END IF;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION admin_list_home_banners(p_admin_id UUID)
+RETURNS SETOF home_banners
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  PERFORM admin_assert_home_banner_admin(p_admin_id);
+  RETURN QUERY
+    SELECT *
+    FROM home_banners
+    ORDER BY display_order ASC, created_at DESC;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION admin_create_home_banner(
+  p_admin_id      UUID,
+  p_image_url     TEXT,
+  p_display_order INT DEFAULT NULL,
+  p_is_active     BOOLEAN DEFAULT true
+)
+RETURNS home_banners
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_order INT;
+  v_row   home_banners%ROWTYPE;
+BEGIN
+  PERFORM admin_assert_home_banner_admin(p_admin_id);
+
+  IF NULLIF(trim(p_image_url), '') IS NULL THEN
+    RAISE EXCEPTION 'image_url requerido';
+  END IF;
+
+  v_order := COALESCE(
+    p_display_order,
+    (SELECT COALESCE(MAX(display_order), -1) + 1 FROM home_banners)
+  );
+
+  INSERT INTO home_banners (image_url, display_order, is_active)
+  VALUES (trim(p_image_url), v_order, COALESCE(p_is_active, true))
+  RETURNING * INTO v_row;
+
+  RETURN v_row;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION admin_set_home_banner_active(
+  p_admin_id  UUID,
+  p_banner_id UUID,
+  p_is_active BOOLEAN
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  PERFORM admin_assert_home_banner_admin(p_admin_id);
+
+  UPDATE home_banners
+  SET is_active = COALESCE(p_is_active, false)
+  WHERE id = p_banner_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Banner no encontrado';
+  END IF;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION admin_delete_home_banner(
+  p_admin_id  UUID,
+  p_banner_id UUID
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  PERFORM admin_assert_home_banner_admin(p_admin_id);
+
+  DELETE FROM home_banners WHERE id = p_banner_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Banner no encontrado';
+  END IF;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION admin_list_home_banners(UUID) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION admin_create_home_banner(UUID, TEXT, INT, BOOLEAN) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION admin_set_home_banner_active(UUID, UUID, BOOLEAN) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION admin_delete_home_banner(UUID, UUID) TO anon, authenticated;
+
+NOTIFY pgrst, 'reload schema';

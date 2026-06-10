@@ -1,5 +1,10 @@
+import { Platform } from 'react-native';
 import { supabase } from '@services/supabase';
+import { blobToDataUri } from '@features/jobs/services/jobWorkPhotosService';
+import { resolveAdminActorProfile } from '@utils/profileSync';
+import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
 import { HOME_BANNERS_BUCKET, type HomeBanner } from '../types';
+import type { UserProfile } from '@/types';
 
 const BANNER_SELECT = 'id, image_url, display_order, is_active, created_at';
 
@@ -9,6 +14,24 @@ const newBannerId = (): string =>
     const v = c === 'x' ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
+
+const normalizeImageContentType = (blob: Blob, extension: string): string => {
+  const raw = blob.type?.toLowerCase() ?? '';
+  if (raw && raw !== 'application/octet-stream') {
+    if (raw === 'image/jpg') return 'image/jpeg';
+    return raw;
+  }
+  if (extension === 'png') return 'image/png';
+  if (extension === 'webp') return 'image/webp';
+  if (extension === 'gif') return 'image/gif';
+  return 'image/jpeg';
+};
+
+const resolveAdminProfile = async (profile: UserProfile): Promise<UserProfile> => {
+  const adminProfile = await resolveAdminActorProfile(profile);
+  await ensurePhoneAuthSession(adminProfile);
+  return adminProfile;
+};
 
 export const extractBannerStoragePath = (publicUrl: string): string | null => {
   const marker = `/storage/v1/object/public/${HOME_BANNERS_BUCKET}/`;
@@ -28,7 +51,16 @@ export const fetchActiveHomeBanners = async (): Promise<HomeBanner[]> => {
   return (data ?? []) as HomeBanner[];
 };
 
-export const fetchAllHomeBannersAdmin = async (): Promise<HomeBanner[]> => {
+export const fetchAllHomeBannersAdmin = async (profile: UserProfile): Promise<HomeBanner[]> => {
+  const adminProfile = await resolveAdminProfile(profile);
+
+  const { data: rpcData, error: rpcErr } = await supabase.rpc('admin_list_home_banners', {
+    p_admin_id: adminProfile.id,
+  });
+  if (!rpcErr && Array.isArray(rpcData)) {
+    return rpcData as HomeBanner[];
+  }
+
   const { data, error } = await supabase
     .from('home_banners')
     .select(BANNER_SELECT)
@@ -41,20 +73,32 @@ export const fetchAllHomeBannersAdmin = async (): Promise<HomeBanner[]> => {
 
 const uploadBannerImage = async (localUri: string, bannerId: string): Promise<string> => {
   const response = await fetch(localUri);
+  if (!response.ok) {
+    throw new Error('No se pudo leer la imagen seleccionada');
+  }
+
   const blob = await response.blob();
   const extRaw = localUri.split('.').pop()?.split('?')[0]?.toLowerCase() ?? 'jpg';
   const extension = extRaw === 'jpeg' ? 'jpg' : extRaw;
   const path = `${bannerId}/banner.${extension}`;
-  const contentType = blob.type || (extension === 'png' ? 'image/png' : 'image/jpeg');
+  const contentType = normalizeImageContentType(blob, extension);
 
-  const { error } = await supabase.storage
-    .from(HOME_BANNERS_BUCKET)
-    .upload(path, blob, { upsert: true, contentType });
+  try {
+    const body = Platform.OS === 'web' ? blob : await blob.arrayBuffer();
+    const { error } = await supabase.storage
+      .from(HOME_BANNERS_BUCKET)
+      .upload(path, body, { upsert: true, contentType });
 
-  if (error) throw new Error(error.message);
+    if (!error) {
+      const { data } = supabase.storage.from(HOME_BANNERS_BUCKET).getPublicUrl(path);
+      return data.publicUrl;
+    }
+    console.warn('[uploadBannerImage] Storage:', error.message);
+  } catch (storageErr) {
+    console.warn('[uploadBannerImage] fallback data URI:', storageErr);
+  }
 
-  const { data } = supabase.storage.from(HOME_BANNERS_BUCKET).getPublicUrl(path);
-  return data.publicUrl;
+  return blobToDataUri(blob, contentType);
 };
 
 const nextDisplayOrder = async (): Promise<number> => {
@@ -69,17 +113,31 @@ const nextDisplayOrder = async (): Promise<number> => {
   return typeof max === 'number' ? max + 1 : 0;
 };
 
-export const createHomeBannerFromImage = async (localUri: string): Promise<HomeBanner> => {
-  const bannerId = newBannerId();
-  const imageUrl = await uploadBannerImage(localUri, bannerId);
-  const displayOrder = await nextDisplayOrder();
+const insertBannerAdmin = async (
+  adminProfile: UserProfile,
+  imageUrl: string,
+  bannerId?: string,
+  displayOrder?: number,
+): Promise<HomeBanner> => {
+  const order = displayOrder ?? (await nextDisplayOrder());
+
+  const { data: rpcData, error: rpcErr } = await supabase.rpc('admin_create_home_banner', {
+    p_admin_id: adminProfile.id,
+    p_image_url: imageUrl,
+    p_display_order: order,
+    p_is_active: true,
+  });
+
+  if (!rpcErr && rpcData) {
+    return rpcData as HomeBanner;
+  }
 
   const { data, error } = await supabase
     .from('home_banners')
     .insert({
-      id: bannerId,
+      id: bannerId ?? newBannerId(),
       image_url: imageUrl,
-      display_order: displayOrder,
+      display_order: order,
       is_active: true,
     })
     .select(BANNER_SELECT)
@@ -89,10 +147,30 @@ export const createHomeBannerFromImage = async (localUri: string): Promise<HomeB
   return data as HomeBanner;
 };
 
+export const createHomeBannerFromImage = async (
+  localUri: string,
+  profile: UserProfile,
+): Promise<HomeBanner> => {
+  const adminProfile = await resolveAdminProfile(profile);
+  const bannerId = newBannerId();
+  const imageUrl = await uploadBannerImage(localUri, bannerId);
+  return insertBannerAdmin(adminProfile, imageUrl, bannerId);
+};
+
 export const setHomeBannerActive = async (
+  profile: UserProfile,
   bannerId: string,
   isActive: boolean,
 ): Promise<void> => {
+  const adminProfile = await resolveAdminProfile(profile);
+
+  const { error: rpcErr } = await supabase.rpc('admin_set_home_banner_active', {
+    p_admin_id: adminProfile.id,
+    p_banner_id: bannerId,
+    p_is_active: isActive,
+  });
+  if (!rpcErr) return;
+
   const { error } = await supabase
     .from('home_banners')
     .update({ is_active: isActive })
@@ -101,7 +179,12 @@ export const setHomeBannerActive = async (
   if (error) throw new Error(error.message);
 };
 
-export const deleteHomeBanner = async (banner: HomeBanner): Promise<void> => {
+export const deleteHomeBanner = async (
+  profile: UserProfile,
+  banner: HomeBanner,
+): Promise<void> => {
+  const adminProfile = await resolveAdminProfile(profile);
+
   const storagePath = extractBannerStoragePath(banner.image_url);
   if (storagePath) {
     const { error: storageErr } = await supabase.storage
@@ -111,6 +194,12 @@ export const deleteHomeBanner = async (banner: HomeBanner): Promise<void> => {
       console.warn('[deleteHomeBanner] storage:', storageErr.message);
     }
   }
+
+  const { error: rpcErr } = await supabase.rpc('admin_delete_home_banner', {
+    p_admin_id: adminProfile.id,
+    p_banner_id: banner.id,
+  });
+  if (!rpcErr) return;
 
   const { error } = await supabase.from('home_banners').delete().eq('id', banner.id);
   if (error) throw new Error(error.message);

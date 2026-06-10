@@ -103,10 +103,12 @@ export const ManageHomeBannersScreen: React.FC = () => {
     if (isUploading || picking) return;
     setPicking(true);
     try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        showMessage('Permiso requerido', 'Necesitamos acceso a tus fotos para subir el banner.');
-        return;
+      if (Platform.OS !== 'web') {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) {
+          showMessage('Permiso requerido', 'Necesitamos acceso a tus fotos para subir el banner.');
+          return;
+        }
       }
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,

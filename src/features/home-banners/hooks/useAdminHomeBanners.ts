@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuthStore } from '@store/authStore';
 import {
   createHomeBannerFromImage,
   deleteHomeBanner,
@@ -12,10 +13,15 @@ export const ADMIN_HOME_BANNERS_QUERY_KEY = ['home-banners', 'admin'] as const;
 
 export const useAdminHomeBanners = () => {
   const queryClient = useQueryClient();
+  const profile = useAuthStore((s) => s.profile);
 
   const query = useQuery({
     queryKey: ADMIN_HOME_BANNERS_QUERY_KEY,
-    queryFn: fetchAllHomeBannersAdmin,
+    queryFn: () => {
+      if (!profile) throw new Error('Sesión de administrador requerida');
+      return fetchAllHomeBannersAdmin(profile);
+    },
+    enabled: !!profile?.id,
     staleTime: 10_000,
   });
 
@@ -25,18 +31,26 @@ export const useAdminHomeBanners = () => {
   };
 
   const uploadMutation = useMutation({
-    mutationFn: createHomeBannerFromImage,
+    mutationFn: (localUri: string) => {
+      if (!profile) throw new Error('Sesión de administrador requerida');
+      return createHomeBannerFromImage(localUri, profile);
+    },
     onSuccess: invalidateAll,
   });
 
   const toggleMutation = useMutation({
-    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
-      setHomeBannerActive(id, isActive),
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) => {
+      if (!profile) throw new Error('Sesión de administrador requerida');
+      return setHomeBannerActive(profile, id, isActive);
+    },
     onSuccess: invalidateAll,
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (banner: HomeBanner) => deleteHomeBanner(banner),
+    mutationFn: (banner: HomeBanner) => {
+      if (!profile) throw new Error('Sesión de administrador requerida');
+      return deleteHomeBanner(profile, banner);
+    },
     onSuccess: invalidateAll,
   });
 
