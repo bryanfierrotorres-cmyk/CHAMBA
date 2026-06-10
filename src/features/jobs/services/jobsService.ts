@@ -746,7 +746,10 @@ export const advanceOperationalPhase = async (
     throw new Error(body?.error ?? 'No se pudo actualizar el estado del servicio');
   }
 
-  if (job && (nextPhase === 'en_route' || nextPhase === 'arrived')) {
+  if (
+    job
+    && (nextPhase === 'en_route' || nextPhase === 'arrived' || nextPhase === 'completed')
+  ) {
     void notifyClientOperationalUpdate(job, nextPhase);
   }
 };
@@ -777,46 +780,81 @@ export const startJob = async (jobId: string, workerId?: string): Promise<void> 
   await patchLocalJobStatus(jobId, 'in_progress');
 };
 
-/** Worker: Mark a job as completed (Finalizado). */
+/** Worker: Mark a job as completed (Finalizado). Fuente de verdad en BD — el cliente ve el mismo status. */
 export const completeJob = async (
   jobId: string,
   assignmentId: string,
   workerId?: string,
+  jobSnapshot?: Job | null,
+  workerCtx?: UserProfile | null,
 ): Promise<void> => {
-  const now = new Date().toISOString();
-  await patchLocalJobStatus(jobId, 'completed', now, 'completed');
-
-  if (CONFIG.pilot.enabled) {
-    void (async () => {
-      if (workerId) {
-        const { data, error } = await supabase.rpc('worker_complete_job', {
-          p_job_id: jobId,
-          p_worker_id: workerId,
-          p_assignment_id: assignmentId,
-        });
-        if (!error && (data as { success?: boolean })?.success) return;
-      }
-      await supabase
-        .from('jobs')
-        .update({ status: 'completed', updated_at: now })
-        .eq('id', jobId);
-    })();
-    return;
+  let effectiveWorkerId = workerId;
+  if (workerCtx) {
+    const resolved = await resolveWorkerProfileForActions(workerCtx);
+    effectiveWorkerId = resolved.id;
+    await ensurePhoneAuthSession(resolved);
+    if (resolved.id !== workerCtx.id) {
+      await persistPilotProfileIfChanged(workerCtx, resolved);
+    }
   }
 
-  if (workerId) {
+  const now = new Date().toISOString();
+  let job = jobSnapshot ?? null;
+
+  const finishLocally = async (): Promise<void> => {
+    await patchLocalJobStatus(jobId, 'completed', now, 'completed');
+    if (!job) {
+      try {
+        job = await fetchJobById(jobId);
+      } catch {
+        job = null;
+      }
+    }
+    if (job?.created_by) {
+      void notifyClientOperationalUpdate(job, 'completed');
+    }
+  };
+
+  if (effectiveWorkerId) {
     const { data, error } = await supabase.rpc('worker_complete_job', {
       p_job_id: jobId,
-      p_worker_id: workerId,
+      p_worker_id: effectiveWorkerId,
       p_assignment_id: assignmentId,
     });
-    if (!error && (data as { success?: boolean })?.success) return;
+    const body = data as { success?: boolean; error?: string } | null;
+    if (!error && body?.success) {
+      await finishLocally();
+      return;
+    }
+
+    const { data: advData, error: advErr } = await supabase.rpc(
+      'worker_advance_operational_phase',
+      {
+        p_job_id: jobId,
+        p_worker_id: effectiveWorkerId,
+        p_phase: 'completed',
+      },
+    );
+    const advBody = advData as { success?: boolean; error?: string } | null;
+    if (!advErr && advBody?.success) {
+      await finishLocally();
+      return;
+    }
+
+    const rpcMsg =
+      error?.message
+      ?? body?.error
+      ?? advErr?.message
+      ?? advBody?.error;
+    if (rpcMsg) {
+      throw new Error(rpcMsg);
+    }
   }
 
   const [jobErr, assignErr] = await Promise.all([
     supabase
       .from('jobs')
-      .update({ status: 'completed', updated_at: now })
+      .update({ status: 'completed', operational_phase: 'completed', updated_at: now })
       .eq('id', jobId)
       .then((r) => r.error),
     supabase
@@ -827,9 +865,10 @@ export const completeJob = async (
   ]);
 
   if (jobErr || assignErr) {
-    if (workerId) return;
     throw new Error(jobErr?.message ?? assignErr?.message ?? 'Error al finalizar');
   }
+
+  await finishLocally();
 };
 
 /**

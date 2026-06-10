@@ -1,9 +1,4 @@
--- Fase operativa del técnico (viaje → llegada → finalizado)
-ALTER TABLE jobs
-  ADD COLUMN IF NOT EXISTS operational_phase TEXT
-    CHECK (operational_phase IS NULL OR operational_phase IN (
-      'accepted', 'en_route', 'arrived', 'completed'
-    ));
+-- CHAMBA 051 — Al avanzar a completed, marcar completed_at en job_assignments
 
 CREATE OR REPLACE FUNCTION worker_advance_operational_phase(
   p_job_id UUID,
@@ -17,6 +12,7 @@ SET search_path = public
 AS $$
 DECLARE
   v_status job_status;
+  v_now TIMESTAMPTZ := NOW();
 BEGIN
   IF p_phase NOT IN ('accepted', 'en_route', 'arrived', 'completed') THEN
     RETURN jsonb_build_object('success', false, 'error', 'Fase inválida');
@@ -41,8 +37,16 @@ BEGIN
   UPDATE jobs
      SET operational_phase = p_phase,
          status = v_status,
-         updated_at = NOW()
+         updated_at = v_now
    WHERE id = p_job_id;
+
+  IF p_phase = 'completed' THEN
+    UPDATE job_assignments
+       SET completed_at = v_now
+     WHERE job_id = p_job_id
+       AND worker_id = p_worker_id
+       AND completed_at IS NULL;
+  END IF;
 
   RETURN jsonb_build_object('success', true, 'phase', p_phase, 'status', v_status::text);
 END;
@@ -50,3 +54,5 @@ $$;
 
 GRANT EXECUTE ON FUNCTION worker_advance_operational_phase(UUID, UUID, TEXT)
   TO anon, authenticated;
+
+NOTIFY pgrst, 'reload schema';

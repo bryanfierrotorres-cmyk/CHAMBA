@@ -1,9 +1,5 @@
--- Fase operativa del técnico (viaje → llegada → finalizado)
-ALTER TABLE jobs
-  ADD COLUMN IF NOT EXISTS operational_phase TEXT
-    CHECK (operational_phase IS NULL OR operational_phase IN (
-      'accepted', 'en_route', 'arrived', 'completed'
-    ));
+-- CHAMBA 049 — RPC para avanzar fase operativa del técnico (viaje → llegada → finalizado)
+-- Requiere columna jobs.operational_phase (migración 029).
 
 CREATE OR REPLACE FUNCTION worker_advance_operational_phase(
   p_job_id UUID,
@@ -50,3 +46,5 @@ $$;
 
 GRANT EXECUTE ON FUNCTION worker_advance_operational_phase(UUID, UUID, TEXT)
   TO anon, authenticated;
+
+NOTIFY pgrst, 'reload schema';

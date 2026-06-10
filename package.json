@@ -74,6 +74,12 @@
     "db:apply-worker-assignments-phone": "node scripts/apply-migration-045-worker-assignments-phone.mjs",
     "db:apply-worker-agenda-fast": "node scripts/apply-migration-047-worker-agenda-fast.mjs",
     "db:apply-worker-active-count-orphans": "node scripts/apply-migration-048-worker-active-count.mjs",
+    "db:apply-worker-advance-phase": "node scripts/apply-migration-049-worker-advance-phase.mjs",
+    "db:apply-worker-complete-phase": "node scripts/apply-migration-050-worker-complete-phase.mjs",
+    "db:apply-worker-advance-complete": "node scripts/apply-migration-051-worker-advance-complete.mjs",
+    "diagnose:client-worker-sync": "node scripts/diagnose-client-worker-status-sync.mjs",
+    "diagnose:papa-viaje": "node scripts/diagnose-papa-viaje.mjs",
+    "diagnose:papa-agenda": "node scripts/diagnose-papa-agenda-split.mjs",
     "db:ensure-phone-auth-user": "node scripts/ensure-phone-auth-user.mjs",
     "diagnose:pepe-agenda": "node scripts/diagnose-pepe-agenda-sync.mjs",
     "diagnose:profiles": "node scripts/diagnose-profiles-health.mjs"

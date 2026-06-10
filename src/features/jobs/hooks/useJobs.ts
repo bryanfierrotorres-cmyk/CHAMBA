@@ -52,6 +52,7 @@ import type {
   WorkerOperationalPhase,
 } from '@/types';
 import { phaseToJobStatus } from '@utils/workerOperationalPhase';
+import { patchClientOrderRowInCache } from '@features/client/hooks/useClientOrders';
 
 
 
@@ -493,11 +494,19 @@ export const useCompleteJob = () => {
   const profile = useAuthStore((s) => s.profile);
 
   return useMutation({
-    mutationFn: ({ jobId, assignmentId }: { jobId: string; assignmentId: string }) =>
-      completeJob(jobId, assignmentId, profile?.id),
+    mutationFn: ({
+      jobId,
+      assignmentId,
+      job,
+    }: {
+      jobId: string;
+      assignmentId: string;
+      job?: Job | null;
+    }) => completeJob(jobId, assignmentId, profile?.id, job, profile),
 
-    onMutate: async ({ jobId, assignmentId }) => {
+    onMutate: async ({ jobId, assignmentId, job }) => {
       const now = new Date().toISOString();
+      const clientId = job?.created_by;
       useAssignmentsStore.getState().patchItem(
         assignmentId,
         { completed_at: now },
@@ -525,13 +534,32 @@ export const useCompleteJob = () => {
             ),
         );
       }
-      await patchLocalJobStatus(jobId, 'completed', now);
+      if (clientId) {
+        patchClientOrderRowInCache(queryClient, clientId, {
+          id: jobId,
+          status: 'completed',
+          operational_phase: 'completed',
+          updated_at: now,
+        });
+      }
+      await patchLocalJobStatus(jobId, 'completed', now, 'completed');
     },
 
-    onSettled: (_data, _err, { jobId }) => {
+    onSettled: (_data, _err, { jobId, job }) => {
+      queryClient.invalidateQueries({ queryKey: JOB_KEYS.all });
       queryClient.invalidateQueries({ queryKey: JOB_KEYS.adminControl() });
       queryClient.invalidateQueries({ queryKey: JOB_KEYS.detail(jobId) });
+      queryClient.invalidateQueries({ queryKey: ['client-orders'] });
+      if (job?.created_by) {
+        patchClientOrderRowInCache(queryClient, job.created_by, {
+          id: jobId,
+          status: 'completed',
+          operational_phase: 'completed',
+          updated_at: new Date().toISOString(),
+        });
+      }
       if (profile?.id) {
+        queryClient.invalidateQueries({ queryKey: JOB_KEYS.myJobs(profile.id) });
         queryClient.invalidateQueries({ queryKey: workerActiveCountKey(profile.id) });
         queryClient.invalidateQueries({ queryKey: WALLET_KEYS.earnings(profile.id) });
       }

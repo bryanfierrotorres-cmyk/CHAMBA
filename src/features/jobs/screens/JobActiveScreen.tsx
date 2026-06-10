@@ -298,7 +298,7 @@ export const JobActiveScreen: React.FC = () => {
     });
     if (!confirmed) return;
     try {
-      await completeMut({ jobId, assignmentId: assignment.id });
+      await completeMut({ jobId, assignmentId: assignment.id, job: job ?? null });
       setShowSuccess(true);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al completar';

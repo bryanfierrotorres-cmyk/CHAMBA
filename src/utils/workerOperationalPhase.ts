@@ -55,10 +55,6 @@ export const isWorkerAssignmentHistory = (job?: Partial<Job> | null): boolean =>
 export const isWorkerAgendaActive = (row: JobAssignment): boolean => {
   const status = row.job?.status;
   if (status === JOB_STATUS.COMPLETED || status === JOB_STATUS.CANCELLED) {
-    const phase = row.job?.operational_phase;
-    if (status === JOB_STATUS.COMPLETED && phase && phase !== OPERATIONAL_PHASE.COMPLETED) {
-      return true;
-    }
     return false;
   }
 
@@ -175,6 +171,11 @@ export const getClientPhaseMessage = (phase: WorkerOperationalPhase): {
       return {
         title: 'Tu técnico llegó',
         body: 'El técnico está en el lugar. Pronto comenzará el servicio.',
+      };
+    case 'completed':
+      return {
+        title: 'Servicio finalizado',
+        body: 'El técnico marcó tu chamba como completada. Revisá el resumen en Historial.',
       };
   }
   return { title: 'Actualización de tu chamba', body: 'Hay novedades en tu servicio.' };

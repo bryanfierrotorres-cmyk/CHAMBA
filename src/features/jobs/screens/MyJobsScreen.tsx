@@ -162,7 +162,11 @@ export const MyJobsScreen: React.FC = () => {
 
     setBusyId(item.id);
     try {
-      await completeMut({ jobId: item.job_id, assignmentId: item.id });
+      await completeMut({
+        jobId: item.job_id,
+        assignmentId: item.id,
+        job: item.job ?? null,
+      });
       showMessage('¡Servicio finalizado!', 'La chamba fue marcada como completada.');
       setAgendaFilter('historial');
     } catch (err: unknown) {
