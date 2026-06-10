@@ -5,6 +5,30 @@ import type { Job, JobModerationReason, UserProfile } from '@/types';
 
 export type AdminModerationReason = Exclude<JobModerationReason, 'admin'>;
 
+const RPC_TIMEOUT_MS = 10_000;
+
+const parseJsonArray = <T>(raw: unknown): T[] => {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw as T[];
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? (parsed as T[]) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
+const adminActorId = (): string | undefined => useAuthStore.getState().profile?.id;
+
+const parseRpcSuccess = (raw: unknown): { ok: boolean; error?: string } => {
+  if (!raw || typeof raw !== 'object') return { ok: false, error: 'Respuesta inválida' };
+  const body = raw as { success?: boolean; error?: string };
+  return { ok: !!body.success, error: body.error };
+};
+
 // ─── Admin Job (with nested worker assignment) ────────────────────────────────
 
 export interface AdminAssignment {
@@ -22,26 +46,74 @@ export interface AdminJob extends Job {
 
 /** Fetch all workers (for admin panel). */
 export const fetchAllWorkers = async (): Promise<UserProfile[]> => {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('role', 'worker')
-    .order('created_at', { ascending: false });
+  const adminId = adminActorId();
+  if (adminId) {
+    try {
+      const { data, error } = await withTimeout(
+        supabase.rpc('get_admin_team_profiles', { p_admin_id: adminId, p_role: 'worker' }),
+        RPC_TIMEOUT_MS,
+      );
+      if (!error && data) {
+        const rows = parseJsonArray<UserProfile>(data);
+        if (rows.length > 0 || data !== null) return rows;
+      }
+      if (error) console.warn('[fetchAllWorkers] RPC:', error.message);
+    } catch (err) {
+      console.warn('[fetchAllWorkers] RPC timeout:', err);
+    }
+  }
 
-  if (error) throw new Error(error.message);
-  return (data ?? []) as UserProfile[];
+  try {
+    const { data, error } = await withTimeout(
+      supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'worker')
+        .order('created_at', { ascending: false }),
+      RPC_TIMEOUT_MS,
+    );
+    if (error) throw new Error(error.message);
+    return (data ?? []) as UserProfile[];
+  } catch (err) {
+    console.warn('[fetchAllWorkers] fallback:', err);
+    return [];
+  }
 };
 
 /** Fetch all clients (registro con aprobación). */
 export const fetchAllClients = async (): Promise<UserProfile[]> => {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('role', 'client')
-    .order('created_at', { ascending: false });
+  const adminId = adminActorId();
+  if (adminId) {
+    try {
+      const { data, error } = await withTimeout(
+        supabase.rpc('get_admin_team_profiles', { p_admin_id: adminId, p_role: 'client' }),
+        RPC_TIMEOUT_MS,
+      );
+      if (!error && data) {
+        const rows = parseJsonArray<UserProfile>(data);
+        if (rows.length > 0 || data !== null) return rows;
+      }
+      if (error) console.warn('[fetchAllClients] RPC:', error.message);
+    } catch (err) {
+      console.warn('[fetchAllClients] RPC timeout:', err);
+    }
+  }
 
-  if (error) throw new Error(error.message);
-  return (data ?? []) as UserProfile[];
+  try {
+    const { data, error } = await withTimeout(
+      supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'client')
+        .order('created_at', { ascending: false }),
+      RPC_TIMEOUT_MS,
+    );
+    if (error) throw new Error(error.message);
+    return (data ?? []) as UserProfile[];
+  } catch (err) {
+    console.warn('[fetchAllClients] fallback:', err);
+    return [];
+  }
 };
 
 /** Aprobar o suspender cliente (sin campos de técnico). */
@@ -49,6 +121,28 @@ export const toggleClientApproval = async (
   clientId: string,
   approve: boolean,
 ): Promise<void> => {
+  const adminId = adminActorId();
+  if (adminId) {
+    try {
+      const { data, error } = await withTimeout(
+        supabase.rpc('admin_set_profile_approval', {
+          p_admin_id: adminId,
+          p_profile_id: clientId,
+          p_approve: approve,
+          p_role: 'client',
+        }),
+        RPC_TIMEOUT_MS,
+      );
+      if (!error && data) {
+        const { ok, error: rpcErr } = parseRpcSuccess(data);
+        if (ok) return;
+        if (rpcErr) throw new Error(rpcErr);
+      }
+    } catch (err) {
+      if (err instanceof Error && !/timeout/i.test(err.message)) throw err;
+    }
+  }
+
   const { error } = await supabase
     .from('profiles')
     .update({
@@ -66,12 +160,33 @@ export const toggleWorkerApproval = async (
   workerId: string,
   approve: boolean,
 ): Promise<void> => {
+  const adminId = adminActorId();
+  if (adminId) {
+    try {
+      const { data, error } = await withTimeout(
+        supabase.rpc('admin_set_profile_approval', {
+          p_admin_id: adminId,
+          p_profile_id: workerId,
+          p_approve: approve,
+          p_role: 'worker',
+        }),
+        RPC_TIMEOUT_MS,
+      );
+      if (!error && data) {
+        const { ok, error: rpcErr } = parseRpcSuccess(data);
+        if (ok) return;
+        if (rpcErr) throw new Error(rpcErr);
+      }
+    } catch (err) {
+      if (err instanceof Error && !/timeout/i.test(err.message)) throw err;
+    }
+  }
+
   const { error } = await supabase
     .from('profiles')
     .update({
       is_approved:   approve,
       worker_status: approve ? 'active' : 'suspended',
-      // When approving, also mark category_1 as approved
       ...(approve ? { category_1_approved: true } : {}),
       updated_at: new Date().toISOString(),
     })
@@ -85,6 +200,27 @@ export const approveWorkerCategory2 = async (
   workerId: string,
   approve: boolean,
 ): Promise<void> => {
+  const adminId = adminActorId();
+  if (adminId) {
+    try {
+      const { data, error } = await withTimeout(
+        supabase.rpc('admin_set_worker_category2', {
+          p_admin_id: adminId,
+          p_worker_id: workerId,
+          p_approve: approve,
+        }),
+        RPC_TIMEOUT_MS,
+      );
+      if (!error && data) {
+        const { ok, error: rpcErr } = parseRpcSuccess(data);
+        if (ok) return;
+        if (rpcErr) throw new Error(rpcErr);
+      }
+    } catch (err) {
+      if (err instanceof Error && !/timeout/i.test(err.message)) throw err;
+    }
+  }
+
   const { error } = await supabase
     .from('profiles')
     .update({ category_2_approved: approve, updated_at: new Date().toISOString() })
@@ -133,7 +269,7 @@ export const fetchAdminJobs = async (): Promise<AdminJob[]> => {
       );
       if (!error && data) {
         const rows = parseAdminJobsRpc(data);
-        if (rows.length > 0) return rows;
+        return rows;
       }
       if (error) {
         console.warn('[fetchAdminJobs] RPC:', error.message);

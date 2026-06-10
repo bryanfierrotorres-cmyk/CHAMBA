@@ -26,6 +26,7 @@ import { CARD_STEP_SHADOW, CHAMBA } from '@constants/chambaUI';
 import { textInputWebFocusStyle } from '@constants/textInputFocus';
 import { formatNicaPhone, isValidNicaPhone } from '@utils/phoneNicaragua';
 import type { AuthStackParamList, UserRole } from '@/types';
+import { LOGIN_SCREEN_LAYOUT } from '@features/auth/constants/loginScreenLayout';
 
 type LoginNav = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
 
@@ -34,7 +35,7 @@ const LOGIN_PRIMARY_PRESSED = '#334155';
 
 const LOGIN_BG = require('../../../../assets/Gemini_Generated_Image_9bxg669bxg669bxg.png');
 
-const COMPACT_BREAKPOINT = 640;
+const COMPACT_BREAKPOINT = LOGIN_SCREEN_LAYOUT.compactBreakpoint;
 
 const ROLE_TOGGLE_OPTIONS: { id: UserRole; label: string }[] = [
   { id: 'client', label: 'Cliente' },
@@ -273,22 +274,27 @@ export const LoginScreen: React.FC = () => {
                 </Text>
               </TouchableOpacity>
 
+              <Text style={[styles.tagline, isCompactLayout && styles.taglineCompact]}>
+                Encuentra personal confiable en minutos
+              </Text>
+
               {showHeroExtras ? (
-                <>
-                  <Text style={styles.tagline}>Encuentra personal confiable en minutos</Text>
-                  <View style={styles.pilotChip}>
-                    <View style={styles.pilotDot} />
-                    <MaterialCommunityIcons name="rocket-launch-outline" size={14} color="#99F6E4" />
-                    <Text style={styles.pilotText}>Modo Piloto · Acceso Express</Text>
-                  </View>
-                </>
+                <View style={styles.pilotChip}>
+                  <View style={styles.pilotDot} />
+                  <MaterialCommunityIcons name="rocket-launch-outline" size={14} color="#99F6E4" />
+                  <Text style={styles.pilotText}>Modo Piloto · Acceso Express</Text>
+                </View>
               ) : null}
             </Animated.View>
 
             <View
               style={[
                 styles.subjectStage,
-                { minHeight: Math.max(screenHeight * 0.32, isCompactLayout ? 180 : 140) },
+                {
+                  height: isCompactLayout
+                    ? LOGIN_SCREEN_LAYOUT.heroCardGap.compact
+                    : LOGIN_SCREEN_LAYOUT.heroCardGap.wide,
+                },
               ]}
             />
 
@@ -574,21 +580,23 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flexGrow: 1,
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 52 : 40,
+    paddingHorizontal: LOGIN_SCREEN_LAYOUT.scroll.paddingHorizontal,
+    paddingTop:
+      Platform.OS === 'ios'
+        ? LOGIN_SCREEN_LAYOUT.scroll.paddingTop.ios
+        : LOGIN_SCREEN_LAYOUT.scroll.paddingTop.default,
     paddingBottom: SPACING['2xl'],
   },
   layoutColumn: {
     flex: 1,
     minHeight: '100%',
   },
-  hero: { alignItems: 'center' },
+  hero: { alignItems: 'center', paddingTop: LOGIN_SCREEN_LAYOUT.hero.paddingTop.wide },
   heroCompact: {
-    paddingTop: 4,
+    paddingTop: LOGIN_SCREEN_LAYOUT.hero.paddingTop.compact,
   },
   subjectStage: {
     width: '100%',
-    flex: 1,
   },
   logoWrap: { marginBottom: SPACING.md },
   logoBg: {
@@ -605,7 +613,7 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE['4xl'],
     fontWeight: '900',
     letterSpacing: 4,
-    marginBottom: 8,
+    marginBottom: LOGIN_SCREEN_LAYOUT.hero.appNameMarginBottom.wide,
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 4,
@@ -613,18 +621,24 @@ const styles = StyleSheet.create({
   appNameCompact: {
     fontSize: 34,
     letterSpacing: 3,
-    marginBottom: 0,
+    marginBottom: LOGIN_SCREEN_LAYOUT.hero.appNameMarginBottom.compact,
   },
   tagline: {
     color: '#FFFFFF',
     fontSize: FONT_SIZE.md,
     textAlign: 'center',
     lineHeight: 24,
-    marginBottom: SPACING.lg,
+    marginBottom: LOGIN_SCREEN_LAYOUT.hero.taglineMarginBottom.wide,
     paddingHorizontal: SPACING.md,
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 4,
+  },
+  taglineCompact: {
+    fontSize: FONT_SIZE.sm,
+    lineHeight: 20,
+    marginBottom: LOGIN_SCREEN_LAYOUT.hero.taglineMarginBottom.compact,
+    paddingHorizontal: SPACING.lg,
   },
   pilotChip: {
     flexDirection: 'row',

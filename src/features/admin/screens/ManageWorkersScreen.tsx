@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, FlatList, RefreshControl, ActivityIndicator,
   TouchableOpacity, Alert, Modal, ScrollView, StyleSheet,
@@ -29,6 +29,7 @@ import { ChambaGradientTabs } from '@components/chamba/ChambaGradientTabs';
 import { CARD_STEP_SHADOW, CHAMBA, chambaStyles } from '@constants/chambaUI';
 import { getWorkerCategoryFamily } from '@utils/workerCategoryAccess';
 import { getConfiguredServiceLabel } from '@constants/servicesConfig';
+import { resolveAdminActorProfile } from '@utils/profileSync';
 
 type FilterMode = 'pending' | 'active' | 'all';
 type TeamMode = 'workers' | 'clients';
@@ -298,18 +299,33 @@ export const ManageWorkersScreen: React.FC = () => {
   const [approvingId, setApprovingId]   = useState<string | null>(null);
   const [approvingCat2Id, setAC2Id]     = useState<string | null>(null);
 
-  const { data: workersData, isLoading: workersLoading, refetch: refetchWorkers, isRefetching: workersRefetching } = useQuery<UserProfile[]>({
+  useEffect(() => {
+    if (!adminProfile?.id) return;
+    void resolveAdminActorProfile(adminProfile).catch(() => undefined);
+  }, [adminProfile?.id]);
+
+  const teamQueryOpts = {
+    staleTime: 30_000,
+    placeholderData: [] as UserProfile[],
+    retry: 0,
+  };
+
+  const { data: workersData, isLoading: workersLoading, refetch: refetchWorkers, isRefetching: workersRefetching, isFetching: workersFetching } = useQuery<UserProfile[]>({
     queryKey: ['admin', 'workers'],
     queryFn:  fetchAllWorkers,
+    ...teamQueryOpts,
   });
-  const { data: clientsData, isLoading: clientsLoading, refetch: refetchClients, isRefetching: clientsRefetching } = useQuery<UserProfile[]>({
+  const { data: clientsData, isLoading: clientsLoading, refetch: refetchClients, isRefetching: clientsRefetching, isFetching: clientsFetching } = useQuery<UserProfile[]>({
     queryKey: ['admin', 'clients'],
     queryFn:  fetchAllClients,
+    ...teamQueryOpts,
   });
   const users: UserProfile[] = teamMode === 'workers' ? (workersData ?? []) : (clientsData ?? []);
   const isLoading = teamMode === 'workers' ? workersLoading : clientsLoading;
+  const isFetching = teamMode === 'workers' ? workersFetching : clientsFetching;
   const isRefetching = teamMode === 'workers' ? workersRefetching : clientsRefetching;
   const refetch = teamMode === 'workers' ? refetchWorkers : refetchClients;
+  const showInitialLoader = isLoading && isFetching && users.length === 0;
 
   const { mutate: toggleApproval } = useMutation({
     mutationFn: ({ id, approve }: { id: string; approve: boolean }) =>
@@ -407,7 +423,7 @@ export const ManageWorkersScreen: React.FC = () => {
         />
       </View>
 
-      {isLoading ? (
+      {showInitialLoader ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={CHAMBA.blue} />
         </View>
@@ -443,6 +459,9 @@ export const ManageWorkersScreen: React.FC = () => {
                 {filter === 'pending'
                   ? (teamMode === 'workers' ? 'No hay técnicos pendientes' : 'No hay clientes pendientes')
                   : (teamMode === 'workers' ? 'Aún no hay técnicos registrados' : 'Aún no hay clientes registrados')}
+                {users.length === 0 && !showInitialLoader
+                  ? '\n\nSi esperabas ver inscripciones, deslizá hacia abajo para actualizar o verificá que la base de datos de Supabase esté activa.'
+                  : ''}
               </Text>
             </View>
           }

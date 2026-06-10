@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -36,6 +36,7 @@ import { ClientJobLocationSection } from '@components/client/ClientJobLocationSe
 import { jobCoordinatesForCreate } from '@utils/shareJobLocation';
 import { ScreenBackButton } from '@components/navigation/ScreenBackButton';
 import { ChambaPublishSuccess } from '@components/chamba/ChambaPublishSuccess';
+import { JobExpiryBadge } from '@components/shared/JobExpiryBadge';
 import {
   CARD_STEP_SHADOW,
   CHAMBA,
@@ -46,6 +47,7 @@ import { textInputWebFocusStyle } from '@constants/textInputFocus';
 import { formatCurrency } from '@utils/formatters';
 import { useCatalog } from '@features/catalog/hooks/useCatalog';
 import { useClientPublishLimit } from '@features/jobs/hooks/useJobActiveLimits';
+import { useSupportBubbleScrollHandlers } from '@hooks/useSupportBubbleScrollHandlers';
 import {
   getClientMinimumOffer,
   parseOfferAmountInput,
@@ -72,6 +74,7 @@ export const CreateJobFormScreen: React.FC = () => {
   const profile = useAuthStore((s) => s.profile);
   const queryClient = useQueryClient();
   const publishLimit = useClientPublishLimit();
+  const supportBubbleScroll = useSupportBubbleScrollHandlers();
 
   const serviceTypeSlug =
     route.params.serviceTypeSlug ?? route.params.clientCategory ?? '';
@@ -88,6 +91,7 @@ export const CreateJobFormScreen: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [publishedMeta, setPublishedMeta] = useState<{ id: string; created_at: string } | null>(null);
   const [requestPhotoUri, setRequestPhotoUri] = useState<string | null>(null);
   const [offerPriceText, setOfferPriceText] = useState('');
   const schedulingFields = useJobSchedulingFields();
@@ -106,12 +110,6 @@ export const CreateJobFormScreen: React.FC = () => {
     () => validateClientOfferAmount(offerAmount, suggestedPrice),
     [offerAmount, suggestedPrice],
   );
-
-  useEffect(() => {
-    if (currentStep === 2 && !offerPriceText.trim() && suggestedPrice > 0) {
-      setOfferPriceText(String(Math.round(suggestedPrice)));
-    }
-  }, [currentStep, offerPriceText, suggestedPrice]);
 
   const autoTitle = label.trim() || serviceLabel;
 
@@ -138,6 +136,9 @@ export const CreateJobFormScreen: React.FC = () => {
       if (Platform.OS === 'web') window.alert(msg);
       else Alert.alert('Completá el paso 1', msg);
       return;
+    }
+    if (!offerPriceText.trim() && suggestedPrice > 0) {
+      setOfferPriceText(String(Math.round(suggestedPrice)));
     }
     animateStepChange(2);
   };
@@ -183,7 +184,7 @@ export const CreateJobFormScreen: React.FC = () => {
 
       const coords = jobCoordinatesForCreate(serviceLat, serviceLng);
 
-      await createJob({
+      const created = await createJob({
         title: autoTitle,
         description: description.trim(),
         category: serviceTypeSlug,
@@ -199,6 +200,8 @@ export const CreateJobFormScreen: React.FC = () => {
         scheduledDate: schedulingFields.schedulingPayload.scheduledDate,
         scheduledTime: schedulingFields.schedulingPayload.scheduledTime,
       });
+
+      setPublishedMeta({ id: created.id, created_at: created.created_at });
 
       setSuccessMessage(
         `Tu solicitud de "${serviceLabel}" quedó en pendiente. Revisala en Mis Solicitudes → Pendientes.`,
@@ -241,6 +244,7 @@ export const CreateJobFormScreen: React.FC = () => {
 
   const handleSuccessDismiss = useCallback(() => {
     setShowSuccess(false);
+    setPublishedMeta(null);
     const tabNav = navigation.getParent();
     if (tabNav) {
       tabNav.navigate('ClientOrders' as never);
@@ -286,6 +290,7 @@ export const CreateJobFormScreen: React.FC = () => {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        {...supportBubbleScroll}
       >
         {publishLimit.atLimit && (
           <View style={styles.limitBanner}>
@@ -354,6 +359,12 @@ export const CreateJobFormScreen: React.FC = () => {
             <Text style={styles.blockSubtitle}>
               Indicá dónde y revisá el precio antes de enviar
             </Text>
+            <View style={styles.radarHintRow}>
+              <Ionicons name="radio-outline" size={14} color="#0284C7" />
+              <Text style={styles.radarHintText}>
+                Tras publicar, tu chamba estará 60 min en el radar de técnicos
+              </Text>
+            </View>
 
             <View style={styles.card}>
               <Text style={styles.cardSectionLabel}>Dirección</Text>
@@ -389,9 +400,14 @@ export const CreateJobFormScreen: React.FC = () => {
                   <TextInput
                     value={offerPriceText}
                     onChangeText={setOfferPriceText}
-                    placeholder={String(Math.round(suggestedPrice))}
+                    placeholder={
+                      suggestedPrice > 0
+                        ? String(Math.round(suggestedPrice))
+                        : '0'
+                    }
                     placeholderTextColor={CHAMBA.muted}
                     keyboardType="decimal-pad"
+                    inputMode="decimal"
                     style={[styles.offerInput, textInputWebFocusStyle]}
                     editable={!isSubmitting}
                   />
@@ -461,8 +477,10 @@ export const CreateJobFormScreen: React.FC = () => {
         title="¡Solicitud en pendiente!"
         message={successMessage}
         slogan="Estado: esperando técnico · Mis Solicitudes → Pendientes"
+        expiryJobId={publishedMeta?.id}
+        expiryCreatedAt={publishedMeta?.created_at}
         onDismiss={handleSuccessDismiss}
-        autoHideMs={4000}
+        autoHideMs={5500}
       />
     </View>
   );
@@ -531,8 +549,27 @@ const styles = StyleSheet.create({
   blockSubtitle: {
     fontSize: 14,
     color: '#6B7280',
-    marginBottom: 16,
+    marginBottom: 10,
     lineHeight: 20,
+  },
+  radarHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+  },
+  radarHintText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+    lineHeight: 17,
   },
   card: {
     backgroundColor: CHAMBA.white,

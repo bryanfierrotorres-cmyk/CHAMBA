@@ -725,7 +725,14 @@ async function phoneSignInInner(
     throw new Error('Ingresá exactamente 8 dígitos de tu celular');
   }
 
-  let profile: UserProfile | null = await fetchProfileByPhoneQuick(cleanPhone, 4_000);
+  let profile: UserProfile | null = null;
+  try {
+    profile = await fetchProfileByPhoneQuick(cleanPhone, 10_000);
+  } catch (err) {
+    throw err instanceof Error
+      ? err
+      : new Error('No se pudo verificar tu cuenta. Intentá de nuevo en unos minutos.');
+  }
 
   if (profile) {
     assertPhoneLoginRole(role, profile);

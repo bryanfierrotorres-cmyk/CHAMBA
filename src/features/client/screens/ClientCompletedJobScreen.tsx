@@ -29,6 +29,7 @@ import {
 } from '@utils/formatters';
 import { getCategoryVisual } from '@utils/categoryVisual';
 import { useReceiptGenerator } from '@features/client/hooks/useReceiptGenerator';
+import { useSupportBubbleScrollHandlers } from '@hooks/useSupportBubbleScrollHandlers';
 import { ChambaReceiptCard } from '@components/client/ChambaReceiptCard';
 import type { ClientOrdersStackParamList } from '@/types';
 
@@ -50,6 +51,7 @@ export const ClientCompletedJobScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const profile = useAuthStore((s) => s.profile);
   const { receiptCaptureRef, downloadReceipt, isGenerating } = useReceiptGenerator();
+  const supportBubbleScroll = useSupportBubbleScrollHandlers();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['client-job-summary', jobId, profile?.id],
@@ -117,6 +119,7 @@ export const ClientCompletedJobScreen: React.FC = () => {
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
+        {...supportBubbleScroll}
       >
         <View style={styles.receiptCaptureHost} pointerEvents="none">
           <ChambaReceiptCard ref={receiptCaptureRef} data={receiptData} />

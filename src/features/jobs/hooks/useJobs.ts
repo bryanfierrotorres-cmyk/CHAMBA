@@ -37,6 +37,7 @@ import { mergeAssignments, patchLocalJobStatus, getLocalAssignments } from '@uti
 import { CONFIG } from '@constants/config';
 import { QUERY_STALE_FEED_MS } from '@constants/queryCache';
 import { workerActiveCountKey } from '@features/jobs/hooks/useJobActiveLimits';
+import { isWorkerPendingClientSelection } from '@utils/jobActiveLimits';
 import { WALLET_KEYS } from '@features/jobs/hooks/useWorkerWallet';
 import { fromDbJobCategory } from '@constants/chambaCategories';
 import { workerCoversJobCategory } from '@utils/workerCategoryAccess';
@@ -73,6 +74,18 @@ export const JOB_KEYS = {
   adminControl: () => ['admin', 'control', 'jobs'] as const,
 
 };
+
+
+
+const ACTIVE_WORKER_JOB_STATUSES = new Set<JobStatus>(['open', 'taken', 'in_progress']);
+
+/** True si la agenda puede cambiar (postulación pendiente, fases, aprobación cliente). */
+export const workerAgendaNeedLivePoll = (assignments: JobAssignment[] | undefined): boolean =>
+  !!assignments?.some(
+    (a) =>
+      isWorkerPendingClientSelection(a) ||
+      (a.job?.status != null && ACTIVE_WORKER_JOB_STATUSES.has(a.job.status)),
+  );
 
 
 
@@ -298,6 +311,11 @@ export const useMyJobs = () => {
     refetchOnWindowFocus: false,
 
     refetchOnMount: true,
+
+    refetchInterval: (query) =>
+      workerAgendaNeedLivePoll(query.state.data) ? 8_000 : false,
+
+    refetchIntervalInBackground: true,
 
     placeholderData: (previousData) => previousData ?? storeItems,
 

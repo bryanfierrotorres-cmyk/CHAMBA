@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,16 +13,13 @@ import { getConfiguredServiceLabel, getConfiguredServiceSeed } from '@constants/
 import { formatCurrency, formatDistance } from '@utils/formatters';
 import { normalizeUrgencyLevel } from '@utils/jobScheduling';
 import { RADAR_BORDER } from './radarTheme';
-import { RadarJobExpiryTimer } from './RadarJobExpiryTimer';
+import { ContadorExpiracion } from '@components/shared/ContadorExpiracion';
 import type { Job } from '@/types';
 
 const CARD_BLACK = '#111827';
 const STAR_GOLD = '#F59E0B';
 const CARD_SURFACE = '#F8FAFC';
 const CARD_BORDER = '#E2E8F0';
-
-/** Ventana real en radar: 1 hora desde la publicación. */
-const RADAR_EXPIRY_MS = 60 * 60 * 1000;
 
 export interface CompactJobCardProps {
   job: Job;
@@ -33,6 +30,7 @@ export interface CompactJobCardProps {
   awaitingClientChoice?: boolean;
   isAccepted?: boolean;
   acceptBlocked?: boolean;
+  onExpire?: (jobId: string) => void;
 }
 
 const hashToRating = (seed: string): string => {
@@ -64,9 +62,6 @@ const buildLocationLine = (job: Job): string => {
   if (address) return address;
   return 'Ubicación por confirmar';
 };
-
-const getRadarExpiryAt = (job: Job): number =>
-  new Date(job.created_at).getTime() + RADAR_EXPIRY_MS;
 
 const getRateLabel = (job: Job): string => {
   const seed = getConfiguredServiceSeed(job.category);
@@ -121,6 +116,7 @@ export const CompactJobCard = React.memo<CompactJobCardProps>(function CompactJo
   awaitingClientChoice = false,
   isAccepted = false,
   acceptBlocked = false,
+  onExpire,
 }) {
   const price = formatCurrency(job.worker_payout || job.pay_amount);
   const client = useMemo(
@@ -135,7 +131,12 @@ export const CompactJobCard = React.memo<CompactJobCardProps>(function CompactJo
   const serviceIcon = getConfiguredServiceSeed(job.category)?.icon ?? '🔧';
   const locationLine = buildLocationLine(job);
   const rateLabel = getRateLabel(job);
-  const expiresAt = useMemo(() => getRadarExpiryAt(job), [job.created_at]);
+  const handleExpire = useCallback(
+    (jobId: string) => {
+      onExpire?.(jobId);
+    },
+    [onExpire],
+  );
 
   const acceptDisabled =
     !canAccept
@@ -215,7 +216,12 @@ export const CompactJobCard = React.memo<CompactJobCardProps>(function CompactJo
 
       <View style={styles.footerRow}>
         {showTimer ? (
-          <RadarJobExpiryTimer expiresAt={expiresAt} />
+          <ContadorExpiracion
+            createdAt={job.created_at}
+            idSolicitud={job.id}
+            onExpirar={handleExpire}
+            variant="radar"
+          />
         ) : (
           <Text style={styles.statusFootnote} numberOfLines={1}>
             {awaitingClientChoice

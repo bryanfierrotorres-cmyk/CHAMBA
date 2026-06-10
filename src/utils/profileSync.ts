@@ -44,111 +44,136 @@ export const namesMatch = (a: string, b: string): boolean =>
   a.trim().toLowerCase() === b.trim().toLowerCase();
 
 const PROFILE_PHONE_CACHE_MS = 45_000;
-const PROFILE_PHONE_FETCH_MS = 6_000;
+const PROFILE_PHONE_FETCH_MS = 8_000;
 const profileByPhoneCache = new Map<
   string,
   { at: number; profile: UserProfile | null }
 >();
+
+export type ProfilePhoneLookup =
+  | { status: 'found'; profile: UserProfile }
+  | { status: 'not_found' }
+  | { status: 'unavailable'; reason: string };
+
+const isDbUnavailableMessage = (msg: string): boolean =>
+  /schema cache|could not query the database|database not available|connection|timeout|econnrefused|network|503|502|504|pgrst/i.test(
+    msg,
+  );
+
+const parseProfileRpcRow = (data: unknown): UserProfile | null => {
+  if (!data) return null;
+  const row = typeof data === 'string' ? JSON.parse(data) : data;
+  return row?.id ? (row as UserProfile) : null;
+};
 
 export const invalidateProfilePhoneCache = (phone?: string): void => {
   if (phone) profileByPhoneCache.delete(normalizePhone(phone));
   else profileByPhoneCache.clear();
 };
 
-/** Busca perfil en BD por teléfono (RPC SECURITY DEFINER o SELECT directo). */
-export const fetchProfileByPhone = async (
+/** Busca perfil por teléfono; distingue «no existe» de «servidor caído». */
+export const lookupProfileByPhone = async (
   phone: string,
-): Promise<UserProfile | null> => {
+  timeoutMs = PROFILE_PHONE_FETCH_MS,
+): Promise<ProfilePhoneLookup> => {
   const normalized = normalizePhone(phone);
-  if (!normalized) return null;
+  if (!normalized) return { status: 'not_found' };
 
   const cached = profileByPhoneCache.get(normalized);
   if (cached && Date.now() - cached.at < PROFILE_PHONE_CACHE_MS) {
-    return cached.profile;
+    return cached.profile
+      ? { status: 'found', profile: cached.profile }
+      : { status: 'not_found' };
   }
 
-  const cacheAndReturn = (profile: UserProfile | null): UserProfile | null => {
+  const cacheFound = (profile: UserProfile): ProfilePhoneLookup => {
     profileByPhoneCache.set(normalized, { at: Date.now(), profile });
-    return profile;
+    return { status: 'found', profile };
   };
 
-  try {
-    const { data, error } = await withTimeout(
-      supabase.rpc('get_profile_by_phone', { p_phone: normalized }),
-      PROFILE_PHONE_FETCH_MS,
-    );
-    if (!error && data) {
-      const row = typeof data === 'string' ? JSON.parse(data) : data;
-      if (row?.id) {
-        return cacheAndReturn(row as UserProfile);
-      }
-    }
-  } catch {
-    // RPC puede no existir, tardar o fallar por red
-  }
-
-  try {
-    const { data, error } = await withTimeout(
-      supabase.from('profiles').select('*').eq('phone', normalized).maybeSingle(),
-      PROFILE_PHONE_FETCH_MS,
-    );
-    if (!error && data) {
-      return cacheAndReturn(data as UserProfile);
-    }
-  } catch {
-    // RLS puede bloquear SELECT anónimo
-  }
-
-  if (normalized.length === 8) {
-    const formatted = `${normalized.slice(0, 4)}-${normalized.slice(4)}`;
-    try {
-      const { data, error } = await withTimeout(
-        supabase.from('profiles').select('*').eq('phone', formatted).maybeSingle(),
-        PROFILE_PHONE_FETCH_MS,
-      );
-      if (!error && data) {
-        return cacheAndReturn(data as UserProfile);
-      }
-    } catch {
-      // ignorar
-    }
-  }
-
-  profileByPhoneCache.set(normalized, { at: Date.now(), profile: null });
-  return null;
-};
-
-/** Login: un solo RPC con timeout corto (sin 3 fallbacks secuenciales). */
-export const fetchProfileByPhoneQuick = async (
-  phone: string,
-  timeoutMs = 4_000,
-): Promise<UserProfile | null> => {
-  const normalized = normalizePhone(phone);
-  if (!normalized) return null;
-
-  const cached = profileByPhoneCache.get(normalized);
-  if (cached && Date.now() - cached.at < PROFILE_PHONE_CACHE_MS) {
-    return cached.profile;
-  }
+  const cacheNotFound = (): ProfilePhoneLookup => {
+    profileByPhoneCache.set(normalized, { at: Date.now(), profile: null });
+    return { status: 'not_found' };
+  };
 
   try {
     const { data, error } = await withTimeout(
       supabase.rpc('get_profile_by_phone', { p_phone: normalized }),
       timeoutMs,
     );
-    if (!error && data) {
-      const row = typeof data === 'string' ? JSON.parse(data) : data;
-      if (row?.id) {
-        const profile = row as UserProfile;
-        profileByPhoneCache.set(normalized, { at: Date.now(), profile });
-        return profile;
+    if (error) {
+      if (isDbUnavailableMessage(error.message)) {
+        return { status: 'unavailable', reason: error.message };
       }
+    } else {
+      const fromRpc = parseProfileRpcRow(data);
+      if (fromRpc) return cacheFound(fromRpc);
+      if (data === null || data === undefined) return cacheNotFound();
     }
-  } catch {
-    // timeout o red
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : 'timeout';
+    return { status: 'unavailable', reason };
   }
 
-  profileByPhoneCache.set(normalized, { at: Date.now(), profile: null });
+  const trySelect = async (phoneValue: string): Promise<UserProfile | null> => {
+    try {
+      const { data, error } = await withTimeout(
+        supabase.from('profiles').select('*').eq('phone', phoneValue).maybeSingle(),
+        timeoutMs,
+      );
+      if (error) {
+        if (isDbUnavailableMessage(error.message)) {
+          throw new Error(error.message);
+        }
+        return null;
+      }
+      return data ? (data as UserProfile) : null;
+    } catch (err) {
+      if (err instanceof Error && isDbUnavailableMessage(err.message)) {
+        throw err;
+      }
+      return null;
+    }
+  };
+
+  try {
+    const direct = await trySelect(normalized);
+    if (direct) return cacheFound(direct);
+
+    if (normalized.length === 8) {
+      const formatted = `${normalized.slice(0, 4)}-${normalized.slice(4)}`;
+      const alt = await trySelect(formatted);
+      if (alt) return cacheFound(alt);
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : 'timeout';
+    return { status: 'unavailable', reason };
+  }
+
+  return cacheNotFound();
+};
+
+/** Busca perfil en BD por teléfono (RPC SECURITY DEFINER o SELECT directo). */
+export const fetchProfileByPhone = async (
+  phone: string,
+): Promise<UserProfile | null> => {
+  const lookup = await lookupProfileByPhone(phone);
+  if (lookup.status === 'found') return lookup.profile;
+  return null;
+};
+
+/** Login: lookup con timeout; no cachea fallos de servidor como «no registrado». */
+export const fetchProfileByPhoneQuick = async (
+  phone: string,
+  timeoutMs = 8_000,
+): Promise<UserProfile | null> => {
+  const lookup = await lookupProfileByPhone(phone, timeoutMs);
+  if (lookup.status === 'found') return lookup.profile;
+  if (lookup.status === 'unavailable') {
+    throw new Error(
+      'El servidor no responde. Tus datos siguen guardados — esperá un momento e intentá de nuevo.',
+    );
+  }
   return null;
 };
 

@@ -1,0 +1,86 @@
+#!/usr/bin/env node
+/** Aplica migración 042 — RPC panel Equipo admin. npm run db:apply-admin-team-panel */
+import { readFileSync, existsSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const SQL_PATH = join(ROOT, 'supabase', 'migrations', '042_admin_team_panel_rpc.sql');
+const PROJECT_REF = 'twsrthtyaglpymdfdtdp';
+
+function loadEnv() {
+  const envPath = join(ROOT, '.env');
+  if (!existsSync(envPath)) return;
+  for (const line of readFileSync(envPath, 'utf8').split('\n')) {
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
+    const i = t.indexOf('=');
+    if (i === -1) continue;
+    const key = t.slice(0, i).trim();
+    const val = t.slice(i + 1).trim().replace(/^["']|["']$/g, '');
+    if (!process.env[key]) process.env[key] = val;
+  }
+}
+
+async function applyViaManagementApi(sql) {
+  const token = process.env.SUPABASE_ACCESS_TOKEN;
+  if (!token) return false;
+  const res = await fetch(
+    `https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query: sql }),
+    },
+  );
+  const body = await res.text();
+  if (!res.ok) throw new Error(`Management API ${res.status}: ${body.slice(0, 400)}`);
+  return true;
+}
+
+loadEnv();
+
+const dbUrl = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+const sql = readFileSync(SQL_PATH, 'utf8');
+
+async function main() {
+  if (dbUrl) {
+    const pg = await import('pg');
+    const Client = pg.default?.Client ?? pg.Client;
+    const db = new Client({
+      connectionString: dbUrl.replace(':6543', ':5432'),
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 30_000,
+    });
+    try {
+      await db.connect();
+      await db.query(sql);
+      console.log('✅ Migración 042 aplicada (Postgres directo)');
+      return;
+    } catch (err) {
+      console.warn('Postgres:', err.message);
+    } finally {
+      try {
+        await db.end();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  if (await applyViaManagementApi(sql)) {
+    console.log('✅ Migración 042 aplicada (Management API)');
+    return;
+  }
+
+  console.error('❌ No se pudo aplicar 042. Verificá SUPABASE_DB_URL o SUPABASE_ACCESS_TOKEN.');
+  process.exit(1);
+}
+
+main().catch((e) => {
+  console.error('❌', e.message);
+  process.exit(1);
+});

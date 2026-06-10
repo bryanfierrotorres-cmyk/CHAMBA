@@ -1,17 +1,18 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
   ActivityIndicator, RefreshControl, StyleSheet,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBadge } from '@components/Badge';
 import { AdminMetricCard } from '@components/admin/AdminMetricCard';
 import { useAuthStore } from '@store/authStore';
+import { resolveAdminActorProfile } from '@utils/profileSync';
 import { useCatalog } from '@features/catalog/hooks/useCatalog';
 import { fetchAdminJobs, type AdminJob } from '../services/adminService';
 import {
@@ -62,7 +63,22 @@ export const AdminDashboardScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const profile = useAuthStore((s) => s.profile);
+  const queryClient = useQueryClient();
   const { getLabel } = useCatalog();
+
+  useEffect(() => {
+    if (!profile?.id || profile.role !== 'admin') return;
+    let cancelled = false;
+    void (async () => {
+      await resolveAdminActorProfile(profile).catch(() => undefined);
+      if (cancelled) return;
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'control', 'jobs'] });
+      void queryClient.refetchQueries({ queryKey: ['admin', 'control', 'jobs'] });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.id, profile?.role, queryClient]);
 
   const { data, isLoading, isFetching, refetch, isRefetching } = useQuery<AdminJob[]>({
     queryKey: ['admin', 'control', 'jobs'],

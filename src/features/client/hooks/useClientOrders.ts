@@ -17,15 +17,20 @@ type JobStatusPatch = {
   status?: JobStatus;
   operational_phase?: string | null;
   title?: string;
+  pay_amount?: number;
+  worker_payout?: number;
+  platform_fee?: number;
+  created_at?: string;
+  updated_at?: string;
 };
 
-/** Actualiza la lista en caché sin esperar refetch (Realtime / polling). */
+/** Actualiza la lista en caché sin esperar refetch (Realtime / polling / impulso). */
 export const patchClientOrderRowInCache = (
   queryClient: QueryClient,
   clientId: string,
   row: JobStatusPatch,
 ): void => {
-  if (!clientId || !row.id || !row.status) return;
+  if (!clientId || !row.id) return;
 
   queryClient.setQueryData<ClientOrderJob[]>(clientOrdersQueryKey(clientId), (old) => {
     if (!old?.length) return old;
@@ -37,10 +42,14 @@ export const patchClientOrderRowInCache = (
     const next = [...old];
     next[idx] = {
       ...prev,
-      status: row.status,
+      ...(row.status ? { status: row.status } : {}),
       operational_phase: phase,
       title: row.title?.trim() ? row.title.trim() : prev.title,
-      updated_at: new Date().toISOString(),
+      pay_amount: row.pay_amount ?? prev.pay_amount,
+      worker_payout: row.worker_payout ?? prev.worker_payout,
+      platform_fee: row.platform_fee ?? prev.platform_fee,
+      created_at: row.created_at ?? prev.created_at,
+      updated_at: row.updated_at ?? new Date().toISOString(),
     };
     return next;
   });

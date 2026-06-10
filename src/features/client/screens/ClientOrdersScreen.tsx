@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
@@ -24,10 +24,16 @@ import {
 } from '@features/client/hooks/useJobWorkerApplications';
 import { CARD_STEP_SHADOW } from '@constants/chambaUI';
 import {
+  ensureChatSessionForProfile,
+  showChatSessionRequiredAlert,
+} from '@features/chat/utils/ensureChatSession';
+import { useSupportBubbleScrollHandlers } from '@hooks/useSupportBubbleScrollHandlers';
+import {
   isClientOrderActive,
   isClientOrderHistory,
   isClientOrderPending,
 } from '@utils/clientOrderClassification';
+import { isJobExpiredLocally } from '@constants/jobExpiry';
 import type {
   AssignedWorkerSummary,
   ClientOrderJob,
@@ -137,17 +143,28 @@ const OrderCard = React.memo<OrderCardProps>(function OrderCard({
     (a: JobWorkerApplication) => a.selection_status === 'pending',
   ).length;
   const appsErrorMessage = appsError instanceof Error ? appsError.message : null;
+  const [localExpired, setLocalExpired] = useState(() =>
+    isJobExpiredLocally(job.created_at),
+  );
+
+  useEffect(() => {
+    setLocalExpired(isJobExpiredLocally(job.created_at));
+  }, [job.created_at, job.id]);
+
+  const showApplicantPanel = isOpen && (!localExpired || pendingCount > 0);
 
   return (
     <View style={styles.orderWrap}>
       <ClientActiveServiceCard
         job={job}
+        clientId={ownerClientId}
         pendingApplicationsCount={pendingCount}
+        onExpiredChange={setLocalExpired}
         onOpenChat={onOpenChat}
         onPressCompleted={onOpenCompleted}
       />
 
-      {isOpen && (
+      {showApplicantPanel && (
         <ClientJobApplicantPanel
           jobId={job.id}
           clientId={ownerClientId}
@@ -170,6 +187,7 @@ export const ClientOrdersScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const profileId = useAuthStore((s) => s.profile?.id);
   const profileName = useAuthStore((s) => s.profile?.full_name ?? 'Cliente');
+  const supportBubbleScroll = useSupportBubbleScrollHandlers();
   const [activeFilter, setActiveFilter] = useState<OrderFilter>('pendientes');
 
   const {
@@ -199,7 +217,16 @@ export const ClientOrdersScreen: React.FC = () => {
   }, [refetch]);
 
   const handleOpenChat = useCallback(
-    (jobId: string, readOnly: boolean) => navigation.navigate('JobChat', { jobId, readOnly }),
+    async (jobId: string, readOnly: boolean) => {
+      const currentProfile = useAuthStore.getState().profile;
+      if (!currentProfile) return;
+      const ready = await ensureChatSessionForProfile(currentProfile);
+      if (!ready) {
+        showChatSessionRequiredAlert();
+        return;
+      }
+      navigation.navigate('JobChat', { jobId, readOnly });
+    },
     [navigation],
   );
 
@@ -253,6 +280,7 @@ export const ClientOrdersScreen: React.FC = () => {
           refreshControl={
             <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor="#0284C7" />
           }
+          {...supportBubbleScroll}
         >
           {filteredJobs.length === 0 ? (
             <View style={styles.emptyCard}>

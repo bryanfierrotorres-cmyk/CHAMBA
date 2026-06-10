@@ -6,6 +6,7 @@ import {
 import { useNavigationState } from '@react-navigation/native';
 import { openWhatsAppSupport } from '@utils/whatsappSupport';
 import { isJobChatRouteFocused } from '@utils/navigationFocus';
+import { useSupportBubbleStore } from '@store/supportBubbleStore';
 
 interface Props {
   /** Bottom offset — useful to clear the tab bar. Default 90 */
@@ -16,8 +17,10 @@ interface Props {
 
 export const WhatsAppBubble: React.FC<Props> = ({ bottom = 90, right = 20 }) => {
   const hiddenOnChat = useNavigationState(isJobChatRouteFocused);
+  const hiddenByScroll = useSupportBubbleStore((s) => s.hiddenByScroll);
   const pulse = useRef(new Animated.Value(1)).current;
   const enter = useRef(new Animated.Value(0)).current;
+  const scrollHide = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     // Slide-in on mount
@@ -34,6 +37,14 @@ export const WhatsAppBubble: React.FC<Props> = ({ bottom = 90, right = 20 }) => 
     ).start();
   }, []);
 
+  useEffect(() => {
+    Animated.timing(scrollHide, {
+      toValue: hiddenByScroll ? 0 : 1,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+  }, [hiddenByScroll, scrollHide]);
+
   const openWhatsApp = () => {
     void openWhatsAppSupport();
   };
@@ -42,16 +53,24 @@ export const WhatsAppBubble: React.FC<Props> = ({ bottom = 90, right = 20 }) => 
     return null;
   }
 
+  const visibility = Animated.multiply(enter, scrollHide);
+
   return (
     <Animated.View
+      pointerEvents={hiddenByScroll ? 'none' : 'box-none'}
       style={[
         styles.wrapper,
         { bottom, right },
         {
-          opacity: enter,
+          opacity: visibility,
           transform: [
-            { scale: enter },
-            { translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) },
+            { scale: visibility },
+            {
+              translateY: scrollHide.interpolate({
+                inputRange: [0, 1],
+                outputRange: [48, 0],
+              }),
+            },
           ],
         },
       ]}

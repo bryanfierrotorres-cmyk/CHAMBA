@@ -37,6 +37,10 @@ import { confirmAction, showMessage } from '@utils/confirmAction';
 import { JobChatEntryButton } from '@components/chat/JobChatEntryButton';
 import { showJobChatEntry } from '@features/chat/utils/chatHelpers';
 import {
+  ensureChatSessionForProfile,
+  showChatSessionRequiredAlert,
+} from '@features/chat/utils/ensureChatSession';
+import {
   isWorkerPendingClientSelection,
 } from '@utils/jobActiveLimits';
 import {
@@ -114,8 +118,9 @@ export const MyJobsScreen: React.FC = () => {
     useCallback(() => {
       if (profile?.id) {
         void refreshStore(profile.id);
+        void refetch();
       }
-    }, [refreshStore, profile?.id]),
+    }, [refreshStore, profile?.id, refetch]),
   );
 
   const handleAdvance = useCallback(async (
@@ -185,8 +190,15 @@ export const MyJobsScreen: React.FC = () => {
     });
   }, [navigation]);
 
-  const openJobChat = useCallback((item: JobAssignment, readOnly: boolean) => {
+  const openJobChat = useCallback(async (item: JobAssignment, readOnly: boolean) => {
     if (!item.job_id) return;
+    const currentProfile = useAuthStore.getState().profile;
+    if (!currentProfile) return;
+    const ready = await ensureChatSessionForProfile(currentProfile);
+    if (!ready) {
+      showChatSessionRequiredAlert();
+      return;
+    }
     navigation.navigate('JobFeed', {
       screen: 'JobChat',
       params: { jobId: item.job_id, readOnly },

@@ -29,9 +29,11 @@ const resolveAssignedWorker = (
 
 interface Props {
   job: ClientOrderJob;
+  clientId?: string;
   pendingApplicationsCount?: number;
   onOpenChat?: (jobId: string, readOnly: boolean) => void;
   onPressCompleted?: (jobId: string) => void;
+  onExpiredChange?: (expired: boolean) => void;
 }
 
 const callWorker = (phone: string | null | undefined) => {
@@ -47,9 +49,11 @@ const callWorker = (phone: string | null | undefined) => {
 
 export const ClientActiveServiceCard: React.FC<Props> = ({
   job,
+  clientId,
   pendingApplicationsCount = 0,
   onOpenChat,
   onPressCompleted,
+  onExpiredChange,
 }) => {
   const worker = resolveAssignedWorker(job.assigned_worker);
   const visual = getCategoryVisual(job.category);
@@ -83,7 +87,9 @@ export const ClientActiveServiceCard: React.FC<Props> = ({
       <View style={styles.trackerSection}>
         <ClientServiceStatusTracker
           job={job}
+          clientId={clientId ?? job.created_by}
           pendingApplicationsCount={pendingApplicationsCount}
+          onExpiredChange={onExpiredChange}
         />
       </View>
 

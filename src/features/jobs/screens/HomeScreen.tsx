@@ -43,6 +43,7 @@ import {
   dismissRadarJob,
   loadRadarDismissedJobIds,
 } from '@utils/radarDismissedJobs';
+import { isJobExpiredLocally } from '@constants/jobExpiry';
 import type { Job, JobCategory, JobStackParamList, WorkerTabParamList } from '@/types';
 
 type StackNav = NativeStackNavigationProp<JobStackParamList, 'JobList'>;
@@ -93,12 +94,13 @@ interface FeedItemProps {
   onAccept: (job: Job) => Promise<void>;
   onDismiss: (job: Job) => void;
   canDismiss: boolean;
+  onExpire: (jobId: string) => void;
 }
 
 const FeedItem = React.memo<FeedItemProps>(function FeedItem({
   job, isApproved, acceptingJobId, acceptedJobIds, processJobIds, awaitingClientChoice,
   acceptBlocked,
-  onPressDetail, onAccept, onDismiss, canDismiss,
+  onPressDetail, onAccept, onDismiss, canDismiss, onExpire,
 }) {
   const card = (
     <CompactJobCard
@@ -110,6 +112,7 @@ const FeedItem = React.memo<FeedItemProps>(function FeedItem({
       awaitingClientChoice={awaitingClientChoice}
       isAccepted={acceptedJobIds.has(job.id) && !processJobIds.has(job.id)}
       acceptBlocked={acceptBlocked}
+      onExpire={onExpire}
     />
   );
 
@@ -145,6 +148,7 @@ export const HomeScreen: React.FC = () => {
   const [acceptedJobIds, setAcceptedJobIds] = useState<Set<string>>(new Set());
   const [processJobIds, setProcessJobIds] = useState<Set<string>>(new Set());
   const [removedFromFeedIds, setRemovedFromFeedIds] = useState<Set<string>>(new Set());
+  const [expiredLocallyIds, setExpiredLocallyIds] = useState<Set<string>>(new Set());
   const [pendingApplicationIds, setPendingApplicationIds] = useState<Set<string>>(new Set());
   const acceptingRef = useRef<Set<string>>(new Set());
 
@@ -216,6 +220,13 @@ export const HomeScreen: React.FC = () => {
 
   const storeMap = useMemo(() => new Map(storeJobs.map((j) => [j.id, j])), [storeJobs]);
 
+  const handleJobExpire = useCallback((jobId: string) => {
+    setExpiredLocallyIds((prev) => {
+      if (prev.has(jobId)) return prev;
+      return new Set([...prev, jobId]);
+    });
+  }, []);
+
   const feedJobs = useMemo(() => {
     const filterByCategory = effectiveCategories && effectiveCategories.length > 0;
     const byId = new Map<string, Job>();
@@ -236,7 +247,13 @@ export const HomeScreen: React.FC = () => {
 
     return Array.from(byId.values()).filter(
       (j) => j.status === 'open' || acceptedJobIds.has(j.id) || processJobIds.has(j.id),
-    ).filter((j) => !removedFromFeedIds.has(j.id));
+    ).filter((j) => !removedFromFeedIds.has(j.id))
+      .filter((j) => {
+        if (j.status !== 'open') return true;
+        if (expiredLocallyIds.has(j.id)) return false;
+        if (isJobExpiredLocally(j.created_at)) return false;
+        return true;
+      });
   }, [
     queryJobs,
     storeMap,
@@ -244,6 +261,7 @@ export const HomeScreen: React.FC = () => {
     acceptedJobIds,
     processJobIds,
     removedFromFeedIds,
+    expiredLocallyIds,
     effectiveCategories,
     profile,
   ]);
@@ -429,6 +447,7 @@ export const HomeScreen: React.FC = () => {
         onAccept={handleAccept}
         onDismiss={handleDismiss}
         canDismiss={canDismiss}
+        onExpire={handleJobExpire}
       />
     );
   }, [
@@ -442,6 +461,7 @@ export const HomeScreen: React.FC = () => {
     navigation,
     handleAccept,
     handleDismiss,
+    handleJobExpire,
   ]);
 
   const emptyHint = selectedCategory

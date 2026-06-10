@@ -19,6 +19,7 @@ import { ChambaMenuRow } from '@components/chamba/ChambaMenuRow';
 import { CHAMBA, chambaStyles } from '@constants/chambaUI';
 import { webMinViewportStyle } from '@constants/webMobileLayout';
 import { openWhatsAppSupport } from '@utils/whatsappSupport';
+import { useSupportBubbleScrollHandlers } from '@hooks/useSupportBubbleScrollHandlers';
 import { pickProfileAvatarUri, showProfileAvatarError } from '@utils/profileAvatarPicker';
 import { safePersistPilotProfile } from '@utils/pilotProfileStorage';
 import { uploadAvatar, updateProfile } from '@features/auth/services/authService';
@@ -33,6 +34,7 @@ export const ClientProfileScreen: React.FC = () => {
   const setProfile = useAuthStore((s) => s.setProfile);
   const isLoading = useAuthStore((s) => s.isLoading);
   const signOut = useAuthStore((s) => s.signOut);
+  const supportBubbleScroll = useSupportBubbleScrollHandlers();
   const [signingOut, setSigningOut] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -124,6 +126,7 @@ export const ClientProfileScreen: React.FC = () => {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
+        {...supportBubbleScroll}
       >
         <ChambaProfileHeroCard
           avatarUri={avatarPreview ?? profile.avatar_url}

@@ -4,8 +4,8 @@
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web --port 8091 --clear",
     "web:open": "npx serve dist-web-test -l 8090",
     "build:web": "expo export -p web --output-dir dist-web-test",
@@ -50,6 +50,8 @@
     "db:apply-worker-rls": "node scripts/apply-migration-038-worker-rls.mjs",
     "db:apply-launch-rls": "node scripts/apply-migration-039-launch-rls.mjs",
     "db:apply-performance-indexes": "node scripts/apply-migration-040-performance-indexes.mjs",
+    "db:apply-radar-expiry": "node scripts/apply-migration-043-radar-expiry.mjs",
+    "db:apply-worker-profiles-rls": "node scripts/apply-worker-profiles-rls.mjs",
     "repair:browser-storage": "node scripts/repair-browser-storage.mjs",
     "db:reset-two-users": "node scripts/reset-two-test-users.mjs",
     "db:purge-client-workers": "node scripts/purge-client-worker-users.mjs",
@@ -61,7 +63,9 @@
     "diagnose:pepe-limpieza": "node scripts/diagnose-pepe-limpieza.mjs",
     "diagnose:signup": "node scripts/diagnose-signup.mjs",
     "db:apply-admin-moderation": "node scripts/apply-migration-037-admin-moderation.mjs",
-    "db:apply-admin-client-panel": "node scripts/apply-migration-041-admin-client-panel.mjs"
+    "db:apply-admin-client-panel": "node scripts/apply-migration-041-admin-client-panel.mjs",
+    "db:apply-admin-team-panel": "node scripts/apply-migration-042-admin-team-panel.mjs",
+    "diagnose:profiles": "node scripts/diagnose-profiles-health.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~3.2.3",

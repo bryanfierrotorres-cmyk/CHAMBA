@@ -41,6 +41,7 @@ export const JobChatScreen: React.FC<Props> = ({ accentColor }) => {
     (profile?.role === 'worker' ? CHAT_THEME.workerAccent : CHAT_THEME.clientAccent);
 
   const {
+    actorId,
     context,
     messages,
     isLoading,
@@ -116,7 +117,7 @@ export const JobChatScreen: React.FC<Props> = ({ accentColor }) => {
               return (
                 <ChatMessageBubble
                   message={msg}
-                  isMine={msg.remitente_id === profile?.id}
+                  isMine={msg.remitente_id === (actorId ?? profile?.id)}
                   accentColor={roleAccent}
                 />
               );

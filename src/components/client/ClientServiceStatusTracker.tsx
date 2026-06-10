@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { ClientOpenJobStatusPanel } from '@components/client/ClientOpenJobStatusPanel';
 import { CHAMBA, CARD_STEP_SHADOW } from '@constants/chambaUI';
 import { getClientOrderStatusLabel } from '@utils/formatters';
 import {
@@ -12,8 +13,10 @@ import {
 import type { ClientOrderJob } from '@/types';
 
 interface Props {
-  job: Pick<ClientOrderJob, 'status' | 'operational_phase'>;
+  job: Pick<ClientOrderJob, 'id' | 'status' | 'operational_phase' | 'created_at' | 'pay_amount'>;
   pendingApplicationsCount?: number;
+  clientId?: string;
+  onExpiredChange?: (expired: boolean) => void;
 }
 
 const StepNode: React.FC<{ state: StepVisualState; label: string }> = ({ state, label }) => {
@@ -60,11 +63,24 @@ const Connector: React.FC<{ filled: boolean }> = ({ filled }) => (
 export const ClientServiceStatusTracker: React.FC<Props> = ({
   job,
   pendingApplicationsCount = 0,
+  clientId,
+  onExpiredChange,
 }) => {
   const phase = resolveOperationalPhase(job);
   const headline = getClientOrderStatusLabel(job.status, job.operational_phase);
 
   if (job.status === 'open') {
+    if (clientId) {
+      return (
+        <ClientOpenJobStatusPanel
+          job={job as ClientOrderJob}
+          clientId={clientId}
+          pendingApplicationsCount={pendingApplicationsCount}
+          onExpiredChange={onExpiredChange}
+        />
+      );
+    }
+
     const hasApplicants = pendingApplicationsCount > 0;
     return (
       <View style={styles.openBanner}>

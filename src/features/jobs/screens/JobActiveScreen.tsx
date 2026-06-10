@@ -19,6 +19,10 @@ import {
 import { JobOperationalStepper } from '@components/worker/JobOperationalStepper';
 import { JobChatEntryButton } from '@components/chat/JobChatEntryButton';
 import { showJobChatEntry } from '@features/chat/utils/chatHelpers';
+import {
+  ensureChatSessionForProfile,
+  showChatSessionRequiredAlert,
+} from '@features/chat/utils/ensureChatSession';
 import { JobBeforeAfterUpload } from '@components/jobs/JobBeforeAfterUpload';
 import { useAuthStore } from '@store/authStore';
 import {
@@ -248,13 +252,24 @@ export const JobActiveScreen: React.FC = () => {
   const route      = useRoute<Route>();
   const navigation = useNavigation<StackNav>();
   const { jobId }  = route.params;
-  const workerId = useAuthStore((s) => s.profile?.id);
+  const profile = useAuthStore((s) => s.profile);
+  const workerId = profile?.id;
 
   const { data, isLoading, error } = useActiveJob(jobId);
   const { mutateAsync: advanceMut, isPending: isAdvancing } = useAdvanceOperationalPhase();
   const { mutateAsync: completeMut, isPending: isCompleting } = useCompleteJob();
 
   const [showSuccess, setShowSuccess] = useState(false);
+
+  const handleOpenChat = useCallback(async (readOnly: boolean) => {
+    if (!profile) return;
+    const ready = await ensureChatSessionForProfile(profile);
+    if (!ready) {
+      showChatSessionRequiredAlert();
+      return;
+    }
+    navigation.navigate('JobChat', { jobId, readOnly });
+  }, [profile, navigation, jobId]);
 
   const job        = data?.job;
   const assignment = data?.assignment;
@@ -394,7 +409,7 @@ export const JobActiveScreen: React.FC = () => {
             variant="worker"
             fullWidth
             readOnly={isCompleted}
-            onPress={() => navigation.navigate('JobChat', { jobId, readOnly: isCompleted })}
+            onPress={() => void handleOpenChat(isCompleted)}
           />
         )}
 

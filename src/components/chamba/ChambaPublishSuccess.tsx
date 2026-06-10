@@ -10,6 +10,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CARD_STEP_SHADOW, CHAMBA, GRADIENT_TOGGLE } from '@constants/chambaUI';
+import { JobExpiryBadge } from '@components/shared/JobExpiryBadge';
 
 export const CHAMBA_PUBLISH_SLOGAN =
   'Tu chamba ya está en el radar — Garantía CHAMBA en cada servicio';
@@ -21,6 +22,9 @@ interface ChambaPublishSuccessProps {
   slogan?: string;
   onDismiss: () => void;
   autoHideMs?: number;
+  /** Muestra pill de 60 min tras publicar. */
+  expiryJobId?: string;
+  expiryCreatedAt?: string;
 }
 
 export const ChambaPublishSuccess: React.FC<ChambaPublishSuccessProps> = ({
@@ -30,6 +34,8 @@ export const ChambaPublishSuccess: React.FC<ChambaPublishSuccessProps> = ({
   slogan = CHAMBA_PUBLISH_SLOGAN,
   onDismiss,
   autoHideMs = 2800,
+  expiryJobId,
+  expiryCreatedAt,
 }) => {
   const backdrop = useRef(new Animated.Value(0)).current;
   const cardScale = useRef(new Animated.Value(0.88)).current;
@@ -128,6 +134,17 @@ export const ChambaPublishSuccess: React.FC<ChambaPublishSuccessProps> = ({
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.message}>{message}</Text>
 
+          {expiryJobId && expiryCreatedAt ? (
+            <View style={styles.expiryRow}>
+              <JobExpiryBadge
+                createdAt={expiryCreatedAt}
+                jobId={expiryJobId}
+                tone="client"
+              />
+              <Text style={styles.expiryHint}>Técnicos verán tu chamba en el radar</Text>
+            </View>
+          ) : null}
+
           <View style={styles.divider} />
 
           <Text style={styles.slogan}>{slogan}</Text>
@@ -191,6 +208,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
     paddingHorizontal: 4,
+  },
+  expiryRow: {
+    alignItems: 'center',
+    marginTop: 14,
+    gap: 6,
+  },
+  expiryHint: {
+    fontSize: 12,
+    color: CHAMBA.muted,
+    textAlign: 'center',
   },
   divider: {
     width: 48,

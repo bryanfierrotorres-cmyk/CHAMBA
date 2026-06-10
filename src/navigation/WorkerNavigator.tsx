@@ -19,6 +19,8 @@ import { WORKER_COLORS as COLORS, M3, FONT_SIZE, SPACING, BORDER_RADIUS } from '
 import { CARD_ELEVATION } from '@constants/stitchStyles';
 import { WorkerThemeProvider } from '@constants/workerThemeContext';
 import { webAppShellStyle, webTabScenePadding } from '@constants/webMobileLayout';
+import { useAuthSessionWarmup } from '@/hooks/useAuthSessionWarmup';
+import { useWorkerAssignmentsRealtime } from '@features/jobs/hooks/useWorkerAssignmentsRealtime';
 import type { WorkerTabParamList, JobStackParamList, ProfileStackParamList } from '@/types';
 
 const Tab   = createBottomTabNavigator<WorkerTabParamList>();
@@ -91,18 +93,18 @@ export const WorkerNavigator: React.FC = () => {
   const insets       = useSafeAreaInsets();
   const profile      = useAuthStore((s) => s.profile);
 
-  // Only require onboarding for non-approved workers who haven't uploaded docs.
-  // Workers that are already is_approved (pilot mode or manually approved) skip this gate.
   const needsOnboarding =
     profile?.role === 'worker' &&
-    !profile.is_approved &&                              // approved workers skip
+    !profile.is_approved &&
     (profile.cedula_url == null || profile.record_policia_url == null);
 
-  // Show waiting screen only for workers who DID submit docs but aren't approved yet
   const isPendingApproval =
     !needsOnboarding &&
     profile?.role === 'worker' &&
     !profile.is_approved;
+
+  useAuthSessionWarmup();
+  useWorkerAssignmentsRealtime();
 
   return (
     <WorkerThemeProvider>

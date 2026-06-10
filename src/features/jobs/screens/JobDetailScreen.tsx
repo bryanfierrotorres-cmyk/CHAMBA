@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, Image,
   Alert, ActivityIndicator, StyleSheet, Platform, ViewStyle, StyleProp,
@@ -15,6 +15,8 @@ import { StatusBadge } from '@components/Badge';
 import { Avatar } from '@components/Avatar';
 import { Card } from '@components/Card';
 import { ScreenBackButton } from '@components/navigation/ScreenBackButton';
+import { JobExpiryBadge } from '@components/shared/JobExpiryBadge';
+import { isJobExpiredLocally } from '@constants/jobExpiry';
 import { useJobDetail, useAcceptJob } from '../hooks/useJobs';
 import { useWorkerCommitmentLimit } from '@features/jobs/hooks/useJobActiveLimits';
 import { useAdminRemoveJob } from '@features/admin/hooks/useAdminRemoveJob';
@@ -102,7 +104,17 @@ export const JobDetailScreen: React.FC = () => {
   const [accepted, setAccepted]          = useState(false);
   const [awaitingClientChoice, setAwaitingClientChoice] = useState(false);
   const [previewOpen, setPreviewOpen]    = useState(false);
+  const [radarExpired, setRadarExpired]    = useState(false);
   const isAdmin = profile?.role === 'admin';
+
+  useEffect(() => {
+    if (!job) return;
+    setRadarExpired(isJobExpiredLocally(job.created_at));
+  }, [job?.id, job?.created_at]);
+
+  const handleRadarExpire = useCallback(() => {
+    setRadarExpired(true);
+  }, []);
 
   useEffect(() => {
     if (!profile?.id || profile.role !== 'worker' || !job) return;
@@ -134,7 +146,8 @@ export const JobDetailScreen: React.FC = () => {
     profile?.is_approved &&
     !accepted &&
     !awaitingClientChoice &&
-    !workerLimit.atLimit;
+    !workerLimit.atLimit &&
+    !radarExpired;
   const requestPhotoUrl = getJobRequestPhotoUrl(job);
   const payoutLabel = isAdmin ? 'Pago al técnico' : 'Tu ganancia';
   const payoutColor = isAdmin ? CHAMBA.blue : COLORS.brand[600];
@@ -301,9 +314,19 @@ export const JobDetailScreen: React.FC = () => {
           </View>
           <View style={styles.heroText}>
             <Text style={[styles.jobTitle, isAdmin && adminStyles.jobTitle]}>{job.title}</Text>
-            <Text style={[styles.jobCategory, isAdmin && adminStyles.jobCategory]}>
-              {getCategoryLabel(job.category)}
-            </Text>
+            <View style={styles.heroMetaRow}>
+              <Text style={[styles.jobCategory, isAdmin && adminStyles.jobCategory]}>
+                {getCategoryLabel(job.category)}
+              </Text>
+              {job.status === 'open' && profile?.role === 'worker' && (
+                <JobExpiryBadge
+                  createdAt={job.created_at}
+                  jobId={job.id}
+                  tone="worker"
+                  onExpirar={handleRadarExpire}
+                />
+              )}
+            </View>
           </View>
         </View>
 
@@ -474,6 +497,13 @@ export const JobDetailScreen: React.FC = () => {
               <Ionicons name="lock-closed-outline" size={18} color={COLORS.warning} />
               <Text style={styles.pendingText}>{workerLimit.message}</Text>
             </View>
+          ) : radarExpired && job.status === 'open' ? (
+            <View style={styles.pendingBox}>
+              <Ionicons name="time-outline" size={18} color={COLORS.text.secondary} />
+              <Text style={styles.pendingText}>
+                Esta solicitud ya no está visible en el radar
+              </Text>
+            </View>
           ) : accepted ? (
             <View style={styles.takenBox}>
               <Ionicons name="checkmark-circle" size={22} color={COLORS.success} />
@@ -614,6 +644,13 @@ const styles = StyleSheet.create({
   jobCategory: {
     color: COLORS.text.secondary,
     fontSize: FONT_SIZE.sm,
+  },
+  heroMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 2,
   },
   // Section
   section: {

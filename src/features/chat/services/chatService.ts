@@ -86,8 +86,9 @@ export async function fetchJobMessages(
       }
       if (!body.success) {
         if (body.error?.includes('Sesión requerida') || (body as { code?: string }).code === 'auth_required') {
-          console.warn('[fetchJobMessages] sin sesión Auth, intento directo con RLS');
-          return fetchJobMessagesDirect(servicioId);
+          throw new Error(
+            'Sesión requerida para el chat. Cerrá la app y volvé a entrar, o ejecutá npm run db:apply-launch-rls en Supabase.',
+          );
         }
         throw new Error(body.error ?? 'No se pudieron cargar los mensajes');
       }
@@ -148,9 +149,13 @@ export async function sendJobMessage(
     }
     if (!body.success) {
       const code = (body as { code?: string }).code;
-      if (code === 'auth_required' || code === 'rls_denied' || body.error?.includes('Sesión requerida')) {
-        console.warn('[sendJobMessage] RPC rechazó por sesión/RLS, intento directo');
-        return sendJobMessageDirect(servicioId, remitenteId, trimmed);
+      if (code === 'auth_required' || body.error?.includes('Sesión requerida')) {
+        throw new Error(
+          'No se pudo enviar: tu sesión expiró. Salí y volvé a entrar a CHAMBA para chatear.',
+        );
+      }
+      if (code === 'rls_denied' || body.error?.includes('No podés enviar')) {
+        throw new Error(body.error ?? 'No podés enviar mensajes en este servicio');
       }
       throw new Error(body.error ?? 'No se pudo enviar el mensaje');
     }

@@ -3,9 +3,11 @@
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import dns from 'dns';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SQL_PATH = join(ROOT, 'supabase', 'migrations', '041_admin_client_panel_rpc.sql');
+const PROJECT_REF = 'twsrthtyaglpymdfdtdp';
 
 function loadEnv() {
   const envPath = join(ROOT, '.env');
@@ -21,10 +23,172 @@ function loadEnv() {
   }
 }
 
+function projectRefFromSupabaseUrl(url) {
+  const m = url?.match(/https?:\/\/([a-z0-9-]+)\.supabase\.co/i);
+  return m?.[1] ?? null;
+}
+
+function normalizePgUrl(raw) {
+  if (!raw) return null;
+  const withProto = raw.startsWith('postgres://') ? raw : raw.replace(/^postgresql:/, 'postgres:');
+  return new URL(withProto);
+}
+
+async function withIpv6Host(urlStr) {
+  try {
+    const u = normalizePgUrl(urlStr);
+    const { address } = await dns.promises.lookup(u.hostname, { family: 6 });
+    u.hostname = address.includes(':') ? `[${address}]` : address;
+    return u.toString();
+  } catch {
+    return urlStr;
+  }
+}
+
+/** Pooler :6543 (transaction) falla en DDL; probar directa db.<ref>.supabase.co y sesión :5432. */
+async function buildDbUrlCandidates() {
+  const out = [];
+  const seen = new Set();
+  const push = (url, label) => {
+    if (!url || seen.has(url)) return;
+    seen.add(url);
+    out.push({ url, label });
+  };
+
+  push(process.env.SUPABASE_DB_DIRECT_URL, 'SUPABASE_DB_DIRECT_URL');
+
+  const raw = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+  if (!raw) return out;
+
+  const ref = projectRefFromSupabaseUrl(process.env.EXPO_PUBLIC_SUPABASE_URL);
+
+  try {
+    const direct = normalizePgUrl(raw);
+    if (ref) {
+      const d = new URL(direct.toString());
+      d.hostname = `db.${ref}.supabase.co`;
+      d.port = '5432';
+      if (d.username?.startsWith('postgres.')) d.username = 'postgres';
+      d.searchParams.delete('pgbouncer');
+      const directUrl = d.toString();
+      push(directUrl, 'directa db.<ref>.supabase.co:5432');
+      push(await withIpv6Host(directUrl), 'directa IPv6 db.<ref>.supabase.co:5432');
+    }
+
+    const session = new URL(direct.toString());
+    if (session.port === '6543' || session.hostname.includes('pooler')) {
+      session.port = '5432';
+    }
+    session.searchParams.delete('pgbouncer');
+    push(session.toString(), 'pooler sesión :5432');
+  } catch {
+    push(raw.replace(':6543', ':5432'), 'fallback :5432');
+  }
+
+  return out;
+}
+
+function pgLookup(hostname, _opts, callback) {
+  // db.<ref>.supabase.co suele ser solo AAAA; Node en Windows falla sin family:6.
+  dns.lookup(hostname, { family: 6, all: true }, (err6, addrs6) => {
+    if (!err6 && addrs6?.length) {
+      const a = addrs6[0];
+      return callback(null, a.address, 6);
+    }
+    dns.lookup(hostname, callback);
+  });
+}
+
+async function connectWithRetries(Client, candidates, maxAttempts = 4) {
+  let lastErr;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    for (const { url, label } of candidates) {
+      const db = new Client({
+        connectionString: url,
+        ssl: { rejectUnauthorized: false },
+        connectionTimeoutMillis: 45_000,
+        query_timeout: 120_000,
+        lookup: pgLookup,
+      });
+      try {
+        console.log(`Intento ${attempt}/${maxAttempts} — ${label}…`);
+        await db.connect();
+        return db;
+      } catch (err) {
+        lastErr = err;
+        console.warn(`  ↳ ${err.message}`);
+        try {
+          await db.end();
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    if (attempt < maxAttempts) {
+      const wait = attempt * 5000;
+      console.log(`Reintento en ${wait / 1000}s…`);
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+  throw lastErr ?? new Error('No se pudo conectar a la base de datos');
+}
+
+async function applyViaManagementApi(sql) {
+  const token = process.env.SUPABASE_ACCESS_TOKEN;
+  if (!token) return false;
+
+  console.log('Pooler saturado — aplicando vía Management API…');
+  const res = await fetch(
+    `https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query: sql }),
+    },
+  );
+  const body = await res.text();
+  if (!res.ok) {
+    throw new Error(`Management API ${res.status}: ${body.slice(0, 400)}`);
+  }
+  return true;
+}
+
+async function verifyRpcs(dbOrNull) {
+  const q = `
+    SELECT proname FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND proname IN ('get_admin_control_jobs', 'get_client_orders_panel')
+    ORDER BY proname
+  `;
+  if (dbOrNull) {
+    const { rows } = await dbOrNull.query(q);
+    return rows.map((r) => r.proname);
+  }
+  const token = process.env.SUPABASE_ACCESS_TOKEN;
+  const res = await fetch(
+    `https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query: q }),
+    },
+  );
+  const data = await res.json();
+  if (!res.ok) throw new Error(JSON.stringify(data).slice(0, 400));
+  return (data?.result ?? data ?? []).map((r) => r.proname ?? r[0]);
+}
+
 loadEnv();
 
-const dbUrl = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
-if (!dbUrl) {
+const candidates = await buildDbUrlCandidates();
+if (candidates.length === 0) {
   console.error('❌ SUPABASE_DB_URL no configurado');
   process.exit(1);
 }
@@ -32,15 +196,30 @@ if (!dbUrl) {
 const sql = readFileSync(SQL_PATH, 'utf8');
 const pg = await import('pg');
 const Client = pg.default?.Client ?? pg.Client;
-const db = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
 
+let db;
 try {
-  await db.connect();
-  await db.query(sql);
-  console.log('✅ Migración 041 aplicada — get_admin_control_jobs + get_client_orders_panel');
+  try {
+    db = await connectWithRetries(Client, candidates, 8);
+    await db.query(sql);
+  } catch (pgErr) {
+    if (process.env.SUPABASE_ACCESS_TOKEN) {
+      await applyViaManagementApi(sql);
+    } else {
+      throw new Error(
+        `${pgErr.message}\n\nSin conexión Postgres (pool saturado). Agregá SUPABASE_ACCESS_TOKEN en .env ` +
+          '(https://supabase.com/dashboard/account/tokens) y volvé a correr npm run db:apply-admin-client-panel',
+      );
+    }
+  }
+  const names = (await verifyRpcs(db)).join(', ');
+  if (!names.includes('get_admin_control_jobs') || !names.includes('get_client_orders_panel')) {
+    throw new Error(`RPCs incompletos tras migración: ${names || '(ninguno)'}`);
+  }
+  console.log(`✅ Migración 041 aplicada — RPCs: ${names}`);
 } catch (err) {
   console.error('❌ Error:', err.message);
   process.exit(1);
 } finally {
-  await db.end();
+  if (db) await db.end();
 }

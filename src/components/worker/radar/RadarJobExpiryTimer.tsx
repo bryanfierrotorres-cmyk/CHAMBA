@@ -1,63 +1,44 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import React from 'react';
+import { ContadorExpiracion } from '@components/shared/ContadorExpiracion';
+import { getJobExpiryAtMs } from '@constants/jobExpiry';
+import type { Job } from '@/types';
 
 interface RadarJobExpiryTimerProps {
-  expiresAt: number;
+  /** Epoch ms de expiración (legacy) o usar `createdAt` + job id. */
+  expiresAt?: number;
+  createdAt?: string;
+  jobId?: string;
+  onExpirar?: (jobId: string) => void;
   active?: boolean;
 }
 
-const formatCountdown = (remainingMs: number): string => {
-  const totalSec = Math.max(0, Math.ceil(remainingMs / 1000));
-  const mm = String(Math.floor(totalSec / 60)).padStart(2, '0');
-  const ss = String(totalSec % 60).padStart(2, '0');
-  return `${mm}:${ss}`;
-};
-
-/** Cuenta regresiva MM:SS — señal visual de urgencia en el radar. */
+/** Wrapper radar — delega en ContadorExpiracion (MM:SS local). */
 export const RadarJobExpiryTimer: React.FC<RadarJobExpiryTimerProps> = ({
   expiresAt,
+  createdAt,
+  jobId,
+  onExpirar,
   active = true,
 }) => {
-  const [remainingMs, setRemainingMs] = useState(() =>
-    Math.max(0, expiresAt - Date.now()),
-  );
+  const resolvedCreatedAt = createdAt
+    ?? (expiresAt != null
+      ? new Date(expiresAt - 60 * 60 * 1000).toISOString()
+      : null);
 
-  useEffect(() => {
-    if (!active) return undefined;
-    const tick = () => setRemainingMs(Math.max(0, expiresAt - Date.now()));
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [expiresAt, active]);
-
-  const critical = remainingMs <= 8 * 60_000;
+  if (!resolvedCreatedAt || !jobId) {
+    return null;
+  }
 
   return (
-    <View style={styles.row}>
-      <Ionicons name="stopwatch-outline" size={14} color="#DC2626" />
-      <Text style={[styles.label, critical && styles.labelCritical]}>
-        Expira en:
-        {' '}
-        {formatCountdown(remainingMs)}
-      </Text>
-    </View>
+    <ContadorExpiracion
+      createdAt={resolvedCreatedAt}
+      idSolicitud={jobId}
+      onExpirar={onExpirar ?? (() => {})}
+      variant="radar"
+      active={active}
+    />
   );
 };
 
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#DC2626',
-    letterSpacing: 0.1,
-  },
-  labelCritical: {
-    color: '#B91C1C',
-  },
-});
+export const getRadarExpiryAt = (job: Pick<Job, 'created_at'>): number =>
+  getJobExpiryAtMs(job.created_at);

@@ -27,6 +27,10 @@ import {
   mergeAssignments,
 } from '@utils/localAssignments';
 import { CONFIG } from '@constants/config';
+import {
+  getJobRadarMinCreatedAtIso,
+  isJobExpiredLocally,
+} from '@constants/jobExpiry';
 import { workerCoversJobCategory } from '@utils/workerCategoryAccess';
 import {
   ensureWorkerProfileInDb,
@@ -114,6 +118,12 @@ type AcceptWorkerContext = Pick<
 >;
 
 const PAGE_SIZE = 20;
+
+/** Excluye solicitudes open vencidas (>60 min) — refuerzo local si el RPC aún no filtra. */
+const filterActiveOpenJobs = (jobs: Job[], status?: JobStatus): Job[] => {
+  if (status !== 'open') return jobs;
+  return jobs.filter((j) => !isJobExpiredLocally(j.created_at));
+};
 
 const unwrapAssignedWorker = (
   raw: AssignedWorkerSummary | AssignedWorkerSummary[] | null | undefined,
@@ -282,9 +292,10 @@ const fetchJobsViaWorkerRpc = async ({
 
   const rows = (body.jobs ?? []) as Job[];
   const total = body.count ?? rows.length;
+  const freshRows = filterActiveOpenJobs(rows.map(normalizeJobRow), status);
 
   return {
-    data: rows.map(normalizeJobRow),
+    data: freshRows,
     count: total,
     page,
     pageSize: PAGE_SIZE,
@@ -319,9 +330,10 @@ const fetchJobsViaRpc = async ({
 
   const rows = (body.jobs ?? []) as Job[];
   const total = body.count ?? rows.length;
+  const freshRows = filterActiveOpenJobs(rows.map(normalizeJobRow), status);
 
   return {
-    data: rows.map(normalizeJobRow),
+    data: freshRows,
     count: total,
     page,
     pageSize: PAGE_SIZE,
@@ -369,6 +381,9 @@ export const fetchJobs = async ({
     .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
   if (status) query = query.eq('status', status);
+  if (status === 'open') {
+    query = query.gte('created_at', getJobRadarMinCreatedAtIso());
+  }
 
   // Multi-category filter takes priority; single category is a fallback
   if (categories && categories.length > 0) {
@@ -399,7 +414,10 @@ export const fetchJobs = async ({
     throw new Error(error.message);
   }
 
-  const normalized = ((data ?? []) as Job[]).map(normalizeJobRow);
+  const normalized = filterActiveOpenJobs(
+    ((data ?? []) as Job[]).map(normalizeJobRow),
+    status,
+  );
 
   if (normalized.length === 0 && page === 0) {
     if (workerId) {
@@ -1200,6 +1218,36 @@ export const createJob = async (params: CreateJobParams): Promise<Job> => {
   }
 
   return job;
+};
+
+export interface BoostClientJobOfferParams {
+  jobId: string;
+  clientId: string;
+  payAmount: number;
+}
+
+/** Impulsa una solicitud open: nuevo presupuesto + reinicia created_at (60 min en radar). */
+export const boostClientJobOffer = async ({
+  jobId,
+  clientId,
+  payAmount,
+}: BoostClientJobOfferParams): Promise<Job> => {
+  const { data, error } = await supabase.rpc('boost_client_job_offer', {
+    p_job_id: jobId,
+    p_client_id: clientId,
+    p_pay_amount: payAmount,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const body = data as { success?: boolean; error?: string; job?: Job } | null;
+  if (!body?.success || !body.job) {
+    throw new Error(body?.error ?? 'No se pudo impulsar la solicitud');
+  }
+
+  return normalizeJobRow(body.job);
 };
 
 /** Admin: Update job status. */
