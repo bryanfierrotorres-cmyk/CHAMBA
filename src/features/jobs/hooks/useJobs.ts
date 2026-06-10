@@ -47,7 +47,7 @@ import { WALLET_KEYS } from '@features/jobs/hooks/useWorkerWallet';
 import { fromDbJobCategory } from '@constants/chambaCategories';
 import { workerCoversJobCategory } from '@utils/workerCategoryAccess';
 import { syncProfileWithDatabase } from '@utils/profileSync';
-import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
+import { clearMismatchedAuthSession, ensurePhoneAuthSession } from '@utils/phoneAuthSession';
 
 import type {
   JobCategory,
@@ -155,14 +155,34 @@ export const useJobFeed = (
 
     queryKey: [...JOB_KEYS.feed(status, category), categories, profile?.id, profile?.is_approved],
 
-    queryFn: async ({ pageParam = 0 }) =>
-      fetchJobs({
+    queryFn: async ({ pageParam = 0 }) => {
+      if (profile?.role === 'worker' && profile) {
+        const synced = await syncProfileWithDatabase(profile);
+        if (
+          synced.id !== profile.id
+          || synced.is_approved !== profile.is_approved
+          || synced.category_1 !== profile.category_1
+          || synced.category_2 !== profile.category_2
+        ) {
+          useAuthStore.getState().setProfile(synced);
+        }
+        await clearMismatchedAuthSession(synced);
+        await ensurePhoneAuthSession(synced);
+        return fetchJobs({
+          status,
+          category,
+          categories,
+          page: pageParam as number,
+          workerId: synced.id,
+        });
+      }
+      return fetchJobs({
         status,
         category,
         categories,
         page: pageParam as number,
-        workerId: profile?.role === 'worker' ? profile.id : undefined,
-      }),
+      });
+    },
 
     getNextPageParam: (last) => (last.hasMore ? last.page + 1 : undefined),
 

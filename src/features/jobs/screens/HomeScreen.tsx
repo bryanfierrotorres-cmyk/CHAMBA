@@ -141,8 +141,16 @@ export const HomeScreen: React.FC = () => {
   useFocusEffect(
     useCallback(() => {
       if (profile?.role !== 'worker' || !profile.id) return;
-      void workerLimit.refetch();
-    }, [profile?.id, profile?.role, workerLimit.refetch]),
+      void (async () => {
+        const { syncProfileWithDatabase } = await import('@utils/profileSync');
+        const synced = await syncProfileWithDatabase(profile);
+        if (synced.id !== profile.id || synced.is_approved !== profile.is_approved) {
+          useAuthStore.getState().setProfile(synced);
+        }
+        void workerLimit.refetch();
+        void queryClient.invalidateQueries({ queryKey: JOB_KEYS.feed('open') });
+      })();
+    }, [profile, queryClient, workerLimit.refetch]),
   );
 
   const [selectedCategory, setSelectedCategory] = useState<JobCategory | null>(null);
@@ -196,7 +204,7 @@ export const HomeScreen: React.FC = () => {
   const effectiveCategories = useMemo<JobCategory[] | undefined>(() => {
     if (!profile?.is_approved) return undefined;
     if (selectedCategory) {
-      if (!approvedCategories.includes(selectedCategory)) return [];
+      if (!approvedCategories.includes(selectedCategory)) return undefined;
       return expandWorkerFeedCategories([selectedCategory]);
     }
     return feedCategories.length > 0 ? feedCategories : undefined;
