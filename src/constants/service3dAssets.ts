@@ -28,7 +28,9 @@ export interface Service3dImageLayout {
 const SERVICE_3D_LAYOUT: Partial<Record<Service3dTileId, Service3dImageLayout>> = {
   limpieza: { size: 135 },
   ac: { size: 154 },
-  jardineria: { size: 124, offsetY: 14 },
+  car: { size: 153, offsetY: 14 },
+  jardineria: { size: 124, offsetY: 24 },
+  mandados: { size: 158 },
 };
 
 const DEFAULT_3D_IMAGE_SIZE = 128;
