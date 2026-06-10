@@ -14,10 +14,12 @@ import { JobDetailScreen }      from '@features/jobs/screens/JobDetailScreen';
 import { webAppShellStyle, webFixedTabBarStyle, webTabScenePadding } from '@constants/webMobileLayout';
 import { CHAMBA } from '@constants/chambaUI';
 import { useAuthSessionWarmup } from '@/hooks/useAuthSessionWarmup';
-import type { AdminTabParamList, JobStackParamList } from '@/types';
+import { ManageHomeBannersScreen } from '@features/home-banners/screens/ManageHomeBannersScreen';
+import type { AdminTabParamList, AdminProfileStackParamList, JobStackParamList } from '@/types';
 
 const Tab   = createBottomTabNavigator<AdminTabParamList>();
 const Stack = createNativeStackNavigator<JobStackParamList>();
+const ProfileStack = createNativeStackNavigator<AdminProfileStackParamList>();
 
 const DashboardStack: React.FC = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -25,6 +27,13 @@ const DashboardStack: React.FC = () => (
     <Stack.Screen name="JobDetail" component={JobDetailScreen} />
     <Stack.Screen name="JobMap"    component={JobDetailScreen} />
   </Stack.Navigator>
+);
+
+const AdminProfileStack: React.FC = () => (
+  <ProfileStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+    <ProfileStack.Screen name="AdminProfileMain" component={AdminProfileScreen} />
+    <ProfileStack.Screen name="ManageHomeBanners" component={ManageHomeBannersScreen} />
+  </ProfileStack.Navigator>
 );
 
 type TabRoute = keyof AdminTabParamList;
@@ -133,7 +142,7 @@ export const AdminNavigator: React.FC = () => {
         <Tab.Screen name="PublishJob"    component={CreateJobScreen} />
         <Tab.Screen name="ManageCatalog" component={ManageCatalogScreen} />
         <Tab.Screen name="ManageWorkers" component={ManageWorkersScreen} />
-        <Tab.Screen name="Profile"       component={AdminProfileScreen} />
+        <Tab.Screen name="Profile"       component={AdminProfileStack} />
       </Tab.Navigator>
     </View>
   );

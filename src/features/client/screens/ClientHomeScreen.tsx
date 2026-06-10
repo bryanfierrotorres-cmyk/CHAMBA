@@ -50,6 +50,7 @@ import {
   type ExpressTileDef,
 } from '@constants/clientHomeExpress';
 import { ClientHomeHeroCarousel } from '@components/client/ClientHomeHeroCarousel';
+import { ClientHomeInfoBannerSlider } from '@features/home-banners/components/ClientHomeInfoBannerSlider';
 import { getService3dAsset, getService3dImageSize, getService3dImageOffsetY } from '@constants/service3dAssets';
 import {
   CLIENT_EMPRESA_HERO_SLIDES,
@@ -287,6 +288,8 @@ export const ClientHomeScreen: React.FC = () => {
           keyboardShouldPersistTaps="handled"
           {...supportBubbleScroll}
         >
+          <ClientHomeInfoBannerSlider />
+
           {activeTab === 'hogar' && (
             <View>
               <ClientHomeHeroCarousel slides={CLIENT_HOGAR_HERO_SLIDES} />
