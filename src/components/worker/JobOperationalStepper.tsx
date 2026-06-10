@@ -24,6 +24,7 @@ interface Props {
   clientPhone?: string | null;
   onAdvance?: (nextPhase: WorkerOperationalPhase) => void | Promise<void>;
   onFinalize?: () => void | Promise<void>;
+  onOpenChat?: () => void;
   isAdvancing?: boolean;
   showQuickActions?: boolean;
   compact?: boolean;
@@ -53,6 +54,7 @@ export const JobOperationalStepper: React.FC<Props> = ({
   clientPhone,
   onAdvance,
   onFinalize,
+  onOpenChat,
   isAdvancing = false,
   showQuickActions = true,
   compact = false,
@@ -94,7 +96,7 @@ export const JobOperationalStepper: React.FC<Props> = ({
         })}
       </View>
 
-      {(showQuickActions || action) && !isTerminal && (
+      {(showQuickActions || action || onOpenChat) && !isTerminal && (
         <View style={styles.actionsRow}>
           {showQuickActions && (
             <JobQuickContactActions
@@ -103,11 +105,25 @@ export const JobOperationalStepper: React.FC<Props> = ({
               compact
             />
           )}
+          {onOpenChat && (
+            <TouchableOpacity
+              onPress={onOpenChat}
+              style={styles.chatBtn}
+              activeOpacity={0.88}
+              accessibilityRole="button"
+              accessibilityLabel="Mensajes con el cliente"
+            >
+              <Ionicons name="chatbubble-ellipses-outline" size={20} color={CHAMBA.blue} />
+            </TouchableOpacity>
+          )}
           {action && (
             <TouchableOpacity
               onPress={handlePrimary}
               disabled={isAdvancing}
-              style={[styles.primaryBtn, showQuickActions && { flex: 1 }]}
+              style={[
+                styles.primaryBtn,
+                (showQuickActions || onOpenChat) && { flex: 1 },
+              ]}
               activeOpacity={0.88}
             >
               {isAdvancing ? (
@@ -188,6 +204,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  chatBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: `${CHAMBA.blue}40`,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   primaryBtn: {
     flexDirection: 'row',

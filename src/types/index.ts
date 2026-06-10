@@ -220,7 +220,7 @@ export type JobStackParamList = {
   JobDetail:  { jobId: string };
   JobMap:     { jobId: string };
   JobActive:  { jobId: string };
-  JobChat:    { jobId: string; readOnly?: boolean };
+  JobChat:    { jobId: string; clientId?: string; readOnly?: boolean };
 };
 
 export type ProfileStackParamList = {
@@ -259,7 +259,7 @@ export type ClientStackParamList = {
 export type ClientOrdersStackParamList = {
   ClientOrdersList: undefined;
   ClientCompletedJob: { jobId: string };
-  JobChat: { jobId: string; readOnly?: boolean };
+  JobChat: { jobId: string; clientId?: string; readOnly?: boolean };
 };
 
 export type ClientTabParamList = {
@@ -288,6 +288,7 @@ export interface ServiceMessage {
 export type JobChatStackParamList = {
   JobChat: {
     jobId: string;
+    clientId?: string;
     readOnly?: boolean;
   };
 };

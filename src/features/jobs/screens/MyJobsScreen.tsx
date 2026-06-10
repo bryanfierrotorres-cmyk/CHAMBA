@@ -201,7 +201,11 @@ export const MyJobsScreen: React.FC = () => {
     }
     navigation.navigate('JobFeed', {
       screen: 'JobChat',
-      params: { jobId: item.job_id, readOnly },
+      params: {
+        jobId: item.job_id,
+        clientId: item.job?.created_by,
+        readOnly,
+      },
     });
   }, [navigation]);
 
@@ -379,7 +383,7 @@ const AssignmentCard: React.FC<{
         )}
       </View>
 
-      {canChat && (
+      {canChat && !showStepper && (
         <JobChatEntryButton
           variant="worker"
           readOnly={chatReadOnly}
@@ -393,6 +397,9 @@ const AssignmentCard: React.FC<{
           job={job}
           onAdvance={onAdvance}
           onFinalize={onFinalize}
+          onOpenChat={
+            canChat ? () => onOpenChat!(chatReadOnly) : undefined
+          }
           isAdvancing={isBusy}
           compact
         />
