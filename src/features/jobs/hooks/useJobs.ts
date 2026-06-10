@@ -302,9 +302,17 @@ export const useMyJobs = () => {
 
     queryKey: JOB_KEYS.myJobs(profile?.id ?? ''),
 
-    queryFn: () => fetchWorkerAssignments(profile!.id),
+    queryFn: async () => {
+      if (!profile?.id) return [];
+      const synced = await syncProfileWithDatabase(profile);
+      if (synced.id !== profile.id || synced.is_approved !== profile.is_approved) {
+        useAuthStore.getState().setProfile(synced);
+      }
+      await ensurePhoneAuthSession(synced);
+      return fetchWorkerAssignments(synced.id, synced);
+    },
 
-    enabled: !!profile?.id,
+    enabled: !!profile?.id && profile.role === 'worker',
 
     staleTime: QUERY_STALE_FEED_MS,
 

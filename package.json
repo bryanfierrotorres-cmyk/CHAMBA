@@ -51,6 +51,9 @@
     "db:apply-launch-rls": "node scripts/apply-migration-039-launch-rls.mjs",
     "db:apply-performance-indexes": "node scripts/apply-migration-040-performance-indexes.mjs",
     "db:apply-radar-expiry": "node scripts/apply-migration-043-radar-expiry.mjs",
+    "db:apply-applicant-profile": "node scripts/apply-migration-044-applicant-profile.mjs",
+    "db:apply-worker-agenda-sync": "node scripts/apply-migration-046-worker-agenda-sync.mjs",
+    "db:apply-worker-location": "node scripts/apply-migration-045-worker-location.mjs",
     "db:apply-worker-profiles-rls": "node scripts/apply-worker-profiles-rls.mjs",
     "repair:browser-storage": "node scripts/repair-browser-storage.mjs",
     "db:reset-two-users": "node scripts/reset-two-test-users.mjs",
@@ -65,6 +68,8 @@
     "db:apply-admin-moderation": "node scripts/apply-migration-037-admin-moderation.mjs",
     "db:apply-admin-client-panel": "node scripts/apply-migration-041-admin-client-panel.mjs",
     "db:apply-admin-team-panel": "node scripts/apply-migration-042-admin-team-panel.mjs",
+    "db:apply-worker-assignments-phone": "node scripts/apply-migration-045-worker-assignments-phone.mjs",
+    "diagnose:pepe-agenda": "node scripts/diagnose-pepe-agenda-sync.mjs",
     "diagnose:profiles": "node scripts/diagnose-profiles-health.mjs"
   },
   "dependencies": {
