@@ -254,11 +254,6 @@ export type AdminTabParamList = {
   Profile: undefined;
 };
 
-export type AdminProfileStackParamList = {
-  AdminProfileMain: undefined;
-  ManageHomeBanners: undefined;
-};
-
 // ─── Client navigation ────────────────────────────────────────────────────────
 
 export type ClientStackParamList = {

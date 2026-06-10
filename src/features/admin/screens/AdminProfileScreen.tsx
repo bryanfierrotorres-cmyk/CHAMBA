@@ -1,6 +1,4 @@
 import React, { useState } from 'react';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   View, Text, StyleSheet, ScrollView, Alert, Platform, ActivityIndicator,
 } from 'react-native';
@@ -13,12 +11,8 @@ import { ChambaMenuRow } from '@components/chamba/ChambaMenuRow';
 import { CHAMBA, chambaStyles } from '@constants/chambaUI';
 import { webMinViewportStyle } from '@constants/webMobileLayout';
 import { ServiceCatalogGroups } from '@components/catalog/ServiceCatalogGroups';
-import type { AdminProfileStackParamList } from '@/types';
-
-type ProfileNav = NativeStackNavigationProp<AdminProfileStackParamList, 'AdminProfileMain'>;
 
 export const AdminProfileScreen: React.FC = () => {
-  const navigation = useNavigation<ProfileNav>();
   const insets = useSafeAreaInsets();
   const profile = useAuthStore((s) => s.profile);
   const isLoading = useAuthStore((s) => s.isLoading);
@@ -120,13 +114,6 @@ export const AdminProfileScreen: React.FC = () => {
           subtitle="Técnicos, documentos y aprobaciones"
           iconColor="#34C759"
           icon={<Ionicons name="people" size={22} color="#FFF" />}
-        />
-        <ChambaMenuRow
-          title="Banners de inicio"
-          subtitle="Slider informativo del cliente"
-          iconColor="#FF9500"
-          icon={<Ionicons name="images" size={22} color="#FFF" />}
-          onPress={() => navigation.navigate('ManageHomeBanners')}
         />
         <ChambaMenuRow
           title={signingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}

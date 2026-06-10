@@ -65,8 +65,6 @@
     "db:reset-operational-zero": "node scripts/reset-operational-zero.mjs",
     "db:apply-worker-wallet-sync": "node scripts/apply-migration-052-worker-wallet-sync.mjs",
     "db:apply-chat-phone-fix": "node scripts/apply-migration-053-chat-phone.mjs",
-    "db:apply-home-banners": "node scripts/apply-migration-054-home-banners.mjs",
-    "db:apply-home-banners-admin-rpc": "node scripts/apply-migration-055-home-banners-admin-rpc.mjs",
     "db:fix-job-category": "node scripts/apply-migration-027-job-category.mjs",
     "test:client-publish": "node scripts/test-client-publish-e2e.mjs",
     "test:radar-map-pins": "node scripts/test-radar-map-pins-e2e.mjs",
