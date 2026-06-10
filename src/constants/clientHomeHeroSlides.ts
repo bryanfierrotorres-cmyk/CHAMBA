@@ -46,7 +46,7 @@ export const CLIENT_HOGAR_HERO_SLIDES: ClientHeroSlide[] = [
     'Obtén un 15% de descuento al realizar tu segundo servicio con nosotros.',
     'Promoción',
     require('../../assets/client-hero-hogar-promo.png'),
-    0.58,
+    0.32,
   ),
   slide(
     'hogar-limpieza',
@@ -60,7 +60,7 @@ export const CLIENT_HOGAR_HERO_SLIDES: ClientHeroSlide[] = [
     'Técnicos capacitados para resolver antes de que empeore',
     'Mantenimiento',
     require('../../assets/client-hero-hogar-promo.png'),
-    0.58,
+    0.32,
   ),
   slide(
     'hogar-vida',

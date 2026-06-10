@@ -21,6 +21,8 @@ const BANNER_HEIGHT = 196;
 const AUTO_ADVANCE_MS = 4500;
 const HORIZONTAL_PAD = 0;
 const PROMO_SLIDE_ID = 'hogar-promo-segundo-servicio';
+/** ~5 cm hacia arriba en el banner promocional (foto local). */
+const PROMO_PHOTO_LIFT_PX = 52;
 
 interface HeroSlidePhotoProps {
   slide: ClientHeroSlide;
@@ -28,6 +30,21 @@ interface HeroSlidePhotoProps {
 
 const getPhotoStyle = (slide: ClientHeroSlide): ImageStyle[] => {
   const base: ImageStyle[] = [styles.photo];
+
+  const isPromoPhoto = slide.imageLocal != null && slide.id === PROMO_SLIDE_ID;
+  if (isPromoPhoto) {
+    base.push({
+      height: BANNER_HEIGHT + PROMO_PHOTO_LIFT_PX,
+      top: -PROMO_PHOTO_LIFT_PX,
+      ...(Platform.OS === 'web'
+        ? ({
+            objectFit: 'cover',
+            objectPosition: 'center 18%',
+          } as ImageStyle)
+        : {}),
+    });
+    return base;
+  }
 
   if (slide.imageFocusY != null && Platform.OS === 'web') {
     base.push({
