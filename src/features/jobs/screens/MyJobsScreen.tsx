@@ -43,6 +43,7 @@ import {
 import {
   isWorkerPendingClientSelection,
 } from '@utils/jobActiveLimits';
+import { useSyncWorkerLocationOnFocus } from '@hooks/useSyncWorkerLocationOnFocus';
 import {
   isWorkerAgendaActive,
   isWorkerAgendaHistory,
@@ -62,6 +63,7 @@ export const MyJobsScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const profile = useAuthStore((s) => s.profile);
+  useSyncWorkerLocationOnFocus();
   const refreshStore = useAssignmentsStore((s) => s.refresh);
   const {
     data,

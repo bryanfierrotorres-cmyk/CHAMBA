@@ -546,6 +546,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         throw new Error(translateAuthError(insertErr.message));
       }
 
+      try {
+        await supabase.rpc('ensure_phone_auth_user', {
+          p_profile_id: newId,
+          p_phone: cleanPhone,
+        });
+      } catch {
+        // Registro OK; Auth se provisionará en el primer login
+      }
+
       set({ isLoading: false, error: null });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'No se pudo crear la cuenta';

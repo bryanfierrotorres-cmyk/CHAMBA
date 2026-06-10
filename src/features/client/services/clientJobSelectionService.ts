@@ -34,11 +34,19 @@ export const fetchJobWorkerApplications = async (
   return parseApplicationsBody(data).applications;
 };
 
+export type ClientApproveWorkerResult = {
+  jobId: string;
+  workerId: string;
+  jobStatus: string;
+  selectionStatus: string;
+  operationalPhase: string;
+};
+
 export const clientApproveWorkerApplication = async (
   jobId: string,
   clientId: string,
   workerId: string,
-): Promise<void> => {
+): Promise<ClientApproveWorkerResult> => {
   const { data, error } = await supabase.rpc('client_approve_worker_application', {
     p_job_id: jobId,
     p_client_id: clientId,
@@ -46,8 +54,22 @@ export const clientApproveWorkerApplication = async (
   });
 
   if (error) throw new Error(error.message);
-  const body = data as { success?: boolean; error?: string } | null;
+  const body = data as {
+    success?: boolean;
+    error?: string;
+    job_status?: string;
+    selection_status?: string;
+    operational_phase?: string;
+  } | null;
   if (!body?.success) throw new Error(body?.error ?? 'No se pudo aprobar al técnico');
+
+  return {
+    jobId,
+    workerId,
+    jobStatus: body.job_status ?? 'taken',
+    selectionStatus: body.selection_status ?? 'approved',
+    operationalPhase: body.operational_phase ?? 'accepted',
+  };
 };
 
 export const clientRejectWorkerApplication = async (

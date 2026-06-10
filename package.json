@@ -73,6 +73,7 @@
     "db:apply-admin-team-panel": "node scripts/apply-migration-042-admin-team-panel.mjs",
     "db:apply-worker-assignments-phone": "node scripts/apply-migration-045-worker-assignments-phone.mjs",
     "db:apply-worker-agenda-fast": "node scripts/apply-migration-047-worker-agenda-fast.mjs",
+    "db:apply-worker-active-count-orphans": "node scripts/apply-migration-048-worker-active-count.mjs",
     "db:ensure-phone-auth-user": "node scripts/ensure-phone-auth-user.mjs",
     "diagnose:pepe-agenda": "node scripts/diagnose-pepe-agenda-sync.mjs",
     "diagnose:profiles": "node scripts/diagnose-profiles-health.mjs"

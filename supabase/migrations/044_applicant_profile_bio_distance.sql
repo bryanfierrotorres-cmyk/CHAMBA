@@ -1,0 +1,246 @@
+-- CHAMBA 044 — Perfil de postulante para subasta del cliente (bio + distancia)
+-- Solo lectura en get_job_worker_applications; accept_job guarda coords opcionales al postular.
+-- NO modifica client_approve_worker_application ni client_reject_worker_application.
+
+SET statement_timeout = '60s';
+
+-- ── Coords del técnico al momento de postular ───────────────────────────────
+ALTER TABLE job_assignments
+  ADD COLUMN IF NOT EXISTS applicant_lat DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS applicant_lng DOUBLE PRECISION;
+
+COMMENT ON COLUMN job_assignments.applicant_lat IS
+  'Latitud del técnico al postular (opcional, para distancia en panel cliente)';
+COMMENT ON COLUMN job_assignments.applicant_lng IS
+  'Longitud del técnico al postular (opcional, para distancia en panel cliente)';
+
+-- ── Haversine (km) — coords inválidas o 0,0 → NULL ─────────────────────────
+CREATE OR REPLACE FUNCTION fn_haversine_km(
+  p_lat1 DOUBLE PRECISION,
+  p_lng1 DOUBLE PRECISION,
+  p_lat2 DOUBLE PRECISION,
+  p_lng2 DOUBLE PRECISION
+)
+RETURNS DOUBLE PRECISION
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT CASE
+    WHEN p_lat1 IS NULL OR p_lng1 IS NULL OR p_lat2 IS NULL OR p_lng2 IS NULL THEN NULL
+    WHEN NOT (ABS(p_lat1) > 0.0001 OR ABS(p_lng1) > 0.0001) THEN NULL
+    WHEN NOT (ABS(p_lat2) > 0.0001 OR ABS(p_lng2) > 0.0001) THEN NULL
+    ELSE (
+      6371.0 * 2.0 * ASIN(SQRT(
+        POWER(SIN(RADIANS(p_lat2 - p_lat1) / 2.0), 2)
+        + COS(RADIANS(p_lat1)) * COS(RADIANS(p_lat2))
+        * POWER(SIN(RADIANS(p_lng2 - p_lng1) / 2.0), 2)
+      ))
+    )
+  END;
+$$;
+
+-- ── accept_job: coords opcionales (retrocompatible) ─────────────────────────
+DROP FUNCTION IF EXISTS accept_job(UUID, UUID);
+
+CREATE OR REPLACE FUNCTION accept_job(
+  p_job_id         UUID,
+  p_worker_id      UUID,
+  p_applicant_lat  DOUBLE PRECISION DEFAULT NULL,
+  p_applicant_lng  DOUBLE PRECISION DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_job         jobs%ROWTYPE;
+  v_profile     profiles%ROWTYPE;
+  v_assignment  job_assignments%ROWTYPE;
+  v_pending     INT;
+  v_active      INT;
+  v_max_apply   INT := 3;
+  v_max_active  INT := 2;
+  v_lat         DOUBLE PRECISION;
+  v_lng         DOUBLE PRECISION;
+BEGIN
+  SELECT * INTO v_job FROM jobs WHERE id = p_job_id FOR UPDATE NOWAIT;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Trabajo no encontrado');
+  END IF;
+
+  IF v_job.status::text <> 'open' THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Este trabajo ya no acepta postulaciones');
+  END IF;
+
+  SELECT * INTO v_profile FROM profiles WHERE id = p_worker_id;
+
+  IF NOT FOUND OR v_profile.role::text <> 'worker' THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Trabajador no encontrado');
+  END IF;
+
+  IF COALESCE(v_profile.is_approved, FALSE) = FALSE THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Tu cuenta aún no está aprobada por el administrador');
+  END IF;
+
+  v_active := count_worker_active_commitments(p_worker_id);
+  IF v_active >= v_max_active THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'Ya tenés 2 chambas activas (en curso o esperando al cliente). Finalizá una en Agenda para postularte a otra.',
+      'code', 'worker_active_limit',
+      'active_count', v_active,
+      'max_allowed', v_max_active
+    );
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM job_assignments
+    WHERE job_id = p_job_id AND worker_id = p_worker_id
+  ) THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Ya postulaste a este trabajo');
+  END IF;
+
+  SELECT COUNT(*)::INT INTO v_pending
+  FROM job_assignments
+  WHERE job_id = p_job_id
+    AND selection_status = 'pending';
+
+  IF v_pending >= v_max_apply THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'Ya hay 3 técnicos postulando. El cliente está eligiendo.'
+    );
+  END IF;
+
+  v_lat := CASE
+    WHEN p_applicant_lat IS NOT NULL
+      AND (ABS(p_applicant_lat) > 0.0001 OR ABS(COALESCE(p_applicant_lng, 0)) > 0.0001)
+    THEN p_applicant_lat
+    ELSE NULL
+  END;
+  v_lng := CASE
+    WHEN p_applicant_lng IS NOT NULL
+      AND (ABS(COALESCE(p_applicant_lat, 0)) > 0.0001 OR ABS(p_applicant_lng) > 0.0001)
+    THEN p_applicant_lng
+    ELSE NULL
+  END;
+
+  INSERT INTO job_assignments (
+    job_id,
+    worker_id,
+    selection_status,
+    applicant_lat,
+    applicant_lng
+  )
+  VALUES (p_job_id, p_worker_id, 'pending', v_lat, v_lng)
+  RETURNING * INTO v_assignment;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'assignment_id', v_assignment.id,
+    'selection_status', 'pending',
+    'pending_count', v_pending + 1,
+    'job_id', p_job_id,
+    'worker_id', p_worker_id
+  );
+
+EXCEPTION
+  WHEN lock_not_available THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Otro técnico está postulando. Intentá de nuevo.');
+  WHEN unique_violation THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Ya postulaste a este trabajo');
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION accept_job(UUID, UUID, DOUBLE PRECISION, DOUBLE PRECISION) TO authenticated, anon;
+
+-- ── Postulaciones visibles al cliente: bio + distancia ───────────────────────
+CREATE OR REPLACE FUNCTION get_job_worker_applications(
+  p_job_id    UUID,
+  p_client_id UUID
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_job jobs%ROWTYPE;
+  v_client profiles%ROWTYPE;
+  v_rows JSONB;
+  v_owns BOOLEAN := FALSE;
+BEGIN
+  SELECT * INTO v_job FROM jobs WHERE id = p_job_id;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Solicitud no encontrada');
+  END IF;
+
+  IF v_job.created_by = p_client_id THEN
+    v_owns := TRUE;
+  ELSE
+    SELECT * INTO v_client FROM profiles WHERE id = p_client_id;
+    IF FOUND AND v_client.phone IS NOT NULL THEN
+      SELECT EXISTS (
+        SELECT 1
+        FROM profiles owner
+        WHERE owner.id = v_job.created_by
+          AND owner.phone IS NOT NULL
+          AND regexp_replace(owner.phone, '\D', '', 'g')
+            = regexp_replace(v_client.phone, '\D', '', 'g')
+      ) INTO v_owns;
+    END IF;
+  END IF;
+
+  IF NOT v_owns THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Solicitud no encontrada');
+  END IF;
+
+  SELECT COALESCE(jsonb_agg(row_to_json(t)), '[]'::jsonb) INTO v_rows
+  FROM (
+    SELECT
+      ja.id AS assignment_id,
+      ja.job_id,
+      ja.worker_id,
+      ja.assigned_at,
+      ja.selection_status,
+      p.full_name,
+      p.avatar_url,
+      p.phone,
+      p.category_1,
+      p.category_2,
+      wp.rating_avg,
+      wp.total_reviews,
+      COALESCE(wp.total_jobs_done, 0) AS total_jobs_done,
+      NULLIF(TRIM(wp.bio), '') AS bio,
+      ja.applicant_lat AS worker_lat,
+      ja.applicant_lng AS worker_lng,
+      ROUND(
+        fn_haversine_km(v_job.lat, v_job.lng, ja.applicant_lat, ja.applicant_lng)::numeric,
+        1
+      ) AS distance_km
+    FROM job_assignments ja
+    JOIN profiles p ON p.id = ja.worker_id
+    LEFT JOIN worker_profiles wp ON wp.worker_id = ja.worker_id
+    WHERE ja.job_id = p_job_id
+      AND ja.selection_status IN ('pending', 'approved', 'rejected')
+    ORDER BY
+      CASE ja.selection_status
+        WHEN 'pending' THEN 0
+        WHEN 'approved' THEN 1
+        ELSE 2
+      END,
+      ja.assigned_at ASC
+  ) t;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'job_status', v_job.status::text,
+    'applications', v_rows
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION get_job_worker_applications(UUID, UUID) TO authenticated, anon;

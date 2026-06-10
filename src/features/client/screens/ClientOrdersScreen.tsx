@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useQueryClient } from '@tanstack/react-query';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   View,
@@ -15,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ChambaSlidingToggle } from '@components/chamba/ChambaSlidingToggle';
 import { ClientActiveServiceCard } from '@components/client/ClientActiveServiceCard';
 import { useAuthStore } from '@store/authStore';
-import { useClientOrders } from '@features/client/hooks/useClientOrders';
+import { useClientOrders, patchClientOrderAfterWorkerApproval } from '@features/client/hooks/useClientOrders';
 import { WorkerRatingPrompt } from '@components/reviews/WorkerRatingPrompt';
 import { ClientJobApplicantPanel } from '@components/client/ClientJobApplicantPanel';
 import {
@@ -112,7 +113,7 @@ interface OrderCardProps {
   clientId: string;
   clientName: string;
   onOpenCompleted?: (jobId: string) => void;
-  onApplicantDecision?: () => void;
+  onApplicantDecision?: (result: { jobId: string; workerId: string }) => void;
   onOpenChat?: (jobId: string, readOnly: boolean) => void;
 }
 
@@ -170,6 +171,8 @@ const OrderCard = React.memo<OrderCardProps>(function OrderCard({
           clientId={ownerClientId}
           jobStatus={job.status}
           applications={apps}
+          jobLat={job.location?.lat}
+          jobLng={job.location?.lng}
           loading={appsLoading}
           error={appsErrorMessage}
           onRefetch={() => void refetchApps()}
@@ -187,6 +190,7 @@ export const ClientOrdersScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const profileId = useAuthStore((s) => s.profile?.id);
   const profileName = useAuthStore((s) => s.profile?.full_name ?? 'Cliente');
+  const queryClient = useQueryClient();
   const supportBubbleScroll = useSupportBubbleScrollHandlers();
   const [activeFilter, setActiveFilter] = useState<OrderFilter>('pendientes');
 
@@ -212,9 +216,20 @@ export const ClientOrdersScreen: React.FC = () => {
     [navigation],
   );
 
-  const handleApplicantDecision = useCallback(() => {
-    void refetch();
-  }, [refetch]);
+  const handleApplicantDecision = useCallback(
+    (result?: { jobId: string; workerId: string }) => {
+      if (result && profileId) {
+        patchClientOrderAfterWorkerApproval(
+          queryClient,
+          profileId,
+          result.jobId,
+          result.workerId,
+        );
+      }
+      void refetch();
+    },
+    [refetch, profileId, queryClient],
+  );
 
   const handleOpenChat = useCallback(
     async (jobId: string, readOnly: boolean) => {

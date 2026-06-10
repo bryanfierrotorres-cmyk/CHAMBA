@@ -17,6 +17,8 @@ import {
   phaseToJobStatus,
 } from '@utils/workerOperationalPhase';
 import { validateClientPrice } from '@constants/servicePricing';
+import { resolveOfferSuggestedPriceFromDb } from '@utils/offerSuggestedPrice';
+import { fetchPreciosCatalogo, mapPreciosRowsToMap } from '@features/catalog/services/preciosCatalogService';
 import { captureWorkerApplicantLocation } from '@utils/captureWorkerApplicantLocation';
 import { SELECTION_STATUS } from '@constants/jobWorkflowStatus';
 import { fromDbJobCategory, toDbJobCategory, toDbJobCategoryQueryValues } from '@constants/chambaCategories';
@@ -43,6 +45,10 @@ import {
   pilotPhoneEmail,
 } from '@utils/profileSync';
 import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
+import {
+  normalizeWorkerAssignmentRow,
+  normalizeWorkerAssignmentRows,
+} from '@utils/normalizeWorkerAssignment';
 import type { UserProfile } from '@/types';
 import { withTimeout } from '@utils/withTimeout';
 import { useAuthStore } from '@store/authStore';
@@ -193,10 +199,10 @@ const fetchAssignmentsViaRpc = async (workerId: string): Promise<JobAssignment[]
 
     const rows = parseRpcAssignmentRows(data);
     if (rows.length > 0) {
-      return rows.map((row) => ({
+      return normalizeWorkerAssignmentRows(rows.map((row) => ({
         ...row,
         job: row.job ? normalizeJobRow(row.job as Job) : row.job,
-      }));
+      })));
     }
   }
 
@@ -515,7 +521,7 @@ export const fetchWorkerAssignments = async (
       }
     }
 
-    remote = remote.map((a) => ({
+    remote = remote.map((a) => normalizeWorkerAssignmentRow({
       ...a,
       job: a.job ? normalizeJobRow(a.job as Job) : a.job,
     }));
@@ -1102,7 +1108,16 @@ interface CreateJobParams {
 export const createJob = async (params: CreateJobParams): Promise<Job> => {
   if (!params.relaxedPricing) {
     await assertClientJobPlatformReady();
-    const priceCheck = validateClientPrice(params.category, params.payAmount);
+    const preciosResult = await fetchPreciosCatalogo();
+    const dbPrecios = mapPreciosRowsToMap(preciosResult.rows);
+    const dbSuggested = resolveOfferSuggestedPriceFromDb(params.category, dbPrecios);
+    const priceLookup = dbSuggested != null && dbSuggested > 0
+      ? {
+          getSuggestedPrice: () => dbSuggested,
+          getMinPrice: () => Math.ceil(dbSuggested * 0.7),
+        }
+      : undefined;
+    const priceCheck = validateClientPrice(params.category, params.payAmount, priceLookup);
     if (!priceCheck.valid) {
       throw new Error(priceCheck.message);
     }

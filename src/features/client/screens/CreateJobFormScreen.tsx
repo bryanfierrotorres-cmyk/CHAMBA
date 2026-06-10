@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -46,7 +46,9 @@ import {
 import { textInputWebFocusStyle } from '@constants/textInputFocus';
 import { formatCurrency } from '@utils/formatters';
 import { useCatalog } from '@features/catalog/hooks/useCatalog';
+import { usePreciosCatalog } from '@features/catalog/hooks/usePreciosCatalog';
 import { useClientPublishLimit } from '@features/jobs/hooks/useJobActiveLimits';
+import { resolveOfferSuggestedPriceFromDb } from '@utils/offerSuggestedPrice';
 import { useSupportBubbleScrollHandlers } from '@hooks/useSupportBubbleScrollHandlers';
 import {
   getClientMinimumOffer,
@@ -80,8 +82,19 @@ export const CreateJobFormScreen: React.FC = () => {
     route.params.serviceTypeSlug ?? route.params.clientCategory ?? '';
   const serviceLabel = route.params.serviceLabel;
   const catalog = useCatalog();
+  const precios = usePreciosCatalog();
   const label = catalog.getLabel(serviceTypeSlug) || serviceLabel;
-  const suggestedPrice = catalog.getSuggestedPrice(serviceTypeSlug);
+
+  const normalizedServiceSlug = serviceTypeSlug.trim().toLowerCase();
+  const suggestedPrice = useMemo(
+    () => resolveOfferSuggestedPriceFromDb(normalizedServiceSlug, precios.dbPreciosMap) ?? 0,
+    [normalizedServiceSlug, precios.dbPreciosMap],
+  );
+  const pricesReady = !precios.isLoading && suggestedPrice > 0;
+
+  useEffect(() => {
+    void precios.refetch();
+  }, [normalizedServiceSlug, precios.refetch]);
 
   const [currentStep, setCurrentStep] = useState(1);
   const [description, setDescription] = useState('');
@@ -119,6 +132,7 @@ export const CreateJobFormScreen: React.FC = () => {
   const canSubmit =
     isStep1Valid &&
     address.trim().length > 0 &&
+    pricesReady &&
     offerValidation.valid &&
     !publishLimit.atLimit;
 
@@ -391,9 +405,18 @@ export const CreateJobFormScreen: React.FC = () => {
                 </Text>
               ) : null}
               <View style={styles.priceBlock}>
-                <Text style={styles.suggestedLine}>
-                  Precio sugerido: {formatCurrency(suggestedPrice)}
-                </Text>
+                {!pricesReady ? (
+                  <View style={styles.priceLoadingRow}>
+                    <ActivityIndicator size="small" color={CHAMBA.blue} />
+                    <Text style={styles.suggestedLine}>
+                      Cargando precio sugerido desde el catálogo…
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={styles.suggestedLine}>
+                    Precio sugerido: {formatCurrency(suggestedPrice)}
+                  </Text>
+                )}
                 <Text style={styles.priceLabel}>Tu oferta (C$)</Text>
                 <View style={styles.offerInputRow}>
                   <Text style={styles.currencyPrefix}>C$</Text>
@@ -648,6 +671,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#6B7280',
+  },
+  priceLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   priceLabel: {
     fontSize: 13,

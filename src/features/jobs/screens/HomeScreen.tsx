@@ -44,6 +44,7 @@ import {
   loadRadarDismissedJobIds,
 } from '@utils/radarDismissedJobs';
 import { isJobExpiredLocally } from '@constants/jobExpiry';
+import { useSyncWorkerLocationOnFocus } from '@hooks/useSyncWorkerLocationOnFocus';
 import type { Job, JobCategory, JobStackParamList, WorkerTabParamList } from '@/types';
 
 type StackNav = NativeStackNavigationProp<JobStackParamList, 'JobList'>;
@@ -135,6 +136,7 @@ export const HomeScreen: React.FC = () => {
   const toast = useToast();
   const { mutateAsync: acceptMut } = useAcceptJob();
   const workerLimit = useWorkerCommitmentLimit();
+  useSyncWorkerLocationOnFocus();
 
   useFocusEffect(
     useCallback(() => {

@@ -1,4 +1,5 @@
 import type { Job, JobStatus, WorkerOperationalPhase, JobAssignment } from '@/types';
+import { JOB_STATUS, OPERATIONAL_PHASE, SELECTION_STATUS } from '@constants/jobWorkflowStatus';
 import { isWorkerCommitmentActive, isWorkerPendingClientSelection } from '@utils/jobActiveLimits';
 
 export const OPERATIONAL_STEPS: {
@@ -6,27 +7,29 @@ export const OPERATIONAL_STEPS: {
   label: string;
   shortLabel: string;
 }[] = [
-  { phase: 'accepted', label: 'Aceptado', shortLabel: 'Aceptado' },
-  { phase: 'en_route', label: 'En camino', shortLabel: 'Viaje' },
-  { phase: 'arrived', label: 'En el lugar', shortLabel: 'Llegada' },
-  { phase: 'completed', label: 'Finalizado', shortLabel: 'Listo' },
+  { phase: OPERATIONAL_PHASE.ACCEPTED, label: 'Aceptado', shortLabel: 'Aceptado' },
+  { phase: OPERATIONAL_PHASE.EN_ROUTE, label: 'En camino', shortLabel: 'Viaje' },
+  { phase: OPERATIONAL_PHASE.ARRIVED, label: 'En el lugar', shortLabel: 'Llegada' },
+  { phase: OPERATIONAL_PHASE.COMPLETED, label: 'Finalizado', shortLabel: 'Listo' },
 ];
 
 const PHASE_RANK: Record<WorkerOperationalPhase, number> = {
-  accepted: 0,
-  en_route: 1,
-  arrived: 2,
-  completed: 3,
+  [OPERATIONAL_PHASE.ACCEPTED]: 0,
+  [OPERATIONAL_PHASE.EN_ROUTE]: 1,
+  [OPERATIONAL_PHASE.ARRIVED]: 2,
+  [OPERATIONAL_PHASE.COMPLETED]: 3,
 };
 
 export const resolveOperationalPhase = (
   job?: Partial<Job> | null,
 ): WorkerOperationalPhase | null => {
   if (!job?.status) return null;
-  if (job.status === 'completed' || job.status === 'cancelled') return 'completed';
+  if (job.status === JOB_STATUS.COMPLETED || job.status === JOB_STATUS.CANCELLED) {
+    return OPERATIONAL_PHASE.COMPLETED;
+  }
   if (job.operational_phase) return job.operational_phase;
-  if (job.status === 'taken') return 'accepted';
-  if (job.status === 'in_progress') return 'arrived';
+  if (job.status === JOB_STATUS.TAKEN) return OPERATIONAL_PHASE.ACCEPTED;
+  if (job.status === JOB_STATUS.IN_PROGRESS) return OPERATIONAL_PHASE.ARRIVED;
   return null;
 };
 
@@ -38,27 +41,36 @@ export const isActiveOperationalJob = (job?: Partial<Job> | null): boolean => {
 /** Asignación del trabajador aún en curso (Agenda → Activas). */
 export const isWorkerAssignmentActive = (job?: Partial<Job> | null): boolean => {
   const status = job?.status;
-  if (!status) return true;
-  return status === 'taken' || status === 'in_progress';
+  if (!status) return false;
+  return status === JOB_STATUS.TAKEN || status === JOB_STATUS.IN_PROGRESS;
 };
 
 /** Asignación cerrada (Agenda → Historial). */
 export const isWorkerAssignmentHistory = (job?: Partial<Job> | null): boolean => {
   const status = job?.status;
-  return status === 'completed' || status === 'cancelled';
+  return status === JOB_STATUS.COMPLETED || status === JOB_STATUS.CANCELLED;
 };
 
 /** Asignación visible en Agenda → Activas (en curso o postulación pendiente). */
 export const isWorkerAgendaActive = (row: JobAssignment): boolean => {
   const status = row.job?.status;
-  if (status === 'completed' || status === 'cancelled') {
+  if (status === JOB_STATUS.COMPLETED || status === JOB_STATUS.CANCELLED) {
     const phase = row.job?.operational_phase;
-    if (status === 'completed' && phase && phase !== 'completed') {
+    if (status === JOB_STATUS.COMPLETED && phase && phase !== OPERATIONAL_PHASE.COMPLETED) {
       return true;
     }
     return false;
   }
-  if (status === 'taken' || status === 'in_progress') return true;
+
+  if (row.selection_status === SELECTION_STATUS.REJECTED) {
+    return false;
+  }
+
+  if (status === JOB_STATUS.TAKEN || status === JOB_STATUS.IN_PROGRESS) {
+    return row.selection_status === SELECTION_STATUS.APPROVED
+      || row.job?.assigned_worker_id === row.worker_id;
+  }
+
   if (isWorkerCommitmentActive(row) || isWorkerAssignmentActive(row.job)) return true;
   return isWorkerPendingClientSelection(row);
 };

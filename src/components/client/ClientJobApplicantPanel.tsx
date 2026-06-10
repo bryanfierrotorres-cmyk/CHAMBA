@@ -13,11 +13,15 @@ import { Avatar } from '@components/Avatar';
 import { CHAMBA, CARD_STEP_SHADOW } from '@constants/chambaUI';
 import { getCategoryLabel } from '@utils/formatters';
 import { formatNicaPhoneDisplay } from '@utils/phoneNicaragua';
+import { resolveApplicantDistanceKm } from '@utils/applicantDistance';
+import { formatApplicantDistanceLabel } from '@utils/geoDistance';
 import { summarizeWorkerTrust } from '@utils/workerTrustSummary';
 import {
   clientApproveWorkerApplication,
   clientRejectWorkerApplication,
 } from '@features/client/services/clientJobSelectionService';
+import { WorkerApplicantProfileModal } from '@components/client/WorkerApplicantProfileModal';
+import { hasUsableJobCoordinates } from '@utils/shareJobLocation';
 import type { JobWorkerApplication } from '@/types';
 
 interface ClientJobApplicantPanelProps {
@@ -25,10 +29,13 @@ interface ClientJobApplicantPanelProps {
   clientId: string;
   jobStatus: string;
   applications: JobWorkerApplication[];
+  /** Coordenadas del servicio para distancia aproximada en el perfil. */
+  jobLat?: number | null;
+  jobLng?: number | null;
   loading?: boolean;
   error?: string | null;
   onRefetch?: () => void | Promise<unknown>;
-  onDecision?: () => void;
+  onDecision?: (result: { jobId: string; workerId: string }) => void;
 }
 
 export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = ({
@@ -36,13 +43,20 @@ export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = (
   clientId,
   jobStatus,
   applications: apps,
+  jobLat,
+  jobLng,
   loading = false,
   error = null,
   onRefetch,
   onDecision,
 }) => {
   const [actingId, setActingId] = useState<string | null>(null);
+  const [profileApp, setProfileApp] = useState<JobWorkerApplication | null>(null);
   const refetch = onRefetch ?? (() => undefined);
+
+  const jobCoords = hasUsableJobCoordinates(jobLat, jobLng)
+    ? { lat: jobLat!, lng: jobLng! }
+    : null;
 
   const pending = apps.filter((a) => a.selection_status === 'pending');
   const canChoose = jobStatus === 'open' && pending.length > 0;
@@ -64,7 +78,7 @@ export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = (
     setActingId(app.worker_id);
     try {
       await clientApproveWorkerApplication(jobId, clientId, app.worker_id);
-      onDecision?.();
+      onDecision?.({ jobId, workerId: app.worker_id });
       await refetch();
     } catch (err: unknown) {
       const text = err instanceof Error ? err.message : 'No se pudo aprobar';
@@ -139,6 +153,7 @@ export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = (
           .map((c) => getCategoryLabel(c as string))
           .join(' · ');
         const trust = summarizeWorkerTrust(app);
+        const distanceKm = resolveApplicantDistanceKm(app, jobCoords);
 
         return (
           <View key={app.assignment_id} style={styles.card}>
@@ -150,6 +165,14 @@ export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = (
                   <Text style={styles.meta}>{formatNicaPhoneDisplay(app.phone)}</Text>
                 ) : null}
                 {specs ? <Text style={styles.meta}>{specs}</Text> : null}
+                {distanceKm != null ? (
+                  <View style={styles.distanceRow}>
+                    <Ionicons name="navigate-outline" size={13} color={CHAMBA.blue} />
+                    <Text style={styles.distanceText}>
+                      {formatApplicantDistanceLabel(distanceKm)}
+                    </Text>
+                  </View>
+                ) : null}
                 <View style={styles.badgeRow}>
                   {trust.starLabel ? (
                     <View style={styles.trustBadge}>
@@ -180,6 +203,17 @@ export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = (
               )}
             </View>
 
+            <TouchableOpacity
+              style={styles.viewProfileBtn}
+              onPress={() => setProfileApp(app)}
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel={`Ver perfil de ${app.full_name}`}
+            >
+              <Ionicons name="person-circle-outline" size={16} color={CHAMBA.blue} />
+              <Text style={styles.viewProfileText}>Ver perfil</Text>
+            </TouchableOpacity>
+
             {isPending && canChoose && (
               <View style={styles.actions}>
                 <TouchableOpacity
@@ -208,6 +242,13 @@ export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = (
           </View>
         );
       })}
+
+      <WorkerApplicantProfileModal
+        visible={profileApp != null}
+        application={profileApp}
+        jobCoords={jobCoords}
+        onClose={() => setProfileApp(null)}
+      />
     </View>
   );
 };
@@ -241,6 +282,17 @@ const styles = StyleSheet.create({
   cardInfo: { flex: 1, gap: 2 },
   name: { fontSize: 16, fontWeight: '800', color: CHAMBA.navy },
   meta: { fontSize: 12, color: CHAMBA.muted },
+  distanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  distanceText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: CHAMBA.blue,
+  },
   badgeRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -266,6 +318,22 @@ const styles = StyleSheet.create({
   },
   trustBadgeTextNew: {
     color: '#1E40AF',
+  },
+  viewProfileBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 5,
+    marginTop: 2,
+    marginBottom: 2,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  viewProfileText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: CHAMBA.blue,
+    letterSpacing: 0.1,
   },
   statusPill: {
     paddingHorizontal: 8,

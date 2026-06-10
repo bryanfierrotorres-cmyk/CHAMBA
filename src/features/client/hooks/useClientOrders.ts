@@ -2,6 +2,9 @@ import { useQuery, type QueryClient } from '@tanstack/react-query';
 import { fetchClientOrders } from '@features/jobs/services/jobsService';
 import { useAuthStore } from '@store/authStore';
 import { QUERY_STALE_FEED_MS } from '@constants/queryCache';
+import { CLIENT_APPROVED_JOB_STATE } from '@constants/jobWorkflowStatus';
+import { JOB_KEYS } from '@features/jobs/hooks/useJobs';
+import { workerActiveCountKey } from '@features/jobs/hooks/useJobActiveLimits';
 import type { ClientOrderJob, JobStatus, WorkerOperationalPhase } from '@/types';
 
 export const clientOrdersQueryKey = (clientId: string) => ['client-orders', clientId] as const;
@@ -53,6 +56,24 @@ export const patchClientOrderRowInCache = (
     };
     return next;
   });
+};
+
+/** Tras aprobar técnico: alinear caché cliente + invalidar agenda del worker. */
+export const patchClientOrderAfterWorkerApproval = (
+  queryClient: QueryClient,
+  clientId: string,
+  jobId: string,
+  workerId: string,
+): void => {
+  patchClientOrderRowInCache(queryClient, clientId, {
+    id: jobId,
+    status: CLIENT_APPROVED_JOB_STATE.jobStatus,
+    operational_phase: CLIENT_APPROVED_JOB_STATE.operationalPhase,
+    updated_at: new Date().toISOString(),
+  });
+  void queryClient.invalidateQueries({ queryKey: JOB_KEYS.myJobs(workerId) });
+  void queryClient.invalidateQueries({ queryKey: workerActiveCountKey(workerId) });
+  void queryClient.invalidateQueries({ queryKey: ['jobs', 'my'] });
 };
 
 export function useClientOrders() {

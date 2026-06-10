@@ -4,9 +4,13 @@ import {
   CLIENT_ACTIVE_JOBS_LIMIT_MESSAGE,
   WORKER_ACTIVE_COMMITMENTS_LIMIT_MESSAGE,
 } from '@constants/jobLimits';
+import { JOB_STATUS, SELECTION_STATUS, OPERATIONAL_PHASE } from '@constants/jobWorkflowStatus';
 import type { JobAssignment, JobStatus } from '@/types';
 
-const TERMINAL_STATUSES = new Set<JobStatus>(['completed', 'cancelled']);
+const TERMINAL_STATUSES = new Set<JobStatus>([
+  JOB_STATUS.COMPLETED,
+  JOB_STATUS.CANCELLED,
+]);
 
 export const isNonTerminalJobStatus = (status: JobStatus): boolean =>
   !TERMINAL_STATUSES.has(status);
@@ -26,29 +30,43 @@ type AssignmentRow = JobAssignment & { selection_status?: string | null };
 /** Postulación enviada — el cliente aún no eligió técnico. */
 export const isWorkerPendingClientSelection = (row: AssignmentRow): boolean => {
   const job = row.job;
-  if (job?.status !== 'open') return false;
+  if (job?.status !== JOB_STATUS.OPEN) return false;
   const selection = row.selection_status;
-  if (selection === 'rejected') return false;
-  return !selection || selection === 'pending';
+  if (selection === SELECTION_STATUS.REJECTED) return false;
+  return !selection || selection === SELECTION_STATUS.PENDING;
 };
 
 /**
- * Cupo activo = postulación pending en job open, o trabajo approved en taken/in_progress.
- * (Evita contar caché local sin selection_status o postulaciones ya rechazadas.)
+ * Cupo activo alineado con count_worker_active_commitments (048):
+ * open+pending, taken/in_progress+approved solo si assigned_worker_id = técnico.
  */
 export const isWorkerCommitmentActive = (row: AssignmentRow): boolean => {
   const job = row.job;
-  if (!job?.id || !isNonTerminalJobStatus(job.status as JobStatus)) return false;
+  if (!job?.id) return false;
+
+  const status = job.status as JobStatus;
+  if (status === JOB_STATUS.COMPLETED || status === JOB_STATUS.CANCELLED) return false;
 
   const selection = row.selection_status;
-  if (selection === 'rejected') return false;
+  if (selection === SELECTION_STATUS.REJECTED) return false;
 
-  if (job.status === 'open') {
-    return selection === 'pending' || selection === 'approved';
+  const isAssignedToWorker =
+    job.assigned_worker_id != null && job.assigned_worker_id === row.worker_id;
+
+  if (status === JOB_STATUS.OPEN) {
+    return selection === SELECTION_STATUS.PENDING
+      && (job.assigned_worker_id == null || isAssignedToWorker);
   }
 
-  if (job.status === 'taken' || job.status === 'in_progress') {
-    return selection !== 'rejected';
+  if (status === JOB_STATUS.IN_PROGRESS) {
+    return isAssignedToWorker
+      && (selection === SELECTION_STATUS.APPROVED || selection == null);
+  }
+
+  if (status === JOB_STATUS.TAKEN) {
+    return isAssignedToWorker
+      && selection === SELECTION_STATUS.APPROVED
+      && job.operational_phase !== OPERATIONAL_PHASE.COMPLETED;
   }
 
   return false;

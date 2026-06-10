@@ -1,0 +1,190 @@
+-- CHAMBA 046 — Sincronía cliente aprueba → agenda técnico (Pepe / login teléfono)
+-- Problema: get_worker_assignments devolvía [] si auth.uid() ≠ p_worker_id o sin sesión.
+-- client_approve exigía created_by exacto (sin match por teléfono como en 036).
+
+SET statement_timeout = '60s';
+
+-- ── Helper: mismo teléfono normalizado entre perfiles ───────────────────────
+CREATE OR REPLACE FUNCTION fn_profiles_same_phone(p_a UUID, p_b UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM profiles a
+    JOIN profiles b ON a.id = p_a AND b.id = p_b
+    WHERE a.phone IS NOT NULL
+      AND b.phone IS NOT NULL
+      AND regexp_replace(a.phone, '\D', '', 'g')
+        = regexp_replace(b.phone, '\D', '', 'g')
+  );
+$$;
+
+-- ── Agenda técnico: alinear auth.uid() con perfil por teléfono ───────────────
+CREATE OR REPLACE FUNCTION get_worker_assignments(p_worker_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_result JSONB;
+  v_caller UUID := auth.uid();
+BEGIN
+  IF p_worker_id IS NULL THEN
+    RETURN '[]'::jsonb;
+  END IF;
+
+  IF v_caller IS NULL THEN
+    RETURN '[]'::jsonb;
+  END IF;
+
+  IF v_caller IS DISTINCT FROM p_worker_id THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM profiles p
+      WHERE p.id = v_caller AND p.role::text = 'admin'
+    ) AND NOT fn_profiles_same_phone(v_caller, p_worker_id) THEN
+      RETURN '[]'::jsonb;
+    END IF;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = p_worker_id AND p.role::text = 'worker'
+  ) THEN
+    RETURN '[]'::jsonb;
+  END IF;
+
+  SELECT COALESCE(
+    jsonb_agg(
+      jsonb_build_object(
+        'id', ja.id,
+        'job_id', ja.job_id,
+        'worker_id', ja.worker_id,
+        'assigned_at', ja.assigned_at,
+        'completed_at', ja.completed_at,
+        'payment_status', ja.payment_status,
+        'payment_intent_id', ja.payment_intent_id,
+        'selection_status', ja.selection_status,
+        'job', to_jsonb(j.*)
+      )
+      ORDER BY ja.assigned_at DESC
+    ),
+    '[]'::jsonb
+  )
+  INTO v_result
+  FROM job_assignments ja
+  JOIN jobs j ON j.id = ja.job_id
+  WHERE ja.worker_id = p_worker_id
+    AND NOT (
+      ja.selection_status = 'rejected'
+      AND j.status::text IN ('taken', 'in_progress', 'completed', 'cancelled')
+    );
+
+  RETURN v_result;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION get_worker_assignments(UUID) TO authenticated;
+
+-- ── Aprobación cliente: dueño por created_by O mismo teléfono (036) ─────────
+CREATE OR REPLACE FUNCTION client_approve_worker_application(
+  p_job_id    UUID,
+  p_client_id UUID,
+  p_worker_id UUID
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_job jobs%ROWTYPE;
+  v_client profiles%ROWTYPE;
+  v_assignment_id UUID;
+  v_active INT;
+  v_max_active INT := 2;
+  v_owns BOOLEAN := FALSE;
+BEGIN
+  SELECT * INTO v_job FROM jobs WHERE id = p_job_id FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Solicitud no encontrada');
+  END IF;
+
+  IF v_job.created_by = p_client_id THEN
+    v_owns := TRUE;
+  ELSE
+    SELECT * INTO v_client FROM profiles WHERE id = p_client_id;
+    IF FOUND AND v_client.phone IS NOT NULL THEN
+      SELECT EXISTS (
+        SELECT 1
+        FROM profiles owner
+        WHERE owner.id = v_job.created_by
+          AND owner.phone IS NOT NULL
+          AND regexp_replace(owner.phone, '\D', '', 'g')
+            = regexp_replace(v_client.phone, '\D', '', 'g')
+      ) INTO v_owns;
+    END IF;
+  END IF;
+
+  IF NOT v_owns THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Solicitud no encontrada');
+  END IF;
+
+  IF v_job.status::text <> 'open' THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Esta solicitud ya fue asignada');
+  END IF;
+
+  SELECT id INTO v_assignment_id
+  FROM job_assignments
+  WHERE job_id = p_job_id
+    AND worker_id = p_worker_id
+    AND selection_status = 'pending';
+
+  IF v_assignment_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Este técnico no tiene una postulación activa');
+  END IF;
+
+  v_active := count_worker_active_commitments(p_worker_id, p_job_id);
+  IF v_active >= v_max_active THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'Este técnico ya tiene 2 chambas activas y no puede tomar otra hasta finalizar una.',
+      'code', 'worker_active_limit'
+    );
+  END IF;
+
+  UPDATE job_assignments
+  SET selection_status = 'approved'
+  WHERE id = v_assignment_id;
+
+  UPDATE job_assignments
+  SET selection_status = 'rejected'
+  WHERE job_id = p_job_id
+    AND selection_status = 'pending'
+    AND worker_id <> p_worker_id;
+
+  UPDATE jobs
+  SET status = 'taken',
+      assigned_worker_id = p_worker_id,
+      slots_taken = 1,
+      operational_phase = 'accepted',
+      updated_at = NOW()
+  WHERE id = p_job_id;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'assignment_id', v_assignment_id,
+    'worker_id', p_worker_id,
+    'job_status', 'taken',
+    'selection_status', 'approved',
+    'operational_phase', 'accepted'
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION client_approve_worker_application(UUID, UUID, UUID) TO anon, authenticated;

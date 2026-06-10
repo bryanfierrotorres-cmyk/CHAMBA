@@ -64,6 +64,42 @@ const ensurePhoneAuthSessionInner = async (
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
+    const invalidCreds =
+      error.message?.toLowerCase().includes('invalid login')
+      || error.message?.toLowerCase().includes('invalid credentials');
+
+    if (invalidCreds && effective.phone) {
+      const { data: provision, error: provErr } = await supabase.rpc('ensure_phone_auth_user', {
+        p_profile_id: effective.id,
+        p_phone: normalizePhone(effective.phone),
+      });
+
+      const body = provision as { success?: boolean; error?: string } | null;
+      if (provErr) {
+        console.warn('[ensurePhoneAuthSession] provision RPC:', provErr.message);
+      } else if (body?.success) {
+        const retry = await supabase.auth.signInWithPassword({ email, password });
+        if (!retry.error && retry.data.session) {
+          if (retry.data.user.id !== effective.id) {
+            console.warn('[ensurePhoneAuthSession] ID distinto tras provision');
+            await supabase.auth.signOut();
+            return null;
+          }
+          return retry.data.session;
+        }
+        console.warn('[ensurePhoneAuthSession] signIn tras provision:', retry.error?.message);
+      } else {
+        console.warn('[ensurePhoneAuthSession] provision falló:', body?.error);
+      }
+    }
+
+    const schemaErr = error.message?.toLowerCase().includes('database error querying schema');
+    if (schemaErr) {
+      console.warn(
+        '[ensurePhoneAuthSession] auth.users con tokens NULL — contactá soporte o ejecutá db:ensure-phone-auth-user',
+      );
+    }
+
     console.warn('[ensurePhoneAuthSession] signIn:', error.message, { email });
     return null;
   }

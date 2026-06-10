@@ -47,6 +47,10 @@ export interface WorkerProfile {
   total_reviews:       number;
   total_jobs_done:     number;
   availability_status: AvailabilityStatus;
+  /** Última GPS reportada (Radar / Agenda). */
+  last_lat?:            number | null;
+  last_lng?:            number | null;
+  last_location_at?:    string | null;
   updated_at:          string;
 }
 
@@ -103,6 +107,13 @@ export interface JobWorkerApplication {
   rating_avg: number | string | null;
   total_reviews: number | null;
   total_jobs_done?: number | null;
+  /** Bio del técnico (RPC get_job_worker_applications). */
+  bio?: string | null;
+  /** Opcional: distancia precalculada en RPC (km). */
+  distance_km?: number | null;
+  /** Opcional: coords del técnico para cálculo local de distancia. */
+  worker_lat?: number | null;
+  worker_lng?: number | null;
 }
 
 // ─── Jobs ─────────────────────────────────────────────────────────────────────
