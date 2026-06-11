@@ -12,6 +12,7 @@ interface ChambaFormFieldProps {
   multiline?: boolean;
   keyboardType?: 'default' | 'numeric' | 'decimal-pad';
   icon?: keyof typeof Ionicons.glyphMap;
+  editable?: boolean;
 }
 
 export const ChambaFormField: React.FC<ChambaFormFieldProps> = ({
@@ -22,6 +23,7 @@ export const ChambaFormField: React.FC<ChambaFormFieldProps> = ({
   multiline,
   keyboardType = 'default',
   icon,
+  editable = true,
 }) => (
   <View style={styles.wrap}>
     <Text style={chambaStyles.formLabel}>{label}</Text>
@@ -34,6 +36,7 @@ export const ChambaFormField: React.FC<ChambaFormFieldProps> = ({
         placeholderTextColor={CHAMBA.muted}
         multiline={multiline}
         keyboardType={keyboardType}
+        editable={editable}
         style={[
           styles.input,
           multiline && styles.inputMultiline,

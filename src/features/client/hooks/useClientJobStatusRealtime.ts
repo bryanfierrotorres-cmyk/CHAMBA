@@ -56,22 +56,24 @@ export function useClientJobStatusRealtime(): ClientStatusToast | null {
 
   const notifyJobChange = useCallback(
     (row: JobRow, options?: { skipIfUnchanged?: boolean }) => {
-      if (!row?.id || !row.status) return;
+      const jobId = row.id;
+      const status = row.status;
+      if (!jobId || !status) return;
 
-      const key = statusKey(row);
-      if (options?.skipIfUnchanged && lastStatusRef.current[row.id] === key) return;
-      lastStatusRef.current[row.id] = key;
+      const key = statusKey({ ...row, id: jobId, status });
+      if (options?.skipIfUnchanged && lastStatusRef.current[jobId] === key) return;
+      lastStatusRef.current[jobId] = key;
 
       const clientId = clientIdRef.current;
       if (clientId) {
-        patchClientOrderRowInCache(queryClient, clientId, row);
+        patchClientOrderRowInCache(queryClient, clientId, { ...row, id: jobId, status });
         refreshClientOrders(queryClient, clientId);
       }
-      void queryClient.invalidateQueries({ queryKey: JOB_KEYS.detail(row.id) });
+      void queryClient.invalidateQueries({ queryKey: JOB_KEYS.detail(jobId) });
 
-      const label = getClientOrderStatusLabel(row.status, row.operational_phase);
+      const label = getClientOrderStatusLabel(status, row.operational_phase);
       const title = row.title?.trim() ? `"${row.title.trim()}"` : 'Tu solicitud';
-      pushToast(row.id, `${title}: ${label}`);
+      pushToast(jobId, `${title}: ${label}`);
     },
     [pushToast, queryClient],
   );

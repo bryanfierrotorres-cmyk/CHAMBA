@@ -367,17 +367,17 @@ export const ManageWorkersScreen: React.FC = () => {
     return true;
   });
 
-  const pendingWorkers = (workersData ?? []).filter((w) => !w.is_approved);
+  const pendingWorkers = (workersData ?? []).filter((w: UserProfile) => !w.is_approved);
   const activeWorkers = (workersData ?? []).filter(
-    (w) => w.is_approved && w.worker_status === 'active',
+    (w: UserProfile) => w.is_approved && w.worker_status === 'active',
   );
   const pendingCount  = teamMode === 'workers'
     ? pendingWorkers.length
-    : (clientsData ?? []).filter((c) => !c.is_approved).length;
+    : (clientsData ?? []).filter((c: UserProfile) => !c.is_approved).length;
   const activeCount = teamMode === 'workers'
     ? activeWorkers.length
-    : (clientsData ?? []).filter((c) => c.is_approved).length;
-  const clientsPending = (clientsData ?? []).filter((c) => !c.is_approved).length;
+    : (clientsData ?? []).filter((c: UserProfile) => c.is_approved).length;
+  const clientsPending = (clientsData ?? []).filter((c: UserProfile) => !c.is_approved).length;
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>

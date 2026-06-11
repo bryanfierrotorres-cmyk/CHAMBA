@@ -79,8 +79,8 @@ export const countWorkerActiveCommitments = (assignments: AssignmentRow[]): numb
   for (const row of assignments) {
     if (!isWorkerCommitmentActive(row)) continue;
 
-    const jobId = row.job!.id;
-    if (seen.has(jobId)) continue;
+    const jobId = row.job?.id;
+    if (!jobId || seen.has(jobId)) continue;
     seen.add(jobId);
     count += 1;
   }

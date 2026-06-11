@@ -73,41 +73,16 @@ export const CHAMBA_CATEGORIES: ChambaCategoryDef[] = CHAMBA_CATEGORY_IDS.map((i
 export const isJobCategory = (value: string): value is JobCategory =>
   (CHAMBA_CATEGORY_IDS as readonly string[]).includes(value);
 
-/** Precios de respaldo si el catálogo remoto no está disponible. */
-export const SUGGESTED_PRICES_FALLBACK: Record<string, number> = {
-  limpieza_sofas:          1400,
-  limpieza_alfombra:       500,
-  limpieza_banos:          600,
-  alfombra_institucional:  1800,
-  fumigacion:              1200,
-  vehiculo_limpieza_profunda: 500,
-  vehiculo_lavado_regular: 250,
-  vehiculo_aceite_filtro:  450,
-  vehiculo_pulido_pasteado: 400,
-  b2b_personal_operativo:  900,
-  b2b_mesero_barman:       1200,
-  b2b_ayudante_cocina:     1100,
-  b2b_apoyo_hogar:         950,
-  b2b_conserje_empresa:    1400,
-  b2b_otro_servicio:       800,
-  conserjeria_ocasional:   850,
-  conserjeria_contrato:    2500,
-  jardineria:              400,
-  jardineria_corte:        300,
-  jardineria_poda:         450,
-  jardineria_patio:        550,
-  ac_limpieza_filtros:     350,
-  ac_mantenimiento:        500,
-  ac_revision:             700,
-  ac_recarga:              900,
-  pet_bano:                350,
-  pet_paseo:               200,
-  pet_grooming:            450,
-  pet_personalizado:       250,
-  mandados_express:        100,
-  electricista:            500,
-  plomeria:                500,
-  linea_blanca:            500,
+/** Mapa de alias para consultas a la DB (incluye alias legados y sub-servicios). */
+const QUERY_ALIASES: Record<string, string[]> = {
+  limpieza:               ['limpieza_sofas', 'limpieza_banos', 'limpieza_alfombra', 'conserjeria_ocasional', 'sofas', 'alfombra'],
+  limpieza_sofas:         ['sofas', 'limpieza_banos', 'conserjeria_ocasional', 'limpieza_alfombra', 'fumigacion', 'alfombra_institucional'],
+  limpieza_alfombra:      ['alfombra', 'limpieza'],
+  limpieza_banos:         ['limpieza_banos'],
+  conserjeria_ocasional:  ['conserjeria_ocasional'],
+  vehiculo_limpieza_profunda: ['vehiculos', 'vehiculo_limpieza_profunda'],
+  vehiculo_lavado_regular: ['vehiculo_lavado_regular', 'vehiculos'],
+  jardineria:             ['jardineria_corte', 'jardineria_poda', 'jardineria_patio'],
 };
 
 /**
@@ -158,17 +133,7 @@ export const getLegacyCategoryLabel = (slug: string): string =>
 export const toDbJobCategoryQueryValues = (category: JobCategory | string): string[] => {
   const normalized = fromDbJobCategory(category) ?? category;
   const primary = toDbJobCategory(normalized);
-  const legacyAliases: Record<string, string[]> = {
-    limpieza:               ['limpieza_sofas', 'limpieza_banos', 'limpieza_alfombra', 'conserjeria_ocasional', 'sofas', 'alfombra'],
-    limpieza_sofas:         ['sofas', 'limpieza_banos', 'conserjeria_ocasional', 'limpieza_alfombra', 'fumigacion', 'alfombra_institucional'],
-    limpieza_alfombra:      ['alfombra', 'limpieza'],
-    limpieza_banos:         ['limpieza_banos'],
-    conserjeria_ocasional:  ['conserjeria_ocasional'],
-    vehiculo_limpieza_profunda: ['vehiculos', 'vehiculo_limpieza_profunda'],
-    vehiculo_lavado_regular: ['vehiculo_lavado_regular', 'vehiculos'],
-    jardineria:             ['jardineria_corte', 'jardineria_poda', 'jardineria_patio'],
-  };
-  const extras = legacyAliases[normalized as JobCategory] ?? [];
+  const extras = QUERY_ALIASES[normalized as JobCategory] ?? [];
   const out = new Set<string>([primary, String(normalized), ...extras]);
   if (String(normalized).startsWith('jardineria_')) {
     out.add('jardineria');

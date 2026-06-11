@@ -526,7 +526,7 @@ export const useCompleteJob = () => {
     }: {
       jobId: string;
       assignmentId: string;
-      job?: Job | null;
+      job?: Job | Partial<Job> | null;
     }) => completeJob(jobId, assignmentId, profile?.id, job, profile),
 
     onMutate: async ({ jobId, assignmentId, job }) => {

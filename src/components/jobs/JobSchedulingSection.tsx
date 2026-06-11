@@ -62,7 +62,6 @@ const ScheduleDateField: React.FC<{
 }> = ({ value, onChange, min, disabled }) => {
   if (Platform.OS === 'web') {
     return (
-      // @ts-expect-error — input nativo web
       <input
         type="date"
         value={value}
@@ -95,7 +94,6 @@ const ScheduleTimeField: React.FC<{
 }> = ({ value, onChange, disabled }) => {
   if (Platform.OS === 'web') {
     return (
-      // @ts-expect-error — input nativo web
       <input
         type="time"
         value={value.length >= 5 ? value.slice(0, 5) : value}

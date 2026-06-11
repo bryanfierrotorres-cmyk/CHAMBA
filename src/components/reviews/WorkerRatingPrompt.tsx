@@ -14,7 +14,7 @@ import { ChambaPressable } from '@components/chamba/ChambaPressable';
 import { CHAMBA, CARD_STEP_SHADOW } from '@constants/chambaUI';
 import { useWorkerReviews } from '@features/reviews/hooks/useWorkerReviews';
 import { coerceNumber, formatDate } from '@utils/formatters';
-import type { ReviewerRole } from '@/types';
+import type { ReviewerRole, WorkerReview } from '@/types';
 
 interface WorkerRatingPromptProps {
   workerId: string;
@@ -35,7 +35,7 @@ export const WorkerRatingPrompt: React.FC<WorkerRatingPromptProps> = ({
   title = '¿Cómo fue tu experiencia?',
 }) => {
   const { reviews, summary, isLoading, submitReview, isSubmitting } = useWorkerReviews(workerId);
-  const myReview = reviews.find((r) => r.reviewer_id === reviewerId);
+  const myReview = reviews.find((r: WorkerReview) => r.reviewer_id === reviewerId);
 
   const [rating, setRating] = useState(coerceNumber(myReview?.rating, 0));
   const [comment, setComment] = useState(myReview?.comment ?? '');

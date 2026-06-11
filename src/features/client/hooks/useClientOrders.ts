@@ -35,9 +35,9 @@ export const patchClientOrderRowInCache = (
 ): void => {
   if (!clientId || !row.id) return;
 
-  queryClient.setQueryData<ClientOrderJob[]>(clientOrdersQueryKey(clientId), (old) => {
+  queryClient.setQueryData<ClientOrderJob[]>(clientOrdersQueryKey(clientId), (old: ClientOrderJob[] | undefined) => {
     if (!old?.length) return old;
-    const idx = old.findIndex((j) => j.id === row.id);
+    const idx = old.findIndex((j: ClientOrderJob) => j.id === row.id);
     if (idx < 0) return old;
 
     const prev = old[idx];

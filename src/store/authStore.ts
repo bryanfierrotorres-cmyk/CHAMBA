@@ -368,6 +368,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
       }
     } catch (authErr: unknown) {
+      // Punto 1 y 3: No permitir bypass de sesión si no estamos en modo piloto
+      if (!CONFIG.pilot.enabled) {
+        set({ error: 'Sesión expirada o inválida. Por favor ingresá de nuevo.', isLoading: false });
+        throw authErr;
+        // Solo lanzamos el error si no tenemos ni sesión ni un perfil previo cargado
+        if (!get().profile) {
+          set({ error: 'Sesión expirada o inválida. Por favor ingresá de nuevo.', isLoading: false });
+          throw authErr;
+        }
+      }
       console.warn('[pilotSignIn] Auth Supabase no disponible, respaldo local:', authErr);
     }
 
@@ -490,7 +500,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       await ensureProfileInDb(profile);
 
-      await safeRemovePilotProfile();
+      await safePersistPilotProfile(profile);
 
       set({
         session: data.session,
@@ -599,7 +609,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           }
           const session = await ensurePhoneAuthSession(profile);
           await safePersistPilotProfile(profile);
-          set({ profile, session, isPhoneAuth: !session });
+          set({ profile, session, isPhoneAuth: !session?.access_token });
         } catch {
           // Perfil local ya hidratado arriba
         }
@@ -771,7 +781,7 @@ async function phoneSignInInner(
 
     if (!profile) {
       if (!CONFIG.pilot.enabled) {
-        throw new Error('Número no registrado. Creá tu cuenta en «Crear cuenta» e intentá de nuevo.');
+        throw new Error('No pudimos encontrar tu cuenta. Verificá tu conexión o intentá «Iniciar sesión con SMS».');
       }
       profile = buildPhoneLoginProfile(uuid4(), cleanName, cleanPhone, role);
     }

@@ -782,7 +782,7 @@ export const completeJob = async (
   jobId: string,
   assignmentId: string,
   workerId?: string,
-  jobSnapshot?: Job | null,
+  jobSnapshot?: Job | Partial<Job> | null,
   workerCtx?: UserProfile | null,
 ): Promise<void> => {
   let effectiveWorkerId = workerId;
@@ -807,8 +807,11 @@ export const completeJob = async (
         job = null;
       }
     }
-    if (job?.created_by) {
-      void notifyClientOperationalUpdate(job, 'completed');
+    if (job?.created_by && job.id) {
+      void notifyClientOperationalUpdate(
+        { id: job.id, created_by: job.created_by, title: job.title ?? '' },
+        'completed',
+      );
     }
   };
 

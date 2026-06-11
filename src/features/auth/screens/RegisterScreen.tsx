@@ -102,6 +102,18 @@ export const RegisterScreen: React.FC = () => {
     return true;
   };
 
+  const handleBack = () => {
+    if (step === 2) {
+      setStep(1);
+      return;
+    }
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('Login');
+    }
+  };
+
   const handleNextStep = () => {
     if (!validateStep1()) return;
     setStep(2);
@@ -136,9 +148,11 @@ export const RegisterScreen: React.FC = () => {
         {/* ── Top bar ── */}
         <View style={styles.topBar}>
           <TouchableOpacity
-            onPress={() => (step === 1 ? navigation.goBack() : setStep(1))}
+            onPress={handleBack}
             style={styles.backBtn}
             hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel={step === 1 ? 'Volver al inicio de sesión' : 'Volver a tus datos'}
           >
             <Ionicons name="chevron-back" size={26} color={COLORS.text.primary} />
           </TouchableOpacity>
@@ -163,21 +177,20 @@ export const RegisterScreen: React.FC = () => {
               isLoading={isLoading}
               error={error}
               onRegister={handleRegister}
+              onBack={handleBack}
             />
           )}
         </Animated.View>
 
-        {/* Login link — solo en step 1 */}
-        {step === 1 && (
-          <TouchableOpacity
-            style={styles.loginRow}
-            onPress={() => navigation.navigate('Login')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.loginText}>¿Ya tienes cuenta? </Text>
-            <Text style={styles.loginLink}>Iniciar sesión</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity
+          style={styles.loginRow}
+          onPress={() => navigation.navigate('Login')}
+          activeOpacity={0.7}
+          disabled={isLoading}
+        >
+          <Text style={styles.loginText}>¿Ya tienes cuenta? </Text>
+          <Text style={styles.loginLink}>Iniciar sesión</Text>
+        </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -262,10 +275,11 @@ interface Step2Props {
   isLoading:  boolean;
   error:      string | null;
   onRegister: () => void;
+  onBack:     () => void;
 }
 
 const Step2: React.FC<Step2Props> = ({
-  role, setRole, isLoading, error, onRegister,
+  role, setRole, isLoading, error, onRegister, onBack,
 }) => (
   <View style={styles.stepContent}>
     <Text style={styles.stepTitle}>¿Cuál es tu rol?</Text>
@@ -323,14 +337,19 @@ const Step2: React.FC<Step2Props> = ({
       </View>
     )}
 
-    <Button
-      label={isLoading ? 'Creando cuenta...' : 'Crear cuenta gratis'}
-      onPress={onRegister}
-      isLoading={isLoading}
-      fullWidth
-      size="lg"
-      style={{ marginTop: SPACING.lg }}
-    />
+    <View style={styles.stepNavRow}>
+      <TouchableOpacity onPress={onBack} style={styles.stepBackBtn} disabled={isLoading}>
+        <Text style={styles.stepBackText}>← Atrás</Text>
+      </TouchableOpacity>
+      <Button
+        label={isLoading ? 'Creando cuenta...' : 'Crear cuenta gratis'}
+        onPress={onRegister}
+        isLoading={isLoading}
+        fullWidth
+        size="lg"
+        style={{ flex: 1 }}
+      />
+    </View>
   </View>
 );
 
@@ -491,6 +510,22 @@ const styles = StyleSheet.create({
     color: '#fca5a5',
     fontSize: FONT_SIZE.sm,
     flex: 1,
+  },
+  stepNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.lg,
+  },
+  stepBackBtn: {
+    minHeight: 52,
+    paddingHorizontal: SPACING.md,
+    justifyContent: 'center',
+  },
+  stepBackText: {
+    color: COLORS.text.secondary,
+    fontSize: FONT_SIZE.md,
+    fontWeight: '600',
   },
   // Bottom login link
   loginRow: {

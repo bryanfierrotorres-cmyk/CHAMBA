@@ -32,7 +32,7 @@ export const StarRating: React.FC<StarRatingProps> = ({
   const starSize = SIZE_MAP[size];
   const displayRating = interactive
     ? coerceNumber(value, 0)
-    : rating != null && rating !== ''
+    : rating != null
       ? coerceNumber(rating, NaN)
       : NaN;
   const hasRating = interactive

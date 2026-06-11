@@ -1,4 +1,5 @@
 import type { JobCategory } from '@/types';
+import { SERVICE_FALLBACK_PRICES } from './servicesConfig';
 
 /** Mínimo permitido respecto al precio sugerido (70% — modelo inDrive). */
 export const MIN_PRICE_RATIO = 0.7;
@@ -14,7 +15,7 @@ export const getSuggestedPrice = (
 ): number => {
   const fromLookup = lookup?.getSuggestedPrice?.(category);
   if (fromLookup != null && fromLookup > 0) return fromLookup;
-  return 0;
+  return SERVICE_FALLBACK_PRICES[category as string] ?? 0;
 };
 
 export const getMinimumPrice = (

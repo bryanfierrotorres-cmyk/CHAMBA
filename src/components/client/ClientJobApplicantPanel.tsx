@@ -94,7 +94,7 @@ export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = (
     try {
       await clientRejectWorkerApplication(jobId, clientId, app.worker_id);
       await refetch();
-      onDecision?.();
+      onDecision?.({ jobId, workerId: app.worker_id });
     } catch (err: unknown) {
       const text = err instanceof Error ? err.message : 'No se pudo rechazar';
       if (Platform.OS === 'web') window.alert(text);

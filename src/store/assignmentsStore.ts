@@ -4,6 +4,7 @@ import {
   upsertLocalAssignment,
 } from '@utils/localAssignments';
 import type { Job, JobAssignment } from '@/types';
+import { isTerminalStatus } from '@constants/jobWorkflowStatus';
 
 interface AssignmentsState {
   items: JobAssignment[];
@@ -46,7 +47,22 @@ export const useAssignmentsStore = create<AssignmentsState>((set, get) => ({
       );
       const items = exists === -1
         ? [merged, ...state.items]
-        : state.items.map((a, i) => (i === exists ? { ...a, ...merged } : a));
+        : state.items.map((a, i) => {
+            if (i !== exists) return a;
+            // Punto 4: Si el estado actual es terminal (completado/cancelado), 
+            // no permitimos que una actualización lo "reviva" a un estado activo.
+            const currentStatus = a.job?.status;
+            const incomingStatus = merged.job?.status;
+            if (
+              currentStatus
+              && isTerminalStatus(currentStatus)
+              && incomingStatus
+              && !isTerminalStatus(incomingStatus)
+            ) {
+              return a;
+            }
+            return { ...a, ...merged };
+          });
       return { items, workerId: merged.worker_id };
     });
     void upsertLocalAssignment(merged, job ?? merged.job ?? null);
@@ -56,6 +72,18 @@ export const useAssignmentsStore = create<AssignmentsState>((set, get) => ({
     set((state) => ({
       items: state.items.map((a) => {
         if (a.id !== assignmentId) return a;
+
+        const currentStatus = a.job?.status;
+        const incomingStatus = jobPatch?.status ?? patch.job?.status;
+        if (
+          currentStatus
+          && isTerminalStatus(currentStatus)
+          && incomingStatus
+          && !isTerminalStatus(incomingStatus)
+        ) {
+          return a;
+        }
+
         return {
           ...a,
           ...patch,

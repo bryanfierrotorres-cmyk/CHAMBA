@@ -15,6 +15,7 @@ import { getSupabaseConfigError, supabase, onAuthStateChange } from '@services/s
 import { initializeStripe } from '@services/stripe';
 import { useAuthStore } from '@store/authStore';
 import { repairLocalAssignmentsStorage } from '@utils/localAssignments';
+import { PILOT_STORAGE_KEY, safePersistPilotProfile } from '@utils/pilotProfileStorage';
 import { configurePushNotificationHandler, syncPushTokenForUser } from '@utils/pushNotifications';
 import { StartupErrorScreen } from '@components/StartupErrorScreen';
 import { AppErrorBoundary } from '@components/AppErrorBoundary';
@@ -134,8 +135,18 @@ function AppBootstrap() {
           const byPhone = metaPhone
             ? await withTimeout(fetchProfileByPhone(metaPhone), 6_000, null)
             : null;
+          const { mergeProfileFromDatabase } = await import('@utils/profileSync');
+          const cachedRaw = await import('@react-native-async-storage/async-storage').then((m) =>
+            m.default.getItem(PILOT_STORAGE_KEY),
+          );
+          const cachedProfile = cachedRaw
+            ? (JSON.parse(cachedRaw) as import('@/types').UserProfile)
+            : null;
+
           if (byPhone) {
-            let restored = byPhone;
+            let restored = cachedProfile
+              ? mergeProfileFromDatabase(cachedProfile, byPhone)
+              : byPhone;
             if (restored.role === 'worker') {
               const { applyPilotProfile } = await import('@utils/pilotAccess');
               const { ensureProfileInDb } = await import('@utils/profileSync');
@@ -143,13 +154,22 @@ function AppBootstrap() {
               await ensureProfileInDb(restored);
             }
             useAuthStore.getState().setProfile(restored);
+            await safePersistPilotProfile(restored);
           } else {
             await withTimeout(fetchProfile(session.user.id), 8000, undefined);
             const p = useAuthStore.getState().profile;
-            if (p?.role === 'worker') {
-              const { applyPilotProfile } = await import('@utils/pilotAccess');
-              const { ensureProfileInDb } = await import('@utils/profileSync');
-              await ensureProfileInDb(applyPilotProfile({ ...p, id: session.user.id }));
+            if (p) {
+              let restored = cachedProfile
+                ? mergeProfileFromDatabase(cachedProfile, p)
+                : p;
+              if (restored.role === 'worker') {
+                const { applyPilotProfile } = await import('@utils/pilotAccess');
+                const { ensureProfileInDb } = await import('@utils/profileSync');
+                restored = applyPilotProfile({ ...restored, id: session.user.id });
+                await ensureProfileInDb(restored);
+              }
+              useAuthStore.getState().setProfile(restored);
+              await safePersistPilotProfile(restored);
             }
           }
           useAuthStore.getState().setPhoneAuth(false);

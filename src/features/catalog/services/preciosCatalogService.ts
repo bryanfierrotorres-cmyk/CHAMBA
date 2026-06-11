@@ -63,14 +63,15 @@ const parsePreciosRows = (raw: unknown): PrecioCatalogoRow[] => {
       const price = Number(row.suggested_price);
       const ratio = Number(row.min_price_ratio);
       if (!slug || !Number.isFinite(price) || price < 0) return null;
-      return {
+      const parsed: PrecioCatalogoRow = {
         service_slug: slug,
         suggested_price: price,
         min_price_ratio: Number.isFinite(ratio) && ratio > 0 && ratio <= 1 ? ratio : 0.5,
-        updated_at: row.updated_at ? String(row.updated_at) : undefined,
-      } satisfies PrecioCatalogoRow;
+      };
+      if (row.updated_at) parsed.updated_at = String(row.updated_at);
+      return parsed;
     })
-    .filter((row): row is PrecioCatalogoRow => row !== null);
+    .filter((row): row is PrecioCatalogoRow => row != null);
 };
 
 export const mapPreciosRowsToMap = (rows: PrecioCatalogoRow[]): PreciosCatalogoMap => {

@@ -13,6 +13,7 @@ import {
   ActivityIndicator, Alert, Platform, Image,
 } from 'react-native';
 import { safePersistPilotProfile } from '@utils/pilotProfileStorage';
+import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -120,6 +121,7 @@ export const WorkerOnboardingScreen: React.FC = () => {
   const navigation = useNavigation();
   const profile    = useAuthStore((s) => s.profile);
   const setProfile = useAuthStore((s) => s.setProfile);
+  const { signOut } = useAuthStore();
   const { serviceTypes, getLabel, getEmoji } = useCatalog();
   const groupedSpecialties = useMemo(
     () => buildGroupedServiceTypes(serviceTypes),
@@ -274,6 +276,8 @@ export const WorkerOnboardingScreen: React.FC = () => {
         category_2_approved: false,
       };
 
+      await ensurePhoneAuthSession(profile!);
+
       // Try to persist in Supabase; if RLS blocks it, fall back to local store only
       const { error: updateErr } = await supabase
         .from('profiles')
@@ -309,14 +313,50 @@ export const WorkerOnboardingScreen: React.FC = () => {
   const canGoStep3 = canGoStep2;
   const canSubmit  = canGoStep2 && !!cat1;
 
+  const handleHeaderBack = () => {
+    if (canGoBack) {
+      navigation.goBack();
+      return;
+    }
+    if (step > 1) {
+      setStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3) : s));
+      return;
+    }
+  };
+
+  const handleExitToLogin = () => {
+    const go = () => { void signOut(); };
+    if (Platform.OS === 'web') {
+      if (window.confirm('¿Salir y volver al inicio de sesión?')) go();
+      return;
+    }
+    Alert.alert(
+      'Volver al inicio',
+      '¿Salir y volver a la pantalla de ingreso? Podés entrar con otro rol o número.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Salir', style: 'destructive', onPress: go },
+      ],
+    );
+  };
+
+  const showHeaderBack = canGoBack || step > 1;
+
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        {canGoBack && (
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        {showHeaderBack ? (
+          <TouchableOpacity
+            onPress={handleHeaderBack}
+            style={styles.backBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Volver al paso anterior"
+          >
             <Ionicons name="arrow-back" size={22} color={COLORS.text.primary} />
           </TouchableOpacity>
+        ) : (
+          <View style={styles.backBtnPlaceholder} />
         )}
         <View style={styles.logoRow}>
           <Ionicons name="flash" size={22} color={COLORS.brand[500]} />
@@ -379,13 +419,20 @@ export const WorkerOnboardingScreen: React.FC = () => {
               </Text>
             </View>
 
-            <TouchableOpacity
-              onPress={() => setStep(2)}
-              disabled={!canGoStep2}
-              style={[styles.nextBtn, !canGoStep2 && styles.nextBtnDisabled]}
-            >
-              <Text style={styles.nextBtnText}>Siguiente →</Text>
-            </TouchableOpacity>
+            <View style={styles.navRow}>
+              {!canGoBack && (
+                <TouchableOpacity onPress={handleExitToLogin} style={styles.navBackBtn}>
+                  <Text style={styles.backBtnText}>← Salir</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={() => setStep(2)}
+                disabled={!canGoStep2}
+                style={[styles.nextBtn, !canGoBack ? { flex: 1 } : null, !canGoStep2 && styles.nextBtnDisabled]}
+              >
+                <Text style={styles.nextBtnText}>Siguiente →</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -512,6 +559,11 @@ const styles = StyleSheet.create({
     width: 36, height: 36, borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center', justifyContent: 'center',
+    marginBottom: SPACING.sm,
+  },
+  backBtnPlaceholder: {
+    width: 36,
+    height: 36,
     marginBottom: SPACING.sm,
   },
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.md },

@@ -178,6 +178,38 @@ export const fetchProfileByPhoneQuick = async (
 };
 
 /**
+ * Combina fila remota con perfil local sin perder onboarding ya enviado
+ * (documentos/categorías cuando el UPDATE a BD falló por RLS o sesión).
+ */
+export const mergeProfileFromDatabase = (
+  local: UserProfile,
+  remote: UserProfile,
+): UserProfile => {
+  const localOnboardingSent =
+    local.worker_status === 'pending_approval'
+    || (!!local.cedula_url && !!local.record_policia_url && !!local.category_1);
+
+  const merged: UserProfile = {
+    ...remote,
+    role: remote.role === 'admin' ? remote.role : local.role,
+    full_name: local.full_name || remote.full_name,
+    is_approved: !!remote.is_approved,
+    cedula_url: remote.cedula_url ?? local.cedula_url,
+    record_policia_url: remote.record_policia_url ?? local.record_policia_url,
+    category_1: remote.category_1 ?? local.category_1,
+    category_2: remote.category_2 ?? local.category_2,
+    category_1_approved: remote.category_1_approved ?? local.category_1_approved,
+    category_2_approved: remote.category_2_approved ?? local.category_2_approved,
+    worker_status:
+      localOnboardingSent && remote.worker_status === 'incomplete'
+        ? (local.worker_status ?? 'pending_approval')
+        : (remote.worker_status ?? local.worker_status),
+  };
+
+  return merged;
+};
+
+/**
  * Si el teléfono ya existe en Supabase, usa ese perfil (ID canónico).
  * Evita que "Luis Papa" quede con UUID local distinto a "luis papa" en BD.
  */
@@ -192,12 +224,7 @@ export const syncProfileWithDatabase = async (
   try {
     const byPhone = await fetchProfileByPhone(phone);
     if (byPhone) {
-      const merged: UserProfile = {
-        ...byPhone,
-        role: byPhone.role === 'admin' ? byPhone.role : profile.role,
-        full_name: profile.full_name || byPhone.full_name,
-        is_approved: !!byPhone.is_approved,
-      };
+      const merged = mergeProfileFromDatabase(profile, byPhone);
       return merged.role === 'worker' ? applyPilotProfile(merged) : merged;
     }
   } catch {

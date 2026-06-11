@@ -34,6 +34,15 @@ const WALLET_EARNINGS_SELECT = `
   )
 `;
 
+type WalletJobRow = {
+  id: string;
+  title: string;
+  category: JobCategory;
+  status: string;
+  worker_payout: number;
+  updated_at: string;
+};
+
 type WalletRow = {
   id: string;
   job_id: string;
@@ -41,14 +50,21 @@ type WalletRow = {
   assigned_at: string;
   completed_at: string | null;
   payment_status: WorkerWalletPaymentStatus;
-  job: {
-    id: string;
-    title: string;
-    category: JobCategory;
-    status: string;
-    worker_payout: number;
-    updated_at: string;
-  };
+  job: WalletJobRow;
+};
+
+const normalizeWalletRow = (raw: {
+  id: string;
+  job_id: string;
+  worker_id: string;
+  assigned_at: string;
+  completed_at: string | null;
+  payment_status: WorkerWalletPaymentStatus;
+  job: WalletJobRow | WalletJobRow[] | null;
+}): WalletRow | null => {
+  const job = Array.isArray(raw.job) ? raw.job[0] : raw.job;
+  if (!job) return null;
+  return { ...raw, job };
 };
 
 const mapWalletRow = (row: WalletRow): WorkerWalletEarning => ({
@@ -84,5 +100,8 @@ export const fetchWorkerWalletEarnings = async (
     throw new Error(error.message);
   }
 
-  return ((data ?? []) as WalletRow[]).map(mapWalletRow);
+  return (data ?? [])
+    .map((row) => normalizeWalletRow(row as Parameters<typeof normalizeWalletRow>[0]))
+    .filter((row): row is WalletRow => row != null)
+    .map(mapWalletRow);
 };

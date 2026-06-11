@@ -12,6 +12,7 @@ export const CHAMBA = {
   cyan: '#00F2FE',
   blue: '#0284C7',
   teal: '#0D9488',
+  error: '#EF4444',
   /** Fondo de contenedores de toggles y segmentos */
   toggleBg: '#F3F4F6',
   border: '#E2E8F0',
@@ -180,6 +181,16 @@ export const chambaStyles = StyleSheet.create({
     borderColor: CHAMBA.border,
     paddingHorizontal: 14,
     ...CARD_STEP_SHADOW,
+  },
+  formInputRowError: {
+    borderColor: '#EF4444',
+    backgroundColor: '#FEF2F2',
+  },
+  errorText: {
+    fontSize: 12,
+    color: '#EF4444',
+    marginTop: 4,
+    fontWeight: '500',
   },
   priceLine: {
     fontSize: 13,

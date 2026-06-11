@@ -12,6 +12,15 @@ export const JOB_STATUS = {
 
 export type JobStatusValue = (typeof JOB_STATUS)[keyof typeof JOB_STATUS];
 
+/** Estados que cierran el ciclo de vida de una chamba. */
+export const TERMINAL_STATUSES: JobStatusValue[] = [
+  JOB_STATUS.COMPLETED,
+  JOB_STATUS.CANCELLED,
+];
+
+export const isTerminalStatus = (status: string | null | undefined): boolean =>
+  TERMINAL_STATUSES.includes(status as JobStatusValue);
+
 export const SELECTION_STATUS = {
   PENDING: 'pending',
   APPROVED: 'approved',

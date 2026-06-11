@@ -96,6 +96,7 @@ export const WorkerNavigator: React.FC = () => {
   const needsOnboarding =
     profile?.role === 'worker' &&
     !profile.is_approved &&
+    profile.worker_status !== 'pending_approval' &&
     (profile.cedula_url == null || profile.record_policia_url == null);
 
   const isPendingApproval =

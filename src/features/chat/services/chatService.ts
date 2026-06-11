@@ -31,12 +31,23 @@ const ensureActorSession = async (profile: UserProfile): Promise<string> => {
 };
 
 const isMissingRpc = (err: { code?: string; message?: string } | null): boolean =>
-  !!err && (
-    err.code === 'PGRST202'
-    || err.message?.includes('Could not find the function')
-    || err.message?.includes('send_job_chat_message')
-    || err.message?.includes('get_job_chat_messages')
+  Boolean(
+    err && (
+      err.code === 'PGRST202'
+      || err.message?.includes('Could not find the function')
+      || err.message?.includes('send_job_chat_message')
+      || err.message?.includes('get_job_chat_messages')
+    ),
   );
+
+type ProfileJoin = { id: string; full_name: string; avatar_url: string | null };
+
+const unwrapProfileJoin = (
+  value: ProfileJoin | ProfileJoin[] | null | undefined,
+): ProfileJoin | null => {
+  if (!value) return null;
+  return Array.isArray(value) ? value[0] ?? null : value;
+};
 
 export async function fetchJobChatContext(jobId: string): Promise<JobChatContext | null> {
   const { data, error } = await supabase
@@ -59,8 +70,12 @@ export async function fetchJobChatContext(jobId: string): Promise<JobChatContext
     return null;
   }
 
-  const creator = data.creator as { id: string; full_name: string; avatar_url: string | null } | null;
-  const worker = data.worker as { id: string; full_name: string; avatar_url: string | null } | null;
+  const creator = unwrapProfileJoin(
+    data.creator as ProfileJoin | ProfileJoin[] | null | undefined,
+  );
+  const worker = unwrapProfileJoin(
+    data.worker as ProfileJoin | ProfileJoin[] | null | undefined,
+  );
 
   return {
     jobId: data.id,

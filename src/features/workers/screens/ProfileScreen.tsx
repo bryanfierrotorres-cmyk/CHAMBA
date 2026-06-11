@@ -23,7 +23,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { isPilotDocumentBypass } from '@constants/pilot';
 import { useAuthStore }          from '@store/authStore';
 import { useProfileStore }       from '@store/profileStore';
-import type { ProfileStackParamList, JobCategory } from '@/types';
+import type { ProfileStackParamList, JobCategory, JobAssignment } from '@/types';
 import { uploadAvatar, updateProfile } from '@features/auth/services/authService';
 import { subscribeToWorkerProfile }    from '../services/profileService';
 import { WorkerReviewsPanel }          from '@features/reviews/components/WorkerReviewsPanel';
@@ -228,7 +228,7 @@ export const ProfileScreen: React.FC = () => {
   const ratingDisplay = formatRatingAvg(workerProfile?.rating_avg);
   const reviewCount = workerProfile?.total_reviews ?? 0;
 
-  const acceptedCount = myJobs.filter((a) =>
+  const acceptedCount = myJobs.filter((a: JobAssignment) =>
     a.selection_status !== 'rejected' && (
       isWorkerCommitmentActive(a)
       || isWorkerPendingClientSelection(a)

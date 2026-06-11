@@ -70,9 +70,10 @@ export function useJobChat(jobId: string) {
 
   const appendMessage = useCallback(
     (msg: ServiceMessage) => {
-      queryClient.setQueryData<ServiceMessage[]>(jobChatMessagesKey(jobId), (old = []) => {
-        if (old.some((m) => m.id === msg.id)) return old;
-        return [...old, msg].sort(
+      queryClient.setQueryData<ServiceMessage[]>(jobChatMessagesKey(jobId), (old: ServiceMessage[] | undefined) => {
+        const current = old ?? [];
+        if (current.some((m) => m.id === msg.id)) return current;
+        return [...current, msg].sort(
           (a, b) => new Date(a.creado_al).getTime() - new Date(b.creado_al).getTime(),
         );
       });

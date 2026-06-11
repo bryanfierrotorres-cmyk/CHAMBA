@@ -153,7 +153,7 @@ function getFocusedNestedRouteName(route: NavRoute): string | undefined {
 const ClientTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) => {
   const insets = useSafeAreaInsets();
   const activeTab = state.routes[state.index];
-  const nestedRoute = getFocusedNestedRouteName(activeTab);
+  const nestedRoute = getFocusedNestedRouteName(activeTab as NavRoute);
 
   if (nestedRoute === 'CreateJobForm') {
     return null;
