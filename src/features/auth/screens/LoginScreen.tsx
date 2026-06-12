@@ -40,7 +40,6 @@ const COMPACT_BREAKPOINT = LOGIN_SCREEN_LAYOUT.compactBreakpoint;
 const ROLE_TOGGLE_OPTIONS: { id: UserRole; label: string }[] = [
   { id: 'client', label: 'Cliente' },
   { id: 'worker', label: 'Trabajador' },
-  { id: 'admin', label: 'Administrador' },
 ];
 
 // ─── Premium field ─────────────────────────────────────────────────
@@ -145,7 +144,7 @@ export const LoginScreen: React.FC = () => {
     logoTapCount.current += 1;
     if (logoTapTimer.current) clearTimeout(logoTapTimer.current);
     logoTapTimer.current = setTimeout(() => { logoTapCount.current = 0; }, 2000);
-    if (logoTapCount.current >= 5) {
+    if (logoTapCount.current >= 2) {
       logoTapCount.current = 0;
       setAdminLoginVisible(true);
     }
