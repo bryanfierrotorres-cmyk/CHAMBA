@@ -40,6 +40,7 @@ const COMPACT_BREAKPOINT = LOGIN_SCREEN_LAYOUT.compactBreakpoint;
 const ROLE_TOGGLE_OPTIONS: { id: UserRole; label: string }[] = [
   { id: 'client', label: 'Cliente' },
   { id: 'worker', label: 'Trabajador' },
+  { id: 'admin', label: 'Administrador' },
 ];
 
 // ─── Premium field ─────────────────────────────────────────────────
@@ -93,6 +94,8 @@ const PremiumField: React.FC<PremiumFieldProps> = ({
   );
 };
 
+import { AdminLoginModal } from './AdminLoginModal';
+
 // ─── Main screen ───────────────────────────────────────────────────
 
 export const LoginScreen: React.FC = () => {
@@ -101,6 +104,9 @@ export const LoginScreen: React.FC = () => {
   const isCompactLayout = screenWidth < COMPACT_BREAKPOINT;
 
   const { error, setError, registerPhoneProfile, requestPhoneLoginOtp } = useAuthStore();
+  const [adminLoginVisible, setAdminLoginVisible] = useState(false);
+  const logoTapCount = useRef(0);
+  const logoTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
@@ -134,6 +140,16 @@ export const LoginScreen: React.FC = () => {
     roleHintOp.setValue(0);
     Animated.timing(roleHintOp, { toValue: 1, duration: 220, useNativeDriver: true }).start();
   }, [role, roleHintOp]);
+
+  const handleLogoTap = () => {
+    logoTapCount.current += 1;
+    if (logoTapTimer.current) clearTimeout(logoTapTimer.current);
+    logoTapTimer.current = setTimeout(() => { logoTapCount.current = 0; }, 2000);
+    if (logoTapCount.current >= 5) {
+      logoTapCount.current = 0;
+      setAdminLoginVisible(true);
+    }
+  };
 
   const shake = () =>
     Animated.sequence([
@@ -245,7 +261,8 @@ export const LoginScreen: React.FC = () => {
             >
               <TouchableOpacity
                 style={styles.logoWrap}
-                activeOpacity={1}
+                onPress={handleLogoTap}
+                activeOpacity={0.8}
                 accessibilityLabel="Logo CHAMBA"
               >
                   <LinearGradient
@@ -409,6 +426,11 @@ export const LoginScreen: React.FC = () => {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <AdminLoginModal
+        visible={adminLoginVisible}
+        onClose={() => setAdminLoginVisible(false)}
+      />
     </View>
   );
 };
