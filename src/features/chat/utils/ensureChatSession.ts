@@ -1,7 +1,6 @@
 import { Alert, Platform } from 'react-native';
 import { useAuthStore } from '@store/authStore';
-import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
-import { persistPilotProfileIfChanged, syncProfileWithDatabase } from '@utils/profileSync';
+import { syncProfileWithDatabase } from '@utils/profileSync';
 import type { UserProfile } from '@/types';
 
 /**
@@ -11,20 +10,12 @@ export async function ensureChatSessionForProfile(
   profile: UserProfile,
 ): Promise<boolean> {
   const synced = await syncProfileWithDatabase(profile);
-  await persistPilotProfileIfChanged(profile, synced);
 
   if (synced.id !== profile.id || synced.is_approved !== profile.is_approved) {
     useAuthStore.getState().setProfile(synced);
   }
 
-  const session = await ensurePhoneAuthSession(synced);
-  if (!session?.access_token) {
-    return false;
-  }
-
   const store = useAuthStore.getState();
-  store.setSession(session);
-  store.setPhoneAuth(false);
   return true;
 }
 

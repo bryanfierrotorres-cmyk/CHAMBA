@@ -19,7 +19,7 @@ const webLinking: LinkingOptions<RootStackParamList> | undefined =
   Platform.OS === 'web' ? { enabled: false, prefixes: [] } : undefined;
 
 export const RootNavigator: React.FC = () => {
-  const { profile, session, isPhoneAuth } = useAuthStore();
+  const { profile, session } = useAuthStore();
   const { loadProfile, loadStats }       = useProfileStore();
   const [splashDone, setSplashDone]      = useState(false);
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
@@ -58,9 +58,9 @@ export const RootNavigator: React.FC = () => {
     );
   }
 
-  /** Ingreso por nombre + celular (piloto) o sesión Supabase. */
+  /** Autenticado si hay perfil con sesión Supabase. */
   const isAuthenticated =
-    !!profile && (!!session?.access_token || isPhoneAuth);
+    !!profile && !!session?.access_token;
 
   // ── Pick the right navigator based on role ───────────────────
   //

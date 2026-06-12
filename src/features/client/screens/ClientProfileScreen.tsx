@@ -21,7 +21,6 @@ import { webMinViewportStyle } from '@constants/webMobileLayout';
 import { openWhatsAppSupport } from '@utils/whatsappSupport';
 import { useSupportBubbleScrollHandlers } from '@hooks/useSupportBubbleScrollHandlers';
 import { pickProfileAvatarUri, showProfileAvatarError } from '@utils/profileAvatarPicker';
-import { safePersistPilotProfile } from '@utils/pilotProfileStorage';
 import { uploadAvatar, updateProfile } from '@features/auth/services/authService';
 import type { ClientTabParamList } from '@/types';
 
@@ -54,7 +53,6 @@ export const ClientProfileScreen: React.FC = () => {
 
       setProfile(updatedProfile);
       setAvatarPreview(url);
-      await safePersistPilotProfile(updatedProfile);
 
       try {
         await updateProfile(profile.id, { avatar_url: url });

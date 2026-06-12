@@ -1,20 +1,6 @@
 import { supabase } from '@services/supabase';
-import { CONFIG } from '@constants/config';
-import { pilotPhoneEmail, getPilotProfileId } from '@constants/pilot';
 import { withTimeout } from '@utils/withTimeout';
-
-export { pilotPhoneEmail };
-import { applyPilotProfile } from '@utils/pilotAccess';
-import { useAuthStore } from '@store/authStore';
-import { migrateLocalAssignmentsWorkerId } from '@utils/localAssignments';
-import {
-  PILOT_STORAGE_KEY,
-  safePersistPilotProfile,
-} from '@utils/pilotProfileStorage';
 import type { UserProfile, UserRole } from '@/types';
-
-// Re-export for compat
-export { PILOT_STORAGE_KEY };
 
 type SyncableProfile = Pick<
   UserProfile,
@@ -71,7 +57,6 @@ export const invalidateProfilePhoneCache = (phone?: string): void => {
   else profileByPhoneCache.clear();
 };
 
-/** Busca perfil por teléfono; distingue «no existe» de «servidor caído». */
 export const lookupProfileByPhone = async (
   phone: string,
   timeoutMs = PROFILE_PHONE_FETCH_MS,
@@ -153,7 +138,6 @@ export const lookupProfileByPhone = async (
   return cacheNotFound();
 };
 
-/** Busca perfil en BD por teléfono (RPC SECURITY DEFINER o SELECT directo). */
 export const fetchProfileByPhone = async (
   phone: string,
 ): Promise<UserProfile | null> => {
@@ -162,7 +146,6 @@ export const fetchProfileByPhone = async (
   return null;
 };
 
-/** Login: lookup con timeout; no cachea fallos de servidor como «no registrado». */
 export const fetchProfileByPhoneQuick = async (
   phone: string,
   timeoutMs = 8_000,
@@ -177,10 +160,6 @@ export const fetchProfileByPhoneQuick = async (
   return null;
 };
 
-/**
- * Combina fila remota con perfil local sin perder onboarding ya enviado
- * (documentos/categorías cuando el UPDATE a BD falló por RLS o sesión).
- */
 export const mergeProfileFromDatabase = (
   local: UserProfile,
   remote: UserProfile,
@@ -209,60 +188,33 @@ export const mergeProfileFromDatabase = (
   return merged;
 };
 
-/**
- * Si el teléfono ya existe en Supabase, usa ese perfil (ID canónico).
- * Evita que "Luis Papa" quede con UUID local distinto a "luis papa" en BD.
- */
 export const syncProfileWithDatabase = async (
   profile: UserProfile,
 ): Promise<UserProfile> => {
   const phone = normalizePhone(profile.phone);
-  if (!phone) {
-    return profile.role === 'worker' ? applyPilotProfile(profile) : profile;
-  }
+  if (!phone) return profile;
 
   try {
     const byPhone = await fetchProfileByPhone(phone);
     if (byPhone) {
-      const merged = mergeProfileFromDatabase(profile, byPhone);
-      return merged.role === 'worker' ? applyPilotProfile(merged) : merged;
+      return mergeProfileFromDatabase(profile, byPhone);
     }
   } catch {
     // Sin red: conservar perfil local
   }
 
-  return profile.role === 'worker' ? applyPilotProfile(profile) : profile;
+  return profile;
 };
 
-/** Alinea el perfil local con el ID canónico de Supabase antes de aceptar chambas. */
 export const resolveWorkerProfileForActions = async (
   profile: UserProfile,
 ): Promise<UserProfile> => syncProfileWithDatabase(profile);
 
-/** Persiste perfil corregido en store + AsyncStorage (login por teléfono). */
-export const persistPilotProfileIfChanged = async (
-  before: UserProfile,
-  after: UserProfile,
-): Promise<void> => {
-  if (before.id === after.id) return;
-  await migrateLocalAssignmentsWorkerId(before.id, after.id);
-  await safePersistPilotProfile(after);
-  useAuthStore.getState().setProfile(after);
-  useAuthStore.getState().setPhoneAuth(true);
-};
-
-/**
- * Alinea el perfil con auth.uid() en Supabase (RLS usa is_approved de la BD).
- * En piloto, marca al técnico como aprobado y categorías habilitadas.
- */
 export const ensureProfileInDb = async (profile: UserProfile): Promise<void> => {
   const { data: { session } } = await supabase.auth.getSession();
   const canonicalId = session?.user?.id ?? profile.id;
 
-  let effective: UserProfile = { ...profile, id: canonicalId };
-  if (effective.role === 'worker' && CONFIG.pilot.enabled) {
-    effective = applyPilotProfile(effective);
-  }
+  const effective: UserProfile = { ...profile, id: canonicalId };
   const phone = normalizePhone(effective.phone);
   const dbRole = toDbRole(effective.role);
 
@@ -270,10 +222,9 @@ export const ensureProfileInDb = async (profile: UserProfile): Promise<void> => 
     id:          canonicalId,
     full_name:   effective.full_name.trim(),
     phone:       phone || null,
-    email:       effective.email ?? pilotPhoneEmail(phone || canonicalId.replace(/-/g, '')),
+    email:       effective.email ?? '',
     role:        dbRole,
-    is_approved:
-      effective.role === 'admin' ? true : !!effective.is_approved,
+    is_approved: effective.role === 'admin' ? true : !!effective.is_approved,
   };
 
   if (effective.role === 'worker') {
@@ -290,102 +241,6 @@ export const ensureProfileInDb = async (profile: UserProfile): Promise<void> => 
   }
 };
 
-/**
- * ID canónico del admin en Supabase (auth.uid o perfil por teléfono).
- * Necesario en piloto: el store local puede tener un UUID distinto al de la BD.
- */
-export const resolveAdminActorProfile = async (
-  profile: UserProfile,
-): Promise<UserProfile> => {
-  const phoneCandidates = [
-    normalizePhone(profile.phone),
-    normalizePhone(CONFIG.pilot.admin.phone),
-  ].filter((p, i, arr) => p.length > 0 && arr.indexOf(p) === i);
-
-  for (const phone of phoneCandidates) {
-    const byPhone = await fetchProfileByPhone(phone);
-    if (byPhone?.role === 'admin') {
-      const resolved: UserProfile = {
-        ...byPhone,
-        role: 'admin',
-        is_approved: true,
-      };
-      await persistPilotProfileIfChanged(profile, resolved);
-      return resolved;
-    }
-  }
-
-  let { data: { session } } = await supabase.auth.getSession();
-  if (!session?.user?.id && CONFIG.pilot.enabled) {
-    const creds = CONFIG.pilot.admin;
-    if (creds.email && creds.password) {
-      try {
-        const { data } = await supabase.auth.signInWithPassword({
-          email: creds.email,
-          password: creds.password,
-        });
-        session = data.session;
-      } catch {
-        // Sin red o credenciales inválidas
-      }
-    }
-  }
-
-  const canonicalId = session?.user?.id ?? getPilotProfileId('admin') ?? profile.id;
-  const effective: UserProfile = {
-    ...profile,
-    id: canonicalId,
-    role: 'admin',
-    is_approved: true,
-    phone: profile.phone || CONFIG.pilot.admin.phone,
-    email: profile.email || CONFIG.pilot.admin.email,
-    full_name: profile.full_name || CONFIG.pilot.admin.fullName,
-  };
-
-  await ensureProfileInDb(effective);
-  invalidateProfilePhoneCache();
-
-  for (const phone of phoneCandidates) {
-    const byPhone = await fetchProfileByPhone(phone);
-    if (byPhone?.role === 'admin') {
-      const resolved: UserProfile = {
-        ...byPhone,
-        role: 'admin',
-        is_approved: true,
-      };
-      await persistPilotProfileIfChanged(profile, resolved);
-      return resolved;
-    }
-  }
-
-  if (session?.user?.id) {
-    const { data: row } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', session.user.id)
-      .maybeSingle();
-    if (row) {
-      const resolved: UserProfile = {
-        ...(row as UserProfile),
-        role: 'admin',
-        is_approved: true,
-      };
-      await persistPilotProfileIfChanged(profile, resolved);
-      return resolved;
-    }
-    const fallback: UserProfile = { ...effective, id: session.user.id };
-    await persistPilotProfileIfChanged(profile, fallback);
-    return fallback;
-  }
-
-  await persistPilotProfileIfChanged(profile, effective);
-  return effective;
-};
-
-/** @deprecated Usar ensureProfileInDb */
-export const ensureWorkerProfileInDb = ensureProfileInDb;
-
-/** Busca coincidencia exacta nombre+teléfono (case-insensitive). */
 export const findExactProfileMatch = (
   matches: UserProfile[],
   fullName: string,
@@ -395,11 +250,41 @@ export const findExactProfileMatch = (
     (r) => namesMatch(r.full_name ?? '', fullName) && phonesMatch(r.phone, phone),
   );
 
-/** Si solo hay un perfil con ese teléfono, reutilizarlo (piloto). */
 export const findProfileByPhone = (
   matches: UserProfile[],
   phone: string,
 ): UserProfile | undefined => {
   const byPhone = matches.filter((r) => phonesMatch(r.phone, phone));
   return byPhone.length === 1 ? byPhone[0] : undefined;
+};
+
+/**
+ * Resuelve el perfil del admin para acciones (publicar jobs, etc.).
+ * Busca por teléfono o sesión activa.
+ */
+export const resolveAdminActorProfile = async (
+  profile: UserProfile,
+): Promise<UserProfile> => {
+  const phone = normalizePhone(profile.phone);
+  if (phone) {
+    const byPhone = await fetchProfileByPhone(phone);
+    if (byPhone?.role === 'admin') {
+      return { ...byPhone, role: 'admin', is_approved: true };
+    }
+  }
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.user?.id) {
+    const { data: row } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', session.user.id)
+      .maybeSingle();
+    if (row) {
+      return { ...(row as UserProfile), role: 'admin', is_approved: true };
+    }
+    return { ...profile, id: session.user.id, role: 'admin', is_approved: true };
+  }
+
+  return { ...profile, role: 'admin', is_approved: true };
 };

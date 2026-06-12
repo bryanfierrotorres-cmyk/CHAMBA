@@ -39,7 +39,6 @@ import {
   getLocalAssignments,
 } from '@utils/localAssignments';
 
-import { CONFIG } from '@constants/config';
 import { QUERY_STALE_FEED_MS } from '@constants/queryCache';
 import { workerActiveCountKey } from '@features/jobs/hooks/useJobActiveLimits';
 import { isWorkerPendingClientSelection } from '@utils/jobActiveLimits';
@@ -47,7 +46,6 @@ import { WALLET_KEYS } from '@features/jobs/hooks/useWorkerWallet';
 import { fromDbJobCategory } from '@constants/chambaCategories';
 import { workerCoversJobCategory } from '@utils/workerCategoryAccess';
 import { syncProfileWithDatabase } from '@utils/profileSync';
-import { clearMismatchedAuthSession, ensurePhoneAuthSession } from '@utils/phoneAuthSession';
 
 import type {
   JobCategory,
@@ -156,24 +154,15 @@ export const useJobFeed = (
     queryKey: [...JOB_KEYS.feed(status, category), categories, profile?.id, profile?.is_approved],
 
     queryFn: async ({ pageParam = 0 }) => {
+      let workerId: string | undefined;
       if (profile?.role === 'worker' && profile) {
-        const synced = await syncProfileWithDatabase(profile);
-        if (
-          synced.id !== profile.id
-          || synced.is_approved !== profile.is_approved
-          || synced.category_1 !== profile.category_1
-          || synced.category_2 !== profile.category_2
-        ) {
-          useAuthStore.getState().setProfile(synced);
-        }
-        await clearMismatchedAuthSession(synced);
-        await ensurePhoneAuthSession(synced);
+        workerId = profile.id;
         return fetchJobs({
           status,
           category,
           categories,
           page: pageParam as number,
-          workerId: synced.id,
+          workerId,
         });
       }
       return fetchJobs({
@@ -234,9 +223,6 @@ export const useJobFeed = (
         useAuthStore.getState().setProfile(synced);
       }
 
-      await ensurePhoneAuthSession(synced);
-      if (cancelled) return;
-
       teardown = subscribeToWorkerRadarJobs(({ job, eventType }) => {
         if (eventType === 'DELETE' || job.status !== 'open') {
           removeJob(job.id);
@@ -256,6 +242,7 @@ export const useJobFeed = (
     return () => {
       cancelled = true;
       teardown?.();
+      teardown = undefined;
     };
 
   }, [
@@ -334,7 +321,6 @@ export const useMyJobs = () => {
       if (synced.id !== profile.id || synced.is_approved !== profile.is_approved) {
         useAuthStore.getState().setProfile(synced);
       }
-      await ensurePhoneAuthSession(synced);
       return fetchWorkerAssignments(synced.id, synced);
     },
 
@@ -615,8 +601,6 @@ export const useAcceptJob = () => {
         return await acceptJob(jobId, profile!.id, profile ?? undefined, job ?? null);
 
       } catch (err) {
-
-        if (!CONFIG.pilot.enabled) throw err;
 
         const workerId = useAuthStore.getState().profile?.id ?? profile!.id;
 

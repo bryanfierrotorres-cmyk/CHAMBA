@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
-  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -57,7 +56,6 @@ import {
 } from '@constants/clientHomeHeroSlides';
 import type { ServiceType } from '@features/catalog/types';
 import { useClientPublishLimit } from '@features/jobs/hooks/useJobActiveLimits';
-import { CONFIG } from '@constants/config';
 import type { ClientStackParamList } from '@/types';
 
 type Nav = NativeStackNavigationProp<ClientStackParamList, 'CategoryGrid'>;
@@ -80,7 +78,6 @@ export const ClientHomeScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const profile = useAuthStore((s) => s.profile);
-  const pilotSignIn = useAuthStore((s) => s.pilotSignIn);
   const catalog = useCatalog();
   const publishLimit = useClientPublishLimit();
   const supportBubbleScroll = useSupportBubbleScrollHandlers();
@@ -89,30 +86,8 @@ export const ClientHomeScreen: React.FC = () => {
   const [selectedExpressCat, setSelectedExpressCat] = useState<ExpressSubmenu | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [b2bMode, setB2bMode] = useState<B2bHireMode>('jornadas');
-  const [adminAccessVisible, setAdminAccessVisible] = useState(false);
-  const [adminSigningIn, setAdminSigningIn] = useState(false);
 
   const firstName = profile?.full_name?.split(' ')[0] ?? 'Cliente';
-  const pilotModeEnabled = CONFIG.pilot.enabled;
-
-  const toggleAdminAccess = (): void => {
-    if (!pilotModeEnabled) return;
-    setAdminAccessVisible((v) => !v);
-  };
-
-  const handleAdminPilotSignIn = async (): Promise<void> => {
-    if (!pilotModeEnabled || adminSigningIn) return;
-    setAdminSigningIn(true);
-    try {
-      await pilotSignIn('admin');
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'No se pudo entrar como administrador';
-      if (Platform.OS === 'web') window.alert(msg);
-      else Alert.alert('Acceso administrador', msg);
-    } finally {
-      setAdminSigningIn(false);
-    }
-  };
 
   const handlePress = (slug: string, serviceLabel: string) => {
     if (publishLimit.atLimit) {
@@ -213,21 +188,8 @@ export const ClientHomeScreen: React.FC = () => {
               <Text style={styles.locationText}>Managua, Altamira</Text>
             </View>
             <View style={styles.logoCenter}>
-              {pilotModeEnabled ? (
-                <TouchableOpacity
-                  onPress={toggleAdminAccess}
-                  activeOpacity={0.65}
-                  style={styles.secretFlashHit}
-                  accessibilityLabel="Acceso oculto administrador"
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Ionicons name="flash" size={20} color="#FACC15" />
-                </TouchableOpacity>
-              ) : null}
               <TouchableOpacity
-                onPress={toggleAdminAccess}
                 activeOpacity={1}
-                disabled={!pilotModeEnabled}
                 accessibilityLabel="CHAMBA"
               >
                 <Text style={styles.logoText}>CHAMBA</Text>
@@ -235,21 +197,6 @@ export const ClientHomeScreen: React.FC = () => {
             </View>
             <Avatar uri={profile?.avatar_url} name={profile?.full_name ?? firstName} size={36} />
           </View>
-
-          {pilotModeEnabled && adminAccessVisible ? (
-            <TouchableOpacity
-              onPress={() => void handleAdminPilotSignIn()}
-              disabled={adminSigningIn}
-              style={styles.adminSecretBtn}
-              activeOpacity={0.6}
-            >
-              {adminSigningIn ? (
-                <ActivityIndicator color={CHAMBA.muted} size="small" />
-              ) : (
-                <Text style={styles.adminSecretBtnText}>Torre de Control</Text>
-              )}
-            </TouchableOpacity>
-          ) : null}
 
           <ChambaSlidingToggle<ActiveTab>
             options={[

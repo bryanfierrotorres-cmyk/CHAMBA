@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Image, Text, StyleProp, ViewStyle, ImageStyle } from 'react-native';
 import { COLORS } from '@constants/theme';
-import { isPilotDocumentBypass } from '@constants/pilot';
 
 interface AvatarProps {
   uri?: string | null;
@@ -11,7 +10,7 @@ interface AvatarProps {
 }
 
 const isDisplayableUri = (uri?: string | null): uri is string =>
-  !!uri && !isPilotDocumentBypass(uri) && uri.trim().length > 0;
+  !!uri && uri.trim().length > 0;
 
 export const Avatar: React.FC<AvatarProps> = ({ uri, name = '?', size = 40, style }) => {
   const [loadFailed, setLoadFailed] = useState(false);

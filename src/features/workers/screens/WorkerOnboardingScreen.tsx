@@ -12,8 +12,6 @@ import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Alert, Platform, Image,
 } from 'react-native';
-import { safePersistPilotProfile } from '@utils/pilotProfileStorage';
-import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,7 +19,6 @@ import { useNavigation } from '@react-navigation/native';
 import { supabase } from '@services/supabase';
 import { uploadWorkerDocument } from '../services/documentUploadService';
 import { showMessage } from '@utils/confirmAction';
-import { isPilotDocumentBypass } from '@constants/pilot';
 import { useAuthStore } from '@store/authStore';
 import { WORKER_COLORS as COLORS, M3, FONT_SIZE, SPACING, BORDER_RADIUS } from '@constants/workerTheme';
 import { useCatalog } from '@features/catalog/hooks/useCatalog';
@@ -147,11 +144,11 @@ export const WorkerOnboardingScreen: React.FC = () => {
 
   useEffect(() => {
     if (!profile) return;
-    if (profile.cedula_url && !isPilotDocumentBypass(profile.cedula_url)) {
+    if (profile.cedula_url) {
       setCedulaUrl(profile.cedula_url);
       setCedulaUri(profile.cedula_url);
     }
-    if (profile.record_policia_url && !isPilotDocumentBypass(profile.record_policia_url)) {
+    if (profile.record_policia_url) {
       setRecordUrl(profile.record_policia_url);
       setRecordUri(profile.record_policia_url);
     }
@@ -276,8 +273,6 @@ export const WorkerOnboardingScreen: React.FC = () => {
         category_2_approved: false,
       };
 
-      await ensurePhoneAuthSession(profile!);
-
       // Try to persist in Supabase; if RLS blocks it, fall back to local store only
       const { error: updateErr } = await supabase
         .from('profiles')
@@ -288,12 +283,8 @@ export const WorkerOnboardingScreen: React.FC = () => {
         console.warn('[Onboarding] Supabase update blocked, saving locally:', updateErr.message);
       }
 
-      // Always update local store + AsyncStorage so the admin modal can read docs
       const updatedProfile = { ...profile!, ...updates };
       setProfile(updatedProfile);
-
-      // Persist to AsyncStorage for phone-auth users
-      await safePersistPilotProfile(updatedProfile);
 
       const msg = 'Tus documentos fueron enviados. El administrador los revisará pronto.';
       if (Platform.OS === 'web') window.alert(msg);

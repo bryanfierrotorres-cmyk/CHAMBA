@@ -1,6 +1,7 @@
 import { supabase } from '@services/supabase';
 import { useAuthStore } from '@store/authStore';
 import { withTimeout } from '@utils/withTimeout';
+import { resolveAdminActorProfile } from '@utils/profileSync';
 import type { Job, JobModerationReason, UserProfile } from '@/types';
 
 export type AdminModerationReason = Exclude<JobModerationReason, 'admin'>;
@@ -19,6 +20,24 @@ const parseJsonArray = <T>(raw: unknown): T[] => {
     }
   }
   return [];
+};
+
+/** Alinea admin piloto (UUID local) con el perfil admin canónico en BD antes de RPC/RLS. */
+export const ensureAdminActorId = async (): Promise<string | undefined> => {
+  const profile = useAuthStore.getState().profile;
+  if (!profile || profile.role !== 'admin') return undefined;
+
+  let resolved = profile;
+  try {
+    resolved = await withTimeout(resolveAdminActorProfile(profile), RPC_TIMEOUT_MS);
+    if (resolved.id !== profile.id) {
+      useAuthStore.getState().setProfile(resolved);
+    }
+  } catch {
+    resolved = profile;
+  }
+
+  return resolved.id;
 };
 
 const adminActorId = (): string | undefined => useAuthStore.getState().profile?.id;
@@ -46,16 +65,16 @@ export interface AdminJob extends Job {
 
 /** Fetch all workers (for admin panel). */
 export const fetchAllWorkers = async (): Promise<UserProfile[]> => {
-  const adminId = adminActorId();
+  const adminId = await ensureAdminActorId();
   if (adminId) {
     try {
       const { data, error } = await withTimeout(
         supabase.rpc('get_admin_team_profiles', { p_admin_id: adminId, p_role: 'worker' }),
         RPC_TIMEOUT_MS,
       );
-      if (!error && data) {
+      if (!error && data != null) {
         const rows = parseJsonArray<UserProfile>(data);
-        if (rows.length > 0 || data !== null) return rows;
+        if (rows.length > 0) return rows;
       }
       if (error) console.warn('[fetchAllWorkers] RPC:', error.message);
     } catch (err) {
@@ -82,16 +101,16 @@ export const fetchAllWorkers = async (): Promise<UserProfile[]> => {
 
 /** Fetch all clients (registro con aprobación). */
 export const fetchAllClients = async (): Promise<UserProfile[]> => {
-  const adminId = adminActorId();
+  const adminId = await ensureAdminActorId();
   if (adminId) {
     try {
       const { data, error } = await withTimeout(
         supabase.rpc('get_admin_team_profiles', { p_admin_id: adminId, p_role: 'client' }),
         RPC_TIMEOUT_MS,
       );
-      if (!error && data) {
+      if (!error && data != null) {
         const rows = parseJsonArray<UserProfile>(data);
-        if (rows.length > 0 || data !== null) return rows;
+        if (rows.length > 0) return rows;
       }
       if (error) console.warn('[fetchAllClients] RPC:', error.message);
     } catch (err) {
@@ -121,7 +140,7 @@ export const toggleClientApproval = async (
   clientId: string,
   approve: boolean,
 ): Promise<void> => {
-  const adminId = adminActorId();
+  const adminId = (await ensureAdminActorId()) ?? adminActorId();
   if (adminId) {
     try {
       const { data, error } = await withTimeout(
@@ -160,7 +179,7 @@ export const toggleWorkerApproval = async (
   workerId: string,
   approve: boolean,
 ): Promise<void> => {
-  const adminId = adminActorId();
+  const adminId = (await ensureAdminActorId()) ?? adminActorId();
   if (adminId) {
     try {
       const { data, error } = await withTimeout(
@@ -200,7 +219,7 @@ export const approveWorkerCategory2 = async (
   workerId: string,
   approve: boolean,
 ): Promise<void> => {
-  const adminId = adminActorId();
+  const adminId = (await ensureAdminActorId()) ?? adminActorId();
   if (adminId) {
     try {
       const { data, error } = await withTimeout(
@@ -259,7 +278,7 @@ const parseAdminJobsRpc = (raw: unknown): AdminJob[] => {
 };
 
 export const fetchAdminJobs = async (): Promise<AdminJob[]> => {
-  const adminId = useAuthStore.getState().profile?.id;
+  const adminId = (await ensureAdminActorId()) ?? useAuthStore.getState().profile?.id;
 
   if (adminId) {
     try {

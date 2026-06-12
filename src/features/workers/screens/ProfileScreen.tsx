@@ -5,7 +5,6 @@ import {
   StyleSheet, Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { safePersistPilotProfile } from '@utils/pilotProfileStorage';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '@components/Avatar';
@@ -20,7 +19,6 @@ import {
 } from '@components/AvailabilitySelector';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { isPilotDocumentBypass } from '@constants/pilot';
 import { useAuthStore }          from '@store/authStore';
 import { useProfileStore }       from '@store/profileStore';
 import type { ProfileStackParamList, JobCategory, JobAssignment } from '@/types';
@@ -180,8 +178,6 @@ export const ProfileScreen: React.FC = () => {
 
       setProfile(updatedProfile);
       setAvatarPreview(url);
-
-      await safePersistPilotProfile(updatedProfile);
 
       try {
         await updateProfile(profile!.id, { avatar_url: url });
@@ -538,7 +534,7 @@ export const ProfileScreen: React.FC = () => {
             <ChambaMenuRow
               title="Mis documentos y especialidades"
               subtitle={
-                profile.cedula_url && !isPilotDocumentBypass(profile.cedula_url)
+                profile.cedula_url
                   ? 'Documentos enviados — toca para actualizar'
                   : 'Sube tu cédula y récord de policía'
               }

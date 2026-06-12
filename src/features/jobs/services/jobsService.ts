@@ -30,21 +30,17 @@ import {
   patchLocalJobStatus,
   patchLocalOperationalPhase,
 } from '@utils/localAssignments';
-import { CONFIG } from '@constants/config';
 import {
   getJobRadarMinCreatedAtIso,
   isJobExpiredLocally,
 } from '@constants/jobExpiry';
 import { workerCoversJobCategory } from '@utils/workerCategoryAccess';
 import {
-  ensureWorkerProfileInDb,
+  ensureProfileInDb,
   resolveWorkerProfileForActions,
-  persistPilotProfileIfChanged,
   syncProfileWithDatabase,
   normalizePhone,
-  pilotPhoneEmail,
 } from '@utils/profileSync';
-import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
 import {
   normalizeWorkerAssignmentRow,
   normalizeWorkerAssignmentRows,
@@ -70,8 +66,6 @@ type ClientProfileRef = Pick<
 /** ID canónico del cliente (perfil en BD por teléfono) antes de crear/listar. */
 export const resolveClientIdForJobs = async (profile: ClientProfileRef): Promise<string> => {
   const synced = await syncProfileWithDatabase(profile as UserProfile);
-  await persistPilotProfileIfChanged(profile as UserProfile, synced);
-  await ensurePhoneAuthSession(synced);
 
   const targetId = synced.id;
   const phone = normalizePhone(synced.phone);
@@ -81,7 +75,7 @@ export const resolveClientIdForJobs = async (profile: ClientProfileRef): Promise
       id:          targetId,
       full_name:   synced.full_name.trim(),
       phone:       phone || null,
-      email:       synced.email ?? pilotPhoneEmail(phone || targetId.replace(/-/g, '').slice(0, 12)),
+      email:       synced.email ?? '',
       role:        'client',
       is_approved: synced.is_approved ?? true,
     },
@@ -487,7 +481,6 @@ export const fetchWorkerAssignments = async (
     try {
       const synced = await syncProfileWithDatabase(profile);
       effectiveWorkerId = synced.id;
-      await ensurePhoneAuthSession(synced);
     } catch (err) {
       console.warn('[fetchWorkerAssignments] auth/sync:', err);
     }
@@ -665,9 +658,7 @@ const acceptJobPilotFallback = async (
     selection_status: 'pending',
   });
 
-  if (insertErr && CONFIG.pilot.enabled) {
-    console.warn('[acceptJobPilotFallback] insert assignment:', insertErr.message);
-  } else if (insertErr) {
+  if (insertErr) {
     throw new Error(insertErr.message);
   }
 
@@ -710,10 +701,6 @@ export const advanceOperationalPhase = async (
   if (workerCtx) {
     const resolved = await resolveWorkerProfileForActions(workerCtx);
     effectiveWorkerId = resolved.id;
-    await ensurePhoneAuthSession(resolved);
-    if (resolved.id !== workerCtx.id) {
-      await persistPilotProfileIfChanged(workerCtx, resolved);
-    }
   }
 
   const status = phaseToJobStatus(nextPhase);
@@ -789,10 +776,6 @@ export const completeJob = async (
   if (workerCtx) {
     const resolved = await resolveWorkerProfileForActions(workerCtx);
     effectiveWorkerId = resolved.id;
-    await ensurePhoneAuthSession(resolved);
-    if (resolved.id !== workerCtx.id) {
-      await persistPilotProfileIfChanged(workerCtx, resolved);
-    }
   }
 
   const now = new Date().toISOString();
@@ -895,8 +878,7 @@ export const acceptJob = async (
       const resolved = await resolveWorkerProfileForActions(workerCtx as UserProfile);
       effectiveWorkerId = resolved.id;
       effectiveCtx = resolved;
-      await persistPilotProfileIfChanged(workerCtx as UserProfile, resolved);
-      await ensureWorkerProfileInDb(resolved);
+      await ensureProfileInDb(resolved);
 
       const jobCat = jobSnapshot?.category;
       if (jobCat && !workerCoversJobCategory(resolved, jobCat)) {
@@ -916,14 +898,11 @@ export const acceptJob = async (
       rpc.error?.includes('aprobada') ||
       rpc.error?.includes('not found');
 
-    if (!rpc.ok && CONFIG.pilot.enabled && effectiveCtx && retriable) {
+    if (!rpc.ok && effectiveCtx && retriable) {
       const reResolved = await resolveWorkerProfileForActions(effectiveCtx as UserProfile);
       effectiveWorkerId = reResolved.id;
       effectiveCtx = reResolved;
-      if (workerCtx) {
-        await persistPilotProfileIfChanged(workerCtx as UserProfile, reResolved);
-      }
-      await ensureWorkerProfileInDb(reResolved);
+      await ensureProfileInDb(reResolved);
       rpc = await tryRpcAccept(jobId, effectiveWorkerId, applicantCoords);
     }
 
@@ -982,7 +961,7 @@ export const acceptJob = async (
         || rpc.error?.includes('taken')
         || rpc.error?.includes('lock');
 
-      if (takenError && CONFIG.pilot.enabled) {
+      if (takenError) {
         const remoteMine = (await fetchAssignmentsViaWorkerColumn(effectiveWorkerId))
           .find((a) => a.job_id === jobId);
         if (remoteMine) {
@@ -1002,9 +981,7 @@ export const acceptJob = async (
         throw new Error(WORKER_ACTIVE_COMMITMENTS_LIMIT_MESSAGE);
       }
 
-      if (!CONFIG.pilot.enabled) {
-        throw new Error(rpc.error ?? 'No se pudo postular al trabajo');
-      }
+      throw new Error(rpc.error ?? 'No se pudo postular al trabajo');
 
       const fallback = await acceptJobPilotFallback(jobId, effectiveWorkerId);
       assignmentId = fallback.assignmentId;
@@ -1044,23 +1021,6 @@ export const acceptJob = async (
       pendingClientSelection: selectionStatus === 'pending',
     };
   } catch (err) {
-    if (CONFIG.pilot.enabled) {
-      const fallbackJob = jobSnapshot ?? null;
-      const assignment = buildAssignment(
-        jobId,
-        effectiveWorkerId,
-        `${jobId}-${effectiveWorkerId}`,
-        fallbackJob,
-        'pending',
-      );
-      await upsertLocalAssignment(assignment, assignment.job ?? null);
-      return {
-        success: true,
-        assignmentId: assignment.id,
-        assignment,
-        pendingClientSelection: true,
-      };
-    }
     throw err;
   }
 };

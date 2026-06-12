@@ -24,19 +24,4 @@ export const CONFIG = {
     currencySymbol: 'C$',
     maxDistanceKm: 50,
   },
-  pilot: {
-    enabled: readPublicEnv('EXPO_PUBLIC_PILOT_MODE') !== 'false',
-    worker: {
-      email:    readPublicEnv('EXPO_PUBLIC_PILOT_WORKER_EMAIL'),
-      password: readPublicEnv('EXPO_PUBLIC_PILOT_WORKER_PASSWORD'),
-      fullName: readPublicEnv('EXPO_PUBLIC_PILOT_WORKER_NAME') || 'Trabajador Piloto',
-      phone:    readPublicEnv('EXPO_PUBLIC_PILOT_WORKER_PHONE'),
-    },
-    admin: {
-      email:    readPublicEnv('EXPO_PUBLIC_PILOT_ADMIN_EMAIL'),
-      password: readPublicEnv('EXPO_PUBLIC_PILOT_ADMIN_PASSWORD'),
-      fullName: readPublicEnv('EXPO_PUBLIC_PILOT_ADMIN_NAME') || 'Admin Piloto',
-      phone:    readPublicEnv('EXPO_PUBLIC_PILOT_ADMIN_PHONE'),
-    },
-  },
 } as const;

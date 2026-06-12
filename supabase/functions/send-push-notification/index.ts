@@ -33,6 +33,26 @@ serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    // ── JWT Verification ──────────────────────────────────────────
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(
+      authHeader.replace('Bearer ', ''),
+    );
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
     const payload = (await req.json()) as SendPushPayload;
     const { user_ids, title, body, data = {}, type } = payload;
 
@@ -41,6 +61,23 @@ serve(async (req) => {
     }
     if (!title?.trim() || !body?.trim()) {
       throw new Error('title and body are required');
+    }
+
+    // ── Ownership check: only admin or system can push to arbitrary users ──
+    const { data: callerProfile } = await supabase
+      .from('profiles')
+      .select('role, is_approved')
+      .eq('id', user.id)
+      .single();
+
+    const isAdmin = callerProfile?.role === 'admin' && callerProfile?.is_approved === true;
+
+    // If caller is not admin, they can only push to themselves
+    if (!isAdmin && (user_ids.length !== 1 || user_ids[0] !== user.id)) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden: insufficient permissions to push to these users' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
     }
 
     const { data: profiles, error: profilesError } = await supabase

@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, FlatList, RefreshControl, ActivityIndicator,
   TouchableOpacity, Alert, Modal, ScrollView, StyleSheet,
   Platform,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,6 +14,7 @@ import { Badge } from '@components/Badge';
 import { DocImageViewer } from '@components/DocImageViewer';
 import { StitchToggle } from '@components/admin/StitchToggle';
 import {
+  ensureAdminActorId,
   fetchAllWorkers,
   fetchAllClients,
   toggleWorkerApproval,
@@ -29,8 +31,6 @@ import { ChambaGradientTabs } from '@components/chamba/ChambaGradientTabs';
 import { CARD_STEP_SHADOW, CHAMBA, chambaStyles } from '@constants/chambaUI';
 import { getWorkerCategoryFamily } from '@utils/workerCategoryAccess';
 import { getConfiguredServiceLabel } from '@constants/servicesConfig';
-import { resolveAdminActorProfile } from '@utils/profileSync';
-
 type FilterMode = 'pending' | 'active' | 'all';
 type TeamMode = 'workers' | 'clients';
 
@@ -299,16 +299,22 @@ export const ManageWorkersScreen: React.FC = () => {
   const [approvingId, setApprovingId]   = useState<string | null>(null);
   const [approvingCat2Id, setAC2Id]     = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!adminProfile?.id) return;
-    void resolveAdminActorProfile(adminProfile).catch(() => undefined);
-  }, [adminProfile?.id]);
-
   const teamQueryOpts = {
-    staleTime: 30_000,
+    staleTime: 15_000,
     placeholderData: [] as UserProfile[],
-    retry: 0,
+    retry: 1,
   };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!adminProfile?.id || adminProfile.role !== 'admin') return;
+      void (async () => {
+        await ensureAdminActorId().catch(() => undefined);
+        await queryClient.invalidateQueries({ queryKey: ['admin', 'workers'] });
+        await queryClient.invalidateQueries({ queryKey: ['admin', 'clients'] });
+      })();
+    }, [adminProfile?.id, adminProfile?.role, queryClient]),
+  );
 
   const { data: workersData, isLoading: workersLoading, refetch: refetchWorkers, isRefetching: workersRefetching, isFetching: workersFetching } = useQuery<UserProfile[]>({
     queryKey: ['admin', 'workers'],
@@ -356,18 +362,23 @@ export const ManageWorkersScreen: React.FC = () => {
     onError:    (err: Error) => Alert.alert('Error', err.message),
   });
 
+  const isWorkerPending = (w: UserProfile) =>
+    !w.is_approved
+    || w.worker_status === 'pending_approval'
+    || w.worker_status === 'incomplete';
+
   const filtered = users.filter((w) => {
     if (teamMode === 'clients') {
       if (filter === 'pending') return !w.is_approved;
       if (filter === 'active') return w.is_approved;
       return true;
     }
-    if (filter === 'pending') return !w.is_approved;
+    if (filter === 'pending') return isWorkerPending(w);
     if (filter === 'active') return w.is_approved && w.worker_status === 'active';
     return true;
   });
 
-  const pendingWorkers = (workersData ?? []).filter((w: UserProfile) => !w.is_approved);
+  const pendingWorkers = (workersData ?? []).filter(isWorkerPending);
   const activeWorkers = (workersData ?? []).filter(
     (w: UserProfile) => w.is_approved && w.worker_status === 'active',
   );

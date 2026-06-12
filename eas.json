@@ -16,18 +16,12 @@
       "android": {
         "buildType": "apk"
       },
-      "environment": "preview",
-      "env": {
-        "EXPO_PUBLIC_PILOT_MODE": "true"
-      }
+      "environment": "preview"
     },
     "production": {
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
-      },
-      "env": {
-        "EXPO_PUBLIC_PILOT_MODE": "true"
       }
     }
   },

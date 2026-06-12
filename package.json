@@ -88,7 +88,9 @@
     "diagnose:papa-agenda": "node scripts/diagnose-papa-agenda-split.mjs",
     "db:ensure-phone-auth-user": "node scripts/ensure-phone-auth-user.mjs",
     "diagnose:pepe-agenda": "node scripts/diagnose-pepe-agenda-sync.mjs",
-    "diagnose:profiles": "node scripts/diagnose-profiles-health.mjs"
+    "diagnose:profiles": "node scripts/diagnose-profiles-health.mjs",
+    "db:apply-security-idor": "node scripts/apply-migration-059-security-idor.mjs",
+    "db:apply-security-hardening": "node scripts/apply-migration-060-security-hardening.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~3.2.3",
@@ -142,6 +144,7 @@
     "babel-plugin-module-resolver": "^5.0.2",
     "pg": "^8.21.0",
     "sharp": "^0.33.5",
+    "supabase": "^2.106.0",
     "tailwindcss": "^3.4.3",
     "typescript": "~5.3.3"
   }

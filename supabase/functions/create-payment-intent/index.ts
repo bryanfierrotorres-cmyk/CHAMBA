@@ -45,6 +45,27 @@ serve(async (req) => {
     if (jobError || !job) throw new Error('Job not found');
     if (job.status === 'cancelled') throw new Error('Job is cancelled');
 
+    // ── Ownership: only the job creator (client) can create a payment ──
+    if (job.created_by !== user.id) {
+      // Allow admin as well
+      const { data: callerProfile } = await supabase
+        .from('profiles')
+        .select('role, is_approved')
+        .eq('id', user.id)
+        .single();
+
+      if (callerProfile?.role !== 'admin' || callerProfile?.is_approved !== true) {
+        throw new Error('Forbidden: only the job creator or admin can create a payment');
+      }
+    }
+
+    // ── Amount validation: use job.pay_amount as the source of truth ──
+    // If client-provided amount differs from job pay_amount, reject it
+    const expectedCents = Math.round((job.pay_amount ?? 0) * 100);
+    if (expectedCents > 0 && Math.abs(amount_cents - expectedCents) > 1) {
+      throw new Error('Amount mismatch: provided amount does not match job pay_amount');
+    }
+
     // Platform fee = 5%, worker gets 95%
     const platformFeeAmountCents = Math.round(amount_cents * 0.05);
     const workerAmountCents      = amount_cents - platformFeeAmountCents;

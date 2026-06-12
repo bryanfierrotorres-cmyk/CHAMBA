@@ -4,7 +4,6 @@ import { supabase } from '@services/supabase';
 import { useAuthStore } from '@store/authStore';
 import { getClientOrderStatusLabel } from '@utils/formatters';
 import { syncProfileWithDatabase } from '@utils/profileSync';
-import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
 import { JOB_KEYS } from '@features/jobs/hooks/useJobs';
 import {
   clientOrdersQueryKey,
@@ -95,13 +94,6 @@ export function useClientJobStatusRealtime(): ClientStatusToast | null {
 
       if (synced.id !== profile.id || synced.is_approved !== profile.is_approved) {
         useAuthStore.getState().setProfile(synced);
-      }
-
-      const authSession = await ensurePhoneAuthSession(synced);
-      if (cancelled) return;
-
-      if (authSession && !session?.access_token) {
-        useAuthStore.getState().setSession(authSession);
       }
 
       const { data: existingJobs } = await supabase

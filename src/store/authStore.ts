@@ -3,37 +3,31 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Session } from '@supabase/supabase-js';
 import type { UserProfile, UserRole } from '@/types';
 import { supabase } from '@services/supabase';
-import { CONFIG } from '@constants/config';
-import {
-  PILOT_DOCUMENT_BYPASS,
-  getPilotProfileId,
-  pilotPhoneEmail,
-} from '@constants/pilot';
-import { applyPilotProfile } from '@utils/pilotAccess';
 import {
   normalizePhone,
   syncProfileWithDatabase,
   fetchProfileByPhone,
   fetchProfileByPhoneQuick,
   ensureProfileInDb,
-  toDbRole,
-  phonesMatch,
 } from '@utils/profileSync';
 import { useAssignmentsStore } from '@store/assignmentsStore';
-import { withTimeout } from '@utils/withTimeout';
-import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
-import {
-  PILOT_STORAGE_KEY,
-  safePersistPilotProfile,
-  safeRemovePilotProfile,
-} from '@utils/pilotProfileStorage';
 
-/** Minimal UUID v4 — no external dependency needed. */
-const uuid4 = () =>
-  'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
-  });
+/** UUID v4 — uses crypto.getRandomValues for cryptographic security. */
+const uuid4 = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < 16; i++) bytes[i] = (Math.random() * 256) | 0;
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+};
 
 // ─── State shape ────────────────────────────────────────────────
 
@@ -42,9 +36,8 @@ interface AuthState {
   session:      Session | null;
   profile:      UserProfile | null;
   // Status flags
-  isLoading:    boolean;    // operación en curso (login, register…)
-  isHydrated:   boolean;    // sesión inicial ya fue revisada
-  isPhoneAuth:  boolean;    // true when user signed in with name+phone (no Supabase session)
+  isLoading:    boolean;
+  isHydrated:   boolean;
   error:        string | null;
 
   // Setters
@@ -53,25 +46,19 @@ interface AuthState {
   setLoading:  (loading: boolean)            => void;
   setHydrated: (hydrated: boolean)           => void;
   setError:    (error: string | null)        => void;
-  setPhoneAuth:(value: boolean)              => void;
 
   // Actions
-  fetchProfile:    (userId: string)                                => Promise<void>;
-  signIn:          (email: string, password: string)               => Promise<void>;
-  signUp:          (params: SignUpParams)                          => Promise<void>;
-  pilotSignIn:     (role?: UserRole)                               => Promise<void>;
-  /** @deprecated Solo piloto interno; no usar en login público. */
-  phoneSignIn:     (fullName: string, phone: string, role: UserRole) => Promise<void>;
-  /** Verifica teléfono en BD y envía OTP (sin crear usuario). */
-  requestPhoneLoginOtp: (phone: string) => Promise<void>;
-  /** Valida código SMS y abre sesión Supabase + perfil. */
-  verifyPhoneLoginOtp: (phone: string, token: string, role: UserRole) => Promise<void>;
-  /** Crea perfil en BD sin iniciar sesión (registro → luego login OTP). */
-  registerPhoneProfile: (fullName: string, phone: string, role: UserRole) => Promise<void>;
-  /** Hydrate store from AsyncStorage (phone-auth users). */
-  loadFromStorage: ()                                              => Promise<boolean>;
-  signOut:         ()                                              => Promise<void>;
-  reset:           ()                                              => void;
+  fetchProfile:          (userId: string)                                => Promise<void>;
+  signIn:                (email: string, password: string)               => Promise<void>;
+  signUp:                (params: SignUpParams)                          => Promise<void>;
+  /** Verifica teléfono y envía OTP. */
+  requestPhoneLoginOtp:  (phone: string)                                 => Promise<void>;
+  /** Valida código SMS y abre sesión. */
+  verifyPhoneLoginOtp:   (phone: string, token: string, role: UserRole)  => Promise<void>;
+  /** Crea perfil en BD sin iniciar sesión (luego login OTP). */
+  registerPhoneProfile:  (fullName: string, phone: string, role: UserRole) => Promise<void>;
+  signOut:               ()                                              => Promise<void>;
+  reset:                 ()                                              => void;
 }
 
 export interface SignUpParams {
@@ -89,7 +76,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   profile:     null,
   isLoading:   true,
   isHydrated:  false,
-  isPhoneAuth: false,
   error:       null,
 
   setSession:   (session)     => set({ session }),
@@ -97,7 +83,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setLoading:   (isLoading)   => set({ isLoading }),
   setHydrated:  (isHydrated)  => set({ isHydrated }),
   setError:     (error)       => set({ error }),
-  setPhoneAuth: (isPhoneAuth) => set({ isPhoneAuth }),
 
   // ── fetchProfile ──────────────────────────────────────────────
   fetchProfile: async (userId) => {
@@ -111,34 +96,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (error) throw error;
       let profile = data as UserProfile;
 
-      // Preserve avatar saved locally if Supabase profile has none yet
       const current = get().profile;
       if (current?.id === userId && current.avatar_url && !profile.avatar_url) {
         profile = { ...profile, avatar_url: current.avatar_url };
       }
 
-      // Piloto: workers entran aprobados y con campos de documentos no nulos
-      // para evitar que el guard de onboarding los bloquee
-      if (CONFIG.pilot.enabled && profile.role === 'worker') {
-        profile = applyPilotProfile({
-          ...profile,
-          worker_status:     profile.worker_status ?? 'active',
-          cedula_url:        profile.cedula_url        ?? PILOT_DOCUMENT_BYPASS,
-          record_policia_url: profile.record_policia_url ?? PILOT_DOCUMENT_BYPASS,
-        });
-      }
       set({ profile });
-    } catch (err: any) {
-      console.error('[AuthStore] fetchProfile error:', err.message);
-      const { profile: current, isPhoneAuth, session } = get();
-      if (isPhoneAuth || current?.id === userId) return;
+    } catch (err: unknown) {
+      console.error('[AuthStore] fetchProfile error:', (err as Error).message);
+      const { profile: current, session } = get();
+      if (current?.id === userId) return;
       if (current && session?.user?.id === userId) return;
       if (current && session?.access_token) return;
       set({ profile: null });
     }
   },
 
-  // ── signIn ────────────────────────────────────────────────────
+  // ── signIn (email + password) ─────────────────────────────────
   signIn: async (email, password) => {
     set({ isLoading: true, error: null });
     try {
@@ -149,8 +123,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (error) throw error;
       if (data.session) set({ session: data.session });
       if (data.user) await get().fetchProfile(data.user.id);
-    } catch (err: any) {
-      const msg = translateAuthError(err.message);
+    } catch (err: unknown) {
+      const msg = translateAuthError((err as Error).message);
       set({ error: msg });
       throw new Error(msg);
     } finally {
@@ -158,16 +132,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  // ── signUp ────────────────────────────────────────────────────
+  // ── signUp (email + password) ─────────────────────────────────
   signUp: async ({ email, password, fullName, phone, role }) => {
     set({ isLoading: true, error: null });
     try {
       const cleanPhone = normalizePhone(phone);
       if (cleanPhone.length !== 8) {
-        throw new Error('Celular inválido — ingresa 8 dígitos después de +505');
+        throw new Error('Celular inválido — ingresá 8 dígitos');
       }
 
-      // 1. Crear usuario en auth.users
       const trimmedName = fullName.trim();
       const trimmedEmail = email.trim().toLowerCase();
 
@@ -186,9 +159,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (!authData.user) throw new Error('No se pudo crear el usuario');
 
       if (authData.session) {
-        set({ session: authData.session, isPhoneAuth: false });
-      } else {
-        set({ isPhoneAuth: false });
+        set({ session: authData.session });
       }
 
       const profilePayload = {
@@ -201,7 +172,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         ...(role === 'worker' ? { worker_status: 'pending_approval' as const } : {}),
       };
 
-      // El trigger fn_handle_new_user crea el perfil; este upsert completa teléfono y rol.
       const { error: profileErr } = await supabase.from('profiles').upsert(profilePayload);
       if (profileErr) {
         const { error: updateErr } = await supabase
@@ -218,8 +188,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       await get().fetchProfile(authData.user.id);
-    } catch (err: any) {
-      const msg = translateAuthError(err.message);
+    } catch (err: unknown) {
+      const msg = translateAuthError((err as Error).message);
       set({ error: msg });
       throw new Error(msg);
     } finally {
@@ -227,197 +197,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  // ── pilotSignIn — acceso rápido (admin / worker) con respaldo local ──
-  pilotSignIn: async (role = 'worker') => {
-    const creds = role === 'admin' ? CONFIG.pilot.admin : CONFIG.pilot.worker;
-    const pilotKey = role === 'admin' ? 'admin' : 'worker';
-    set({ isLoading: true, error: null });
-
-    const buildLocalPilotProfile = (): UserProfile => {
-      const base: UserProfile = {
-        id:                 getPilotProfileId(pilotKey) ?? uuid4(),
-        email:              creds.email,
-        full_name:          creds.fullName,
-        phone:              creds.phone,
-        avatar_url:         null,
-        role,
-        is_approved:        true,
-        worker_status:      role === 'worker' ? 'active' : null,
-        cedula_url:         role === 'worker' ? PILOT_DOCUMENT_BYPASS : null,
-        record_policia_url: role === 'worker' ? PILOT_DOCUMENT_BYPASS : null,
-        category_1:         null,
-        category_2:         null,
-        category_1_approved: role === 'worker',
-        category_2_approved: false,
-        stripe_account_id:  null,
-        fcm_token:          null,
-        created_at:         new Date().toISOString(),
-        updated_at:         new Date().toISOString(),
-      };
-      return role === 'worker' && CONFIG.pilot.enabled
-        ? applyPilotProfile(base)
-        : { ...base, is_approved: true, role: 'admin' };
-    };
-
-    const finishPilotSession = async (
-      profile: UserProfile,
-      session: Session | null,
-    ) => {
-      let normalized = profile;
-      if (CONFIG.pilot.enabled && profile.role === 'worker') {
-        normalized = applyPilotProfile(profile);
-      }
-      if (profile.role === 'admin') {
-        normalized = { ...normalized, role: 'admin', is_approved: true };
-      }
-
-      await safePersistPilotProfile(normalized);
-      set({
-        profile:     normalized,
-        session,
-        isPhoneAuth: true,
-        isLoading:   false,
-        error:       null,
-      });
-    };
-
-    // Admin piloto: entrar al panel al instante (sync Supabase en segundo plano).
-    if (role === 'admin' && CONFIG.pilot.enabled) {
-      try {
-        const profile = buildLocalPilotProfile();
-        await finishPilotSession(profile, null);
-
-        void (async () => {
-          try {
-            const { data } = await withTimeout(
-              supabase.auth.signInWithPassword({
-                email:    creds.email,
-                password: creds.password,
-              }),
-              6_000,
-            );
-            if (data.session) set({ session: data.session });
-            const byPhone = await fetchProfileByPhone(creds.phone);
-            if (byPhone) {
-              const merged: UserProfile = {
-                ...byPhone,
-                role: 'admin',
-                full_name: creds.fullName,
-                phone: creds.phone,
-                is_approved: true,
-              };
-              await safePersistPilotProfile(merged);
-              set({ profile: merged, session: data.session ?? null });
-            }
-          } catch (syncErr) {
-            console.warn('[pilotSignIn] sync admin en segundo plano:', syncErr);
-          }
-        })();
-        return;
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'No se pudo iniciar sesión de administrador';
-        set({ error: msg, isLoading: false });
-        throw new Error(msg);
-      }
-    }
-
-    // 1) Intentar Supabase Auth (opcional en piloto)
-    try {
-      let { data, error } = await supabase.auth.signInWithPassword({
-        email:    creds.email,
-        password: creds.password,
-      });
-
-      if (error?.message.includes('Invalid login credentials')) {
-        try {
-          await get().signUp({
-            email:    creds.email,
-            password: creds.password,
-            fullName: creds.fullName,
-            phone:    creds.phone,
-            role,
-          });
-          ({ data, error } = await supabase.auth.signInWithPassword({
-            email:    creds.email,
-            password: creds.password,
-          }));
-        } catch (signUpErr: unknown) {
-          console.warn('[pilotSignIn] signUp falló, usando perfil local:', signUpErr);
-        }
-      }
-
-      if (!error && data.user) {
-        if (data.session) set({ session: data.session });
-        await get().fetchProfile(data.user.id);
-        let profile = get().profile;
-
-        if (profile) {
-          profile = {
-            ...profile,
-            role,
-            full_name: creds.fullName,
-            phone:     creds.phone,
-            is_approved: role === 'admin' ? true : !!profile.is_approved,
-          };
-          profile = await syncProfileWithDatabase(profile);
-          if (profile.role === 'worker') {
-            profile = applyPilotProfile(profile);
-          }
-          await finishPilotSession(profile, data.session);
-          return;
-        }
-      }
-    } catch (authErr: unknown) {
-      // Punto 1 y 3: No permitir bypass de sesión si no estamos en modo piloto
-      if (!CONFIG.pilot.enabled) {
-        set({ error: 'Sesión expirada o inválida. Por favor ingresá de nuevo.', isLoading: false });
-        throw authErr;
-        // Solo lanzamos el error si no tenemos ni sesión ni un perfil previo cargado
-        if (!get().profile) {
-          set({ error: 'Sesión expirada o inválida. Por favor ingresá de nuevo.', isLoading: false });
-          throw authErr;
-        }
-      }
-      console.warn('[pilotSignIn] Auth Supabase no disponible, respaldo local:', authErr);
-    }
-
-    // 2) Respaldo: perfil piloto local (sin JWT) — crítico para admin en web
-    try {
-      let profile = buildLocalPilotProfile();
-
-      const byPhone = await fetchProfileByPhone(creds.phone);
-      if (byPhone) {
-        profile = {
-          ...byPhone,
-          id:          byPhone.id ?? profile.id,
-          role,
-          full_name:   creds.fullName,
-          phone:       creds.phone,
-          is_approved: role === 'admin' ? true : !!byPhone.is_approved,
-        };
-        if (profile.role === 'worker') {
-          profile = applyPilotProfile(profile);
-        }
-      } else if (role === 'admin') {
-        await ensureProfileInDb({
-          id:          profile.id,
-          full_name:   profile.full_name,
-          phone:       profile.phone,
-          email:       profile.email,
-          role:        profile.role,
-          is_approved: true,
-        });
-      }
-
-      await finishPilotSession(profile, null);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'No se pudo iniciar sesión piloto';
-      set({ error: msg, isLoading: false });
-      throw new Error(msg);
-    }
-  },
-
-  // ── requestPhoneLoginOtp — usuario debe existir en profiles ─────
+  // ── requestPhoneLoginOtp ──────────────────────────────────────
   requestPhoneLoginOtp: async (phone) => {
     set({ isLoading: true, error: null });
     try {
@@ -434,7 +214,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       const phoneE164 = `+505${cleanPhone}`;
-      // Perfil ya validado en DB; crear usuario Auth si aún no existe (registro previo).
       const { error } = await supabase.auth.signInWithOtp({
         phone: phoneE164,
         options: { shouldCreateUser: true },
@@ -456,7 +235,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  // ── verifyPhoneLoginOtp — sesión obligatoria para entrar a la app ──
+  // ── verifyPhoneLoginOtp ───────────────────────────────────────
   verifyPhoneLoginOtp: async (phone, token, role) => {
     set({ isLoading: true, error: null });
     try {
@@ -494,18 +273,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       profile = await syncProfileWithDatabase({ ...profile, role });
-      if (profile.role === 'worker') {
-        profile = applyPilotProfile(profile);
-      }
-
       await ensureProfileInDb(profile);
-
-      await safePersistPilotProfile(profile);
 
       set({
         session: data.session,
         profile,
-        isPhoneAuth: false,
         isLoading: false,
         error: null,
       });
@@ -518,13 +290,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  // ── registerPhoneProfile — alta sin sesión (luego login OTP) ────
+  // ── registerPhoneProfile ──────────────────────────────────────
   registerPhoneProfile: async (fullName, phone, role) => {
     set({ isLoading: true, error: null });
     try {
       const cleanName = fullName.trim();
       const cleanPhone = normalizePhone(phone);
-      const dbRole = toDbRole(role);
 
       if (cleanPhone.length !== 8) {
         throw new Error('Ingresá exactamente 8 dígitos de tu celular');
@@ -544,8 +315,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         id: newId,
         full_name: cleanName,
         phone: cleanPhone,
-        email: pilotPhoneEmail(cleanPhone),
-        role: dbRole,
+        role,
         is_approved: false,
         ...(role === 'worker'
           ? { worker_status: 'incomplete' as const }
@@ -556,15 +326,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         throw new Error(translateAuthError(insertErr.message));
       }
 
-      try {
-        await supabase.rpc('ensure_phone_auth_user', {
-          p_profile_id: newId,
-          p_phone: cleanPhone,
-        });
-      } catch {
-        // Registro OK; Auth se provisionará en el primer login
-      }
-
       set({ isLoading: false, error: null });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'No se pudo crear la cuenta';
@@ -573,234 +334,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  // ── phoneSignIn — nombre + teléfono: entra al instante, sync en background ──
-  phoneSignIn: async (fullName, phone, role) => {
-    set({ isLoading: true, error: null });
-    try {
-      await phoneSignInInner(fullName, phone, role, get, set);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al iniciar sesión';
-      set({ error: msg, isLoading: false });
-      throw new Error(msg);
-    }
-  },
-
-  // ── loadFromStorage — hydrate pilot session on app start ──────
-  loadFromStorage: async () => {
-    try {
-      const raw = await AsyncStorage.getItem(PILOT_STORAGE_KEY);
-      if (!raw) return false;
-      let profile = JSON.parse(raw) as UserProfile;
-      if (profile.role === 'admin') {
-        profile = { ...profile, role: 'admin', is_approved: true };
-      } else if (profile.role === 'worker') {
-        profile = applyPilotProfile(profile);
-      }
-
-      set({ profile, session: null, isPhoneAuth: true });
-
-      void (async () => {
-        try {
-          profile = await syncProfileWithDatabase(profile);
-          if (profile.role === 'admin') {
-            profile = { ...profile, role: 'admin', is_approved: true };
-          } else if (profile.role === 'worker') {
-            profile = applyPilotProfile(profile);
-          }
-          const session = await ensurePhoneAuthSession(profile);
-          await safePersistPilotProfile(profile);
-          set({ profile, session, isPhoneAuth: !session?.access_token });
-        } catch {
-          // Perfil local ya hidratado arriba
-        }
-      })();
-
-      return true;
-    } catch {
-      return false;
-    }
-  },
-
   // ── signOut ───────────────────────────────────────────────────
   signOut: async () => {
     useAssignmentsStore.getState().clear();
-    // Limpiar UI de inmediato (evita quedar atrapado si Supabase tarda o cuelga).
     set({
       session: null,
       profile: null,
-      isPhoneAuth: false,
       isLoading: false,
       error: null,
     });
-    await Promise.allSettled([
-      withTimeout(supabase.auth.signOut(), 4_000).catch(() => undefined),
-      safeRemovePilotProfile(),
-    ]);
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // ignorar errores de red al cerrar sesión
+    }
   },
 
   // ── reset ─────────────────────────────────────────────────────
   reset: () =>
     set((state) => ({
-      session:     null,
-      profile:     null,
-      isLoading:   false,
-      isHydrated:  state.isHydrated,
-      isPhoneAuth: false,
-      error:       null,
+      session:    null,
+      profile:    null,
+      isLoading:  false,
+      isHydrated: state.isHydrated,
+      error:      null,
     })),
 }));
-
-type AuthSet = (
-  partial: Partial<AuthState> | ((state: AuthState) => Partial<AuthState>),
-) => void;
-
-function buildPhoneLoginProfile(
-  id: string,
-  cleanName: string,
-  cleanPhone: string,
-  role: UserRole,
-): UserProfile {
-  return {
-    id,
-    full_name:          cleanName,
-    phone:              cleanPhone,
-    email:              pilotPhoneEmail(cleanPhone),
-    role,
-    is_approved:        false,
-    worker_status:      role === 'worker' ? 'incomplete' : null,
-    cedula_url:         null,
-    record_policia_url: null,
-    category_1:         null,
-    category_2:         null,
-    category_1_approved: false,
-    category_2_approved: false,
-    avatar_url:         null,
-    stripe_account_id:  null,
-    fcm_token:          null,
-    created_at:         new Date().toISOString(),
-    updated_at:         new Date().toISOString(),
-  } as UserProfile;
-}
-
-function assertPhoneLoginRole(role: UserRole, existing: UserProfile): void {
-  if (role === existing.role || existing.role === 'admin') return;
-  const msg =
-    role === 'worker'
-      ? 'Este celular está registrado como cliente. Para recibir chambas, registrate como técnico con otro número o pedí al admin que active tu perfil de trabajador.'
-      : 'Este celular está registrado como técnico. Elegí el rol Trabajador para ingresar.';
-  throw new Error(msg);
-}
-
-/** Sync Supabase Auth + BD sin bloquear la UI de login. */
-function syncPhoneLoginInBackground(
-  seed: UserProfile,
-  get: () => AuthState,
-  set: AuthSet,
-): void {
-  void (async () => {
-    try {
-      let profile = seed;
-      try {
-        profile = await withTimeout(syncProfileWithDatabase(seed), 8_000);
-      } catch {
-        profile = seed;
-      }
-
-      if (profile.role === 'worker') {
-        profile = applyPilotProfile(profile);
-      }
-
-      await safePersistPilotProfile(profile);
-
-      const current = get().profile;
-      if (current && phonesMatch(current.phone, profile.phone)) {
-        set({ profile });
-      }
-
-      const session = await ensurePhoneAuthSession(profile);
-      if (!session) return;
-
-      const live = get().profile;
-      if (!live || !phonesMatch(live.phone, profile.phone)) return;
-
-      set({ session, profile, isPhoneAuth: false });
-    } catch (err) {
-      console.warn('[phoneSignIn] sync en background:', err);
-    }
-  })();
-}
-
-async function phoneSignInInner(
-  fullName: string,
-  phone: string,
-  role: UserRole,
-  get: () => AuthState,
-  set: AuthSet,
-): Promise<void> {
-  const cleanName  = fullName.trim();
-  const cleanPhone = normalizePhone(phone);
-
-  if (cleanPhone.length !== 8) {
-    throw new Error('Ingresá exactamente 8 dígitos de tu celular');
-  }
-
-  let profile: UserProfile | null = null;
-  try {
-    profile = await fetchProfileByPhoneQuick(cleanPhone, 10_000);
-  } catch (err) {
-    throw err instanceof Error
-      ? err
-      : new Error('No se pudo verificar tu cuenta. Intentá de nuevo en unos minutos.');
-  }
-
-  if (profile) {
-    assertPhoneLoginRole(role, profile);
-    profile = {
-      ...profile,
-      role: profile.role === 'admin' ? role : profile.role,
-      full_name: cleanName,
-      is_approved: !!profile.is_approved,
-    };
-  } else {
-    try {
-      const raw = await AsyncStorage.getItem(PILOT_STORAGE_KEY);
-      if (raw) {
-        const stored = JSON.parse(raw) as UserProfile;
-        if (phonesMatch(stored.phone, cleanPhone)) {
-          assertPhoneLoginRole(role, stored);
-          profile = {
-            ...stored,
-            full_name: cleanName,
-            role: stored.role === 'admin' ? role : stored.role,
-          };
-        }
-      }
-    } catch {
-      // ignorar caché local corrupta
-    }
-
-    if (!profile) {
-      if (!CONFIG.pilot.enabled) {
-        throw new Error('No pudimos encontrar tu cuenta. Verificá tu conexión o intentá «Iniciar sesión con SMS».');
-      }
-      profile = buildPhoneLoginProfile(uuid4(), cleanName, cleanPhone, role);
-    }
-  }
-
-  if (profile.role === 'worker') {
-    profile = applyPilotProfile(profile);
-  }
-
-  set({
-    profile,
-    session: null,
-    isPhoneAuth: true,
-    isLoading: false,
-    error: null,
-  });
-
-  syncPhoneLoginInBackground(profile, get, set);
-}
 
 // ─── Selectors ──────────────────────────────────────────────────
 
@@ -811,20 +370,19 @@ export const selectUserId     = (s: AuthState) => s.profile?.id ?? null;
 
 // ─── Helpers ────────────────────────────────────────────────────
 
-/** Traduce mensajes de error de Supabase Auth al español. */
 function translateAuthError(msg: string): string {
   if (msg.includes('Invalid API key'))
-    return 'Clave API inválida. Verifica .env (sb_publishable_, no publisable) y reinicia con: npx expo start --clear';
+    return 'Clave API inválida. Verificá .env y reiniciá con: npx expo start --clear';
   if (msg.includes('Invalid login credentials'))
     return 'Correo o contraseña incorrectos';
   if (msg.includes('Email not confirmed'))
-    return 'Confirma tu correo antes de iniciar sesión';
+    return 'Confirmá tu correo antes de iniciar sesión';
   if (msg.includes('User already registered'))
     return 'Este correo ya tiene una cuenta registrada';
   if (msg.includes('Password should be'))
     return 'La contraseña debe tener al menos 6 caracteres';
   if (msg.includes('rate limit'))
-    return 'Demasiados intentos. Espera un momento e intenta de nuevo';
+    return 'Demasiados intentos. Esperá un momento e intentá de nuevo';
   if (msg.includes('Signups not allowed') || msg.includes('shouldCreateUser'))
     return 'Número no registrado, por favor regístrate primero';
   if (msg.includes('Token has expired') || msg.includes('otp_expired'))
@@ -832,8 +390,8 @@ function translateAuthError(msg: string): string {
   if (msg.includes('Invalid OTP') || msg.includes('invalid'))
     return 'Código incorrecto. Revisá el SMS e intentá de nuevo';
   if (msg.includes('network'))
-    return 'Sin conexión. Revisa tu internet';
+    return 'Sin conexión. Revisá tu internet';
   if (msg.includes('Database error saving new user'))
-    return 'No se pudo completar el registro en el servidor. Verificá tu conexión o contactá a soporte CHAMBA.';
+    return 'No se pudo completar el registro. Verificá tu conexión.';
   return msg;
 }

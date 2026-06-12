@@ -51,7 +51,41 @@ serve(async (req) => {
       throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
     }
 
+    // ── JWT Verification ──────────────────────────────────────────
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
     const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(
+      authHeader.replace('Bearer ', ''),
+    );
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    // ── Verify caller is admin ─────────────────────────────────────
+    const { data: callerProfile } = await supabase
+      .from('profiles')
+      .select('role, is_approved')
+      .eq('id', user.id)
+      .single();
+
+    if (callerProfile?.role !== 'admin' || callerProfile?.is_approved !== true) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden: admin access required' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
     const rawBody: unknown = await req.json();
     const payload = parseWebhookPayload(rawBody);
 

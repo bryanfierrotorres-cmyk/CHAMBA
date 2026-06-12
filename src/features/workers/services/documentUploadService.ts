@@ -1,10 +1,9 @@
 import { Platform } from 'react-native';
-import { isPilotDocumentBypass } from '@constants/pilot';
 import { supabase } from '@services/supabase';
 
 const BUCKET = 'worker-documents';
 
-/** Convierte blob a data URI (fallback piloto / web sin Storage). */
+/** Convierte blob a data URI (fallback web sin Storage). */
 async function blobToDataUri(blob: Blob, contentType = 'image/jpeg'): Promise<string> {
   const FileReaderClass = (globalThis as { FileReader?: typeof FileReader }).FileReader;
   if (FileReaderClass) {
@@ -61,4 +60,4 @@ export async function uploadWorkerDocument(
 }
 
 export const isDisplayableDocUrl = (url?: string | null): url is string =>
-  !!url && !isPilotDocumentBypass(url) && url.trim().length > 0;
+  !!url && url.trim().length > 0;

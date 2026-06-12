@@ -1,10 +1,10 @@
-import './polyfills/webGlobals'; // Metro: webGlobals.web.ts en web, stub vacío en nativo
+import './polyfills/webGlobals';
 import '@/setup/configureTextInputs';
 import 'react-native-gesture-handler';
 
 import React, { useEffect } from 'react';
 import { Platform, StyleSheet } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import * as Font from 'expo-font';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -15,7 +15,6 @@ import { getSupabaseConfigError, supabase, onAuthStateChange } from '@services/s
 import { initializeStripe } from '@services/stripe';
 import { useAuthStore } from '@store/authStore';
 import { repairLocalAssignmentsStorage } from '@utils/localAssignments';
-import { PILOT_STORAGE_KEY, safePersistPilotProfile } from '@utils/pilotProfileStorage';
 import { configurePushNotificationHandler, syncPushTokenForUser } from '@utils/pushNotifications';
 import { StartupErrorScreen } from '@components/StartupErrorScreen';
 import { AppErrorBoundary } from '@components/AppErrorBoundary';
@@ -36,12 +35,10 @@ const queryClient = new QueryClient({
   },
 });
 
-/** Viewport dinámico (100dvh + --chamba-vh) — solo web. */
 function useWebRootStyles() {
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
 
-    // Import dinámico: el módulo de layout web no se evalúa en Android/iOS.
     const { WEB_MOBILE_CSS, installWebViewportListeners } =
       require('@constants/webMobileLayout') as typeof import('@constants/webMobileLayout');
 
@@ -57,7 +54,7 @@ function useWebRootStyles() {
     };
   }, []);
 }
-/** Evita bloqueo infinito en splash si Supabase/AsyncStorage tarda o no responde (web). */
+
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
   return Promise.race([
     promise,
@@ -66,10 +63,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 }
 
 function AppBootstrap() {
-  const { setSession, setHydrated, setLoading, fetchProfile, reset, loadFromStorage } = useAuthStore();
+  const { setSession, setHydrated, setLoading, fetchProfile, reset } = useAuthStore();
   const profile = useAuthStore((s) => s.profile);
   const session = useAuthStore((s) => s.session);
-  const isPhoneAuth = useAuthStore((s) => s.isPhoneAuth);
   const isHydrated = useAuthStore((s) => s.isHydrated);
 
   useWebRootStyles();
@@ -81,15 +77,14 @@ function AppBootstrap() {
   useEffect(() => {
     if (Platform.OS === 'web') return;
     if (!isHydrated || !profile?.id) return;
-    if (!session?.access_token && !isPhoneAuth) return;
+    if (!session?.access_token) return;
 
     void syncPushTokenForUser(profile.id);
-  }, [isHydrated, profile?.id, session?.access_token, isPhoneAuth]);
+  }, [isHydrated, profile?.id, session?.access_token]);
 
   useEffect(() => {
     void Font.loadAsync({
       ...Ionicons.font,
-      ...MaterialCommunityIcons.font,
     }).catch((err) => {
       console.warn('[App] icon fonts load:', err);
     });
@@ -106,7 +101,6 @@ function AppBootstrap() {
     let cancelled = false;
     let subscription: { unsubscribe: () => void } | null = null;
 
-    // Desbloquear UI de inmediato; la sesión se restaura en segundo plano.
     setLoading(false);
     setHydrated(true);
 
@@ -127,52 +121,8 @@ function AppBootstrap() {
         if (cancelled) return;
 
         setSession(session);
-        if (!session?.user) {
-          await loadFromStorage();
-        } else if (session?.user) {
-          const { fetchProfileByPhone } = await import('@utils/profileSync');
-          const metaPhone = session.user.phone?.replace(/\D/g, '').slice(-8);
-          const byPhone = metaPhone
-            ? await withTimeout(fetchProfileByPhone(metaPhone), 6_000, null)
-            : null;
-          const { mergeProfileFromDatabase } = await import('@utils/profileSync');
-          const cachedRaw = await import('@react-native-async-storage/async-storage').then((m) =>
-            m.default.getItem(PILOT_STORAGE_KEY),
-          );
-          const cachedProfile = cachedRaw
-            ? (JSON.parse(cachedRaw) as import('@/types').UserProfile)
-            : null;
-
-          if (byPhone) {
-            let restored = cachedProfile
-              ? mergeProfileFromDatabase(cachedProfile, byPhone)
-              : byPhone;
-            if (restored.role === 'worker') {
-              const { applyPilotProfile } = await import('@utils/pilotAccess');
-              const { ensureProfileInDb } = await import('@utils/profileSync');
-              restored = applyPilotProfile(restored);
-              await ensureProfileInDb(restored);
-            }
-            useAuthStore.getState().setProfile(restored);
-            await safePersistPilotProfile(restored);
-          } else {
-            await withTimeout(fetchProfile(session.user.id), 8000, undefined);
-            const p = useAuthStore.getState().profile;
-            if (p) {
-              let restored = cachedProfile
-                ? mergeProfileFromDatabase(cachedProfile, p)
-                : p;
-              if (restored.role === 'worker') {
-                const { applyPilotProfile } = await import('@utils/pilotAccess');
-                const { ensureProfileInDb } = await import('@utils/profileSync');
-                restored = applyPilotProfile({ ...restored, id: session.user.id });
-                await ensureProfileInDb(restored);
-              }
-              useAuthStore.getState().setProfile(restored);
-              await safePersistPilotProfile(restored);
-            }
-          }
-          useAuthStore.getState().setPhoneAuth(false);
+        if (session?.user) {
+          await withTimeout(fetchProfile(session.user.id), 8000, undefined);
         }
       } catch (err) {
         console.warn('[App] bootstrap error:', err);
@@ -187,12 +137,6 @@ function AppBootstrap() {
 
       subscription = onAuthStateChange(async (event, session) => {
         if (event === 'SIGNED_OUT') {
-          const { isPhoneAuth, profile: phoneProfile } = useAuthStore.getState();
-          // Cerrar sesión Auth stale no debe expulsar login por teléfono.
-          if (isPhoneAuth && phoneProfile) {
-            setSession(null);
-            return;
-          }
           reset();
           return;
         }
@@ -202,11 +146,9 @@ function AppBootstrap() {
           return;
         }
 
-        const { isPhoneAuth, profile: currentProfile } = useAuthStore.getState();
-        if (isPhoneAuth) return;
-
         if (session?.user) {
           setSession(session);
+          const { profile: currentProfile } = useAuthStore.getState();
           if (!currentProfile || currentProfile.id !== session.user.id) {
             await fetchProfile(session.user.id);
           }

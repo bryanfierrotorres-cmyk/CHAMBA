@@ -7,7 +7,6 @@ import {
 } from '@constants/clientHomeExpress';
 import type { ExpressSubmenu } from '@constants/servicesConfig';
 import { ALL_CONFIGURED_SERVICE_SLUGS, CONFIGURED_SERVICE_SEEDS } from '@constants/servicesConfig';
-import { CONFIG } from '@constants/config';
 import type { UserProfile } from '@/types';
 
 type WorkerCategoryProfile = Pick<
@@ -142,8 +141,8 @@ export const getWorkerApprovedCategories = (
     cats.push(cat2);
   }
 
-  if (cats.length === 0 && CONFIG.pilot.enabled) {
-    return [...ALL_CONFIGURED_SERVICE_SLUGS] as JobCategory[];
+  if (cats.length === 0) {
+    return [];
   }
 
   return cats;

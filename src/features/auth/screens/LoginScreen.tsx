@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ChambaSlidingToggle } from '@components/chamba/ChambaSlidingToggle';
 import { useAuthStore } from '@store/authStore';
@@ -100,17 +100,13 @@ export const LoginScreen: React.FC = () => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const isCompactLayout = screenWidth < COMPACT_BREAKPOINT;
 
-  const { phoneSignIn, pilotSignIn, error, setError } = useAuthStore();
-  const [adminAccessVisible, setAdminAccessVisible] = useState(false);
+  const { error, setError, registerPhoneProfile, requestPhoneLoginOtp } = useAuthStore();
 
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<UserRole>('client');
   const [nameErr, setNameErr] = useState('');
   const [phoneErr, setPhoneErr] = useState('');
-  const [pendingAction, setPendingAction] = useState<'chamba' | 'admin' | null>(null);
-
-  const isBusy = pendingAction !== null;
 
   const heroOp = useRef(new Animated.Value(0)).current;
   const heroY = useRef(new Animated.Value(-24)).current;
@@ -182,15 +178,15 @@ export const LoginScreen: React.FC = () => {
       return;
     }
 
-    setPendingAction('chamba');
-    const spinnerFailsafe = setTimeout(() => setPendingAction(null), 6_000);
+    const cleanPhone = getPhoneDigits();
+    const cleanName = fullName.trim();
+
     try {
-      await phoneSignIn(fullName.trim(), phone, role);
+      await registerPhoneProfile(cleanName, cleanPhone, role);
+      await requestPhoneLoginOtp(cleanPhone);
+      navigation.navigate('VerifyOtp', { phone: cleanPhone, role });
     } catch {
       shake();
-    } finally {
-      clearTimeout(spinnerFailsafe);
-      setPendingAction(null);
     }
   };
 
@@ -247,13 +243,11 @@ export const LoginScreen: React.FC = () => {
                 { opacity: heroOp, transform: [{ translateY: heroY }] },
               ]}
             >
-              {showHeroExtras ? (
-                <TouchableOpacity
-                  style={styles.logoWrap}
-                  onPress={() => setAdminAccessVisible((v) => !v)}
-                  activeOpacity={1}
-                  accessibilityLabel="Logo CHAMBA"
-                >
+              <TouchableOpacity
+                style={styles.logoWrap}
+                activeOpacity={1}
+                accessibilityLabel="Logo CHAMBA"
+              >
                   <LinearGradient
                     colors={['rgba(13,148,136,0.35)', 'rgba(2,132,199,0.35)']}
                     style={styles.logoBg}
@@ -261,30 +255,14 @@ export const LoginScreen: React.FC = () => {
                     <Ionicons name="flash" size={36} color="#5EEAD4" />
                   </LinearGradient>
                 </TouchableOpacity>
-              ) : null}
 
-              <TouchableOpacity
-                onPress={() => setAdminAccessVisible((v) => !v)}
-                activeOpacity={1}
-                accessibilityLabel="CHAMBA"
-                disabled={showHeroExtras}
-              >
                 <Text style={[styles.appName, isCompactLayout && styles.appNameCompact]}>
                   CHAMBA
                 </Text>
-              </TouchableOpacity>
 
               <Text style={[styles.tagline, isCompactLayout && styles.taglineCompact]}>
                 Encuentra personal confiable en minutos
               </Text>
-
-              {showHeroExtras ? (
-                <View style={styles.pilotChip}>
-                  <View style={styles.pilotDot} />
-                  <MaterialCommunityIcons name="rocket-launch-outline" size={14} color="#99F6E4" />
-                  <Text style={styles.pilotText}>Modo Piloto · Acceso Express</Text>
-                </View>
-              ) : null}
             </Animated.View>
 
             <View
@@ -392,7 +370,6 @@ export const LoginScreen: React.FC = () => {
 
             <Pressable
               onPress={handleSubmit}
-              disabled={isBusy}
               accessibilityRole="button"
               accessibilityLabel="Entrar a CHAMBA"
             >
@@ -401,25 +378,17 @@ export const LoginScreen: React.FC = () => {
                   style={[
                     styles.submitBtn,
                     {
-                      backgroundColor:
-                        pressed && !isBusy ? LOGIN_PRIMARY_PRESSED : LOGIN_PRIMARY,
+                      backgroundColor: pressed ? LOGIN_PRIMARY_PRESSED : LOGIN_PRIMARY,
                     },
-                    isBusy && styles.submitDisabled,
                   ]}
                 >
-                  {pendingAction === 'chamba' ? (
-                    <ActivityIndicator color="#FFFFFF" />
-                  ) : (
-                    <>
-                      <Ionicons
-                        name="flash"
-                        size={18}
-                        color="#FFFFFF"
-                        style={styles.submitBtnIcon}
-                      />
-                      <Text style={styles.submitBtnText}>Entrar a CHAMBA</Text>
-                    </>
-                  )}
+                  <Ionicons
+                    name="flash"
+                    size={18}
+                    color="#FFFFFF"
+                    style={styles.submitBtnIcon}
+                  />
+                  <Text style={styles.submitBtnText}>Entrar a CHAMBA</Text>
                 </View>
               )}
             </Pressable>
@@ -427,7 +396,6 @@ export const LoginScreen: React.FC = () => {
             <TouchableOpacity
               style={styles.registerRow}
               onPress={() => navigation.navigate('Register')}
-              disabled={isBusy}
               activeOpacity={0.7}
             >
               <Text style={styles.registerText}>¿Primera vez en CHAMBA? </Text>
@@ -437,33 +405,6 @@ export const LoginScreen: React.FC = () => {
             <Text style={styles.legalNote}>
               Al continuar aceptás los términos de uso. Tus datos solo se usan para identificarte.
             </Text>
-
-            {adminAccessVisible && (
-              <TouchableOpacity
-                onPress={async () => {
-                  setError(null);
-                  setPendingAction('admin');
-                  try {
-                    await pilotSignIn('admin');
-                  } catch (e: unknown) {
-                    const msg =
-                      e instanceof Error ? e.message : 'No se pudo entrar como administrador';
-                    setError(msg);
-                  } finally {
-                    setPendingAction(null);
-                  }
-                }}
-                disabled={isBusy}
-                style={styles.adminBtnDiscreet}
-                activeOpacity={0.6}
-              >
-                {pendingAction === 'admin' ? (
-                  <ActivityIndicator color={CHAMBA.muted} size="small" />
-                ) : (
-                  <Text style={styles.adminBtnDiscreetText}>Acceso administrador</Text>
-                )}
-              </TouchableOpacity>
-            )}
           </Animated.View>
           </View>
         </ScrollView>
@@ -640,19 +581,6 @@ const styles = StyleSheet.create({
     marginBottom: LOGIN_SCREEN_LAYOUT.hero.taglineMarginBottom.compact,
     paddingHorizontal: SPACING.lg,
   },
-  pilotChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-  },
-  pilotDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#22C55E' },
-  pilotText: { color: '#CCFBF1', fontSize: 12, fontWeight: '600' },
   card: {
     backgroundColor: CHAMBA.white,
     borderRadius: 22,
@@ -752,17 +680,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: SPACING.md,
     lineHeight: 16,
-  },
-  adminBtnDiscreet: {
-    alignSelf: 'center',
-    marginTop: SPACING.sm,
-    paddingVertical: 4,
-    paddingHorizontal: SPACING.sm,
-  },
-  adminBtnDiscreetText: {
-    color: CHAMBA.muted,
-    fontSize: 10,
-    fontWeight: '500',
-    opacity: 0.55,
   },
 });

@@ -2,9 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@services/supabase';
 import { useAuthStore } from '@store/authStore';
-import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
 import {
-  persistPilotProfileIfChanged,
   syncProfileWithDatabase,
 } from '@utils/profileSync';
 import {
@@ -46,15 +44,7 @@ export function useJobChat(jobId: string) {
   const loadMessages = useCallback(async () => {
     if (!profile?.id) return [];
     const synced = await syncProfileWithDatabase(profile);
-    await persistPilotProfileIfChanged(profile, synced);
     setActorId(synced.id);
-
-    const authSession = await ensurePhoneAuthSession(synced);
-    if (authSession?.access_token) {
-      const store = useAuthStore.getState();
-      store.setSession(authSession);
-      store.setPhoneAuth(false);
-    }
 
     return fetchJobMessages(jobId, synced.id, synced);
   }, [jobId, profile]);
@@ -91,19 +81,7 @@ export function useJobChat(jobId: string) {
       const synced = await syncProfileWithDatabase(profile);
       if (cancelled) return;
 
-      await persistPilotProfileIfChanged(profile, synced);
       setActorId(synced.id);
-
-      const authSession = await ensurePhoneAuthSession(synced);
-      if (cancelled) return;
-
-      if (authSession) {
-        const store = useAuthStore.getState();
-        if (!store.session?.access_token) {
-          store.setSession(authSession);
-          store.setPhoneAuth(false);
-        }
-      }
 
       channel = supabase
         .channel(`job-chat-${jobId}-${synced.id}`)
@@ -179,15 +157,7 @@ export function useJobChat(jobId: string) {
       setIsSending(true);
       try {
         const synced = await syncProfileWithDatabase(profile);
-        await persistPilotProfileIfChanged(profile, synced);
         setActorId(synced.id);
-        const authSession = await ensurePhoneAuthSession(synced);
-        if (!authSession?.access_token) {
-          throw new Error(
-            'No se pudo enviar: tu sesión expiró. Salí y volvé a entrar a CHAMBA para chatear.',
-          );
-        }
-        useAuthStore.getState().setSession(authSession);
         const msg = await sendJobMessage(jobId, synced.id, text, synced);
         appendMessage(msg);
       } catch (err: unknown) {

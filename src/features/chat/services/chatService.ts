@@ -1,5 +1,4 @@
 import { supabase } from '@services/supabase';
-import { ensurePhoneAuthSession } from '@utils/phoneAuthSession';
 import { syncProfileWithDatabase } from '@utils/profileSync';
 import type { JobStatus, ServiceMessage, UserProfile } from '@/types';
 
@@ -21,8 +20,7 @@ const isAuthRequired = (body?: { error?: string; code?: string } | null): boolea
 
 const ensureActorSession = async (profile: UserProfile): Promise<string> => {
   const synced = await syncProfileWithDatabase(profile);
-  const session = await ensurePhoneAuthSession(synced);
-  if (!session?.access_token) {
+  if (!synced.id) {
     throw new Error(
       'Sesión requerida para el chat. Cerrá la app y volvé a entrar con tu celular.',
     );

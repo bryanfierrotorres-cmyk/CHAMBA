@@ -1,0 +1,38 @@
+---
+description: Login — medidas fijas del hero y formulario (no mover al editar copy)
+globs: src/features/auth/screens/LoginScreen.tsx,src/features/auth/constants/loginScreenLayout.ts
+alwaysApply: false
+---
+
+# Login — layout estático (aprobado)
+
+## Regla
+
+Las distancias entre el logo **CHAMBA**, el eslogan y el cuadro **«Ingresá tus datos»** son **fijas** y no deben cambiar al editar textos, campos, chips o copy del login.
+
+## Fuente de verdad
+
+`src/features/auth/constants/loginScreenLayout.ts` — único lugar para alterar números de espaciado.
+
+## Prohibido
+
+1. `flex: 1` (u otro flex grow) entre el hero y la tarjeta del formulario.
+2. Hueco hero ↔ formulario con `%` de `screenHeight`, `vh` o fórmulas dinámicas.
+3. Cambiar `paddingTop` del hero, `heroCardGap` o `subjectStage` al añadir campos, textos legales o mensajes de error.
+4. Duplicar esas medidas en otros archivos; importar siempre desde `loginScreenLayout.ts`.
+
+## Permitido sin tocar layout
+
+- Textos (eslogan, labels, placeholders, legal).
+- Campos y validación dentro de la tarjeta blanca.
+- Colores, iconos y estilos internos de la tarjeta (no márgenes externos del bloque hero).
+
+## Valores congelados (referencia)
+
+| Medida | Wide (≥640px) | Compact (<640px) |
+|--------|---------------|------------------|
+| Hero `paddingTop` | 72 | 58 |
+| Hero ↔ formulario | 56 px | 40 px |
+| Scroll `paddingTop` | 40 (52 iOS) | igual |
+
+Si hace falta un cambio visual de posición, actualizar **solo** `loginScreenLayout.ts` y este comentario de tabla.

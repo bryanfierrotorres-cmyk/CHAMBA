@@ -224,6 +224,7 @@ export type AuthStackParamList = {
   Login: undefined;
   Register: undefined;
   RoleSelection: { email: string; password: string };
+  VerifyOtp: { phone: string; role: UserRole };
 };
 
 export type JobStackParamList = {

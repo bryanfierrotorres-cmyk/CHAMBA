@@ -34,7 +34,7 @@ enable_confirmations = false
 verify_jwt = true
 
 [functions.send-push-notification]
-verify_jwt = false
+verify_jwt = true
 
 [functions.notify-new-job]
-verify_jwt = false
+verify_jwt = true
