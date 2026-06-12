@@ -29,7 +29,7 @@ export const toDbRole = (role: UserRole): UserRole =>
 export const namesMatch = (a: string, b: string): boolean =>
   a.trim().toLowerCase() === b.trim().toLowerCase();
 
-const PROFILE_PHONE_CACHE_MS = 45_000;
+const PROFILE_PHONE_CACHE_MS = 300_000;
 const PROFILE_PHONE_FETCH_MS = 8_000;
 const profileByPhoneCache = new Map<
   string,

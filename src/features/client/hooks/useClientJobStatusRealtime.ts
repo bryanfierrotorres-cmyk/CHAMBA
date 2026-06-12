@@ -184,10 +184,8 @@ export function useClientJobStatusRealtime(): ClientStatusToast | null {
     profile?.id,
     profile?.role,
     profile?.phone,
-    session?.access_token,
     notifyJobChange,
     pushToast,
-    queryClient,
   ]);
 
   return toast;

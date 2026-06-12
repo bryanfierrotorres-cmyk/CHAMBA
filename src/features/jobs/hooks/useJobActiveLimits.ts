@@ -67,8 +67,8 @@ export function useWorkerCommitmentLimit() {
     queryKey: workerActiveCountKey(workerId),
     queryFn: () => fetchWorkerActiveCount(workerId),
     enabled: !!workerId && profile?.role === 'worker',
-    staleTime: 3_000,
-    refetchInterval: 8_000,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
     refetchOnMount: true,
     refetchOnWindowFocus: true,
   });

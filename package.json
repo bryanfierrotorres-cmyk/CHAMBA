@@ -90,7 +90,8 @@
     "diagnose:pepe-agenda": "node scripts/diagnose-pepe-agenda-sync.mjs",
     "diagnose:profiles": "node scripts/diagnose-profiles-health.mjs",
     "db:apply-security-idor": "node scripts/apply-migration-059-security-idor.mjs",
-    "db:apply-security-hardening": "node scripts/apply-migration-060-security-hardening.mjs"
+    "db:apply-security-hardening": "node scripts/apply-migration-060-security-hardening.mjs",
+    "db:apply-performance-indexes": "node scripts/apply-migration-061-performance-indexes.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~3.2.3",

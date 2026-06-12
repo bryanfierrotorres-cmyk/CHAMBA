@@ -105,10 +105,10 @@ export function useJobWorkerApplications(
     queryKey: jobApplicationsQueryKey(jobId, clientId),
     queryFn: () => fetchJobWorkerApplications(jobId, clientId),
     enabled: active,
-    staleTime: QUERY_STALE_FEED_MS,
+    staleTime: 10_000,
     refetchOnWindowFocus: false,
-    refetchInterval: active ? OPEN_JOB_POLL_MS : false,
-    refetchIntervalInBackground: true,
+    refetchInterval: active ? 15_000 : false,
+    refetchIntervalInBackground: false,
   });
 }
 

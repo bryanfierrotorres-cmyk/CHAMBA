@@ -497,15 +497,11 @@ export const fetchWorkerAssignments = async (
         .from('job_assignments')
         .select(`*, job:jobs(*)`)
         .eq('worker_id', effectiveWorkerId)
-        .order('assigned_at', { ascending: false });
+        .order('assigned_at', { ascending: false })
+        .limit(50);
 
       if (!error && (data ?? []).length > 0) {
         remote = (data ?? []) as JobAssignment[];
-      } else {
-        remote = await fetchAssignmentsViaJobs(effectiveWorkerId);
-        if (remote.length === 0) {
-          remote = await fetchAssignmentsViaWorkerColumn(effectiveWorkerId);
-        }
       }
     }
 

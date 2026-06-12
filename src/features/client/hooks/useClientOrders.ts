@@ -86,10 +86,10 @@ export function useClientOrders() {
     enabled: !!clientId && clientRole === 'client',
     placeholderData: [],
     retry: 0,
-    staleTime: QUERY_STALE_FEED_MS,
+    staleTime: 10_000,
     refetchOnWindowFocus: false,
     refetchInterval: (query) =>
-      clientOrdersNeedLivePoll(query.state.data) ? 5_000 : false,
-    refetchIntervalInBackground: true,
+      clientOrdersNeedLivePoll(query.state.data) ? 15_000 : false,
+    refetchIntervalInBackground: false,
   });
 }

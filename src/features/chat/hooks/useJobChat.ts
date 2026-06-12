@@ -53,8 +53,8 @@ export function useJobChat(jobId: string) {
     queryKey: jobChatMessagesKey(jobId),
     queryFn: loadMessages,
     enabled: !!jobId && !!profile?.id && !!context,
-    staleTime: 2_000,
-    refetchInterval: CHAT_POLL_MS,
+    staleTime: 30_000,
+    refetchInterval: false,
     refetchIntervalInBackground: false,
   });
 
@@ -132,7 +132,6 @@ export function useJobChat(jobId: string) {
     jobId,
     profile?.id,
     profile?.phone,
-    session?.access_token,
   ]);
 
   const effectiveStatus = jobStatus ?? context?.status ?? null;
