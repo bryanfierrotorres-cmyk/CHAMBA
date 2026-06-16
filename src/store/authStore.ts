@@ -11,6 +11,7 @@ import {
   ensureProfileInDb,
 } from '@utils/profileSync';
 import { useAssignmentsStore } from '@store/assignmentsStore';
+import { ENV } from '@utils/env';
 
 /** UUID v4 — uses crypto.getRandomValues for cryptographic security. */
 const uuid4 = () => {
@@ -213,6 +214,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         throw new Error(msg);
       }
 
+      if (ENV.DEV_MODE) {
+        set({ isLoading: false, error: null });
+        return;
+      }
+
       const phoneE164 = `+505${cleanPhone}`;
       const { error } = await supabase.auth.signInWithOtp({
         phone: phoneE164,
@@ -243,6 +249,45 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const code = token.replace(/\D/g, '');
       if (code.length < 4) {
         throw new Error('Ingresá el código que recibiste por SMS');
+      }
+
+      if (ENV.DEV_MODE && code === '123456') {
+        const existing = await fetchProfileByPhone(cleanPhone);
+        if (!existing) {
+          const msg = 'Número no registrado, por favor regístrate primero';
+          set({ error: msg, isLoading: false });
+          throw new Error(msg);
+        }
+
+        const userId = existing.id;
+        const fakeSession = {
+          access_token: ENV.SUPABASE_ANON_KEY,
+          refresh_token: ENV.SUPABASE_ANON_KEY,
+          expires_in: 3600,
+          expires_at: Math.floor(Date.now() / 1000) + 3600,
+          token_type: 'bearer',
+          user: {
+            id: userId,
+            app_metadata: { provider: 'phone' },
+            user_metadata: { full_name: existing.full_name, phone: cleanPhone, role },
+            aud: 'authenticated',
+            created_at: new Date().toISOString(),
+          },
+        } as unknown as Session;
+
+        await AsyncStorage.setItem('supabase.auth.token', JSON.stringify(fakeSession));
+
+        let profile = { ...existing, id: userId };
+        profile = await syncProfileWithDatabase({ ...profile, role });
+        await ensureProfileInDb(profile);
+
+        set({
+          session: fakeSession,
+          profile,
+          isLoading: false,
+          error: null,
+        });
+        return;
       }
 
       const phoneE164 = `+505${cleanPhone}`;
