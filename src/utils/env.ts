@@ -10,6 +10,7 @@ const EXTRA_KEY_MAP: Record<string, string> = {
   EXPO_PUBLIC_SUPABASE_URL:       'supabaseUrl',
   EXPO_PUBLIC_SUPABASE_ANON_KEY:  'supabaseAnonKey',
   EXPO_PUBLIC_PILOT_MODE:         'pilotMode',
+  EXPO_PUBLIC_DEV_MODE:           'devMode',
   EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: 'stripePublishableKey',
   EXPO_PUBLIC_GOOGLE_MAPS_API_KEY:    'googleMapsApiKey',
 };
@@ -40,3 +41,12 @@ export function readSupabaseAnonKey(): string {
   const raw = readPublicEnv('EXPO_PUBLIC_SUPABASE_ANON_KEY');
   return raw.includes('publisable') ? raw.replace('publisable', 'publishable') : raw;
 }
+
+export const ENV = {
+  SUPABASE_URL:              readPublicEnv('EXPO_PUBLIC_SUPABASE_URL'),
+  SUPABASE_ANON_KEY:         readSupabaseAnonKey(),
+  DEV_MODE:                 true, // readPublicEnv('EXPO_PUBLIC_DEV_MODE') === 'true',
+  PILOT_MODE:               readPublicEnv('EXPO_PUBLIC_PILOT_MODE') === 'true',
+  STRIPE_PUBLISHABLE_KEY:   readPublicEnv('EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY'),
+  GOOGLE_MAPS_API_KEY:      readPublicEnv('EXPO_PUBLIC_GOOGLE_MAPS_API_KEY'),
+};
