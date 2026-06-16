@@ -43,8 +43,8 @@ export function readSupabaseAnonKey(): string {
 }
 
 export const ENV = {
-  SUPABASE_URL:              readPublicEnv('EXPO_PUBLIC_SUPABASE_URL'),
-  SUPABASE_ANON_KEY:         readSupabaseAnonKey(),
+  SUPABASE_URL:              'https://xvolxgonpjzjkytpsmil.supabase.co',
+  SUPABASE_ANON_KEY:         'sb_publishable_uhhzt2htaTjd2BmCOJn80g__R-_shQZ',
   DEV_MODE:                 true, // readPublicEnv('EXPO_PUBLIC_DEV_MODE') === 'true',
   PILOT_MODE:               readPublicEnv('EXPO_PUBLIC_PILOT_MODE') === 'true',
   STRIPE_PUBLISHABLE_KEY:   readPublicEnv('EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY'),
