@@ -10,14 +10,13 @@ import type { JobStatus } from '@/types';
 /** Formats a number as Nicaraguan córdobas (C$). */
 export const formatCurrency = (amount: number): string => {
   try {
-    return new Intl.NumberFormat('es-NI', {
-      style:                 'currency',
-      currency:              CONFIG.platform.currency,
+    const formatted = new Intl.NumberFormat('es-NI', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(amount);
+    return `${CONFIG.platform.currencySymbol} ${formatted}`;
   } catch {
-    return `${CONFIG.platform.currencySymbol}${amount.toFixed(2)}`;
+    return `${CONFIG.platform.currencySymbol} ${amount.toFixed(2)}`;
   }
 };
 
