@@ -1162,9 +1162,6 @@ export const createJob = async (params: CreateJobParams): Promise<Job> => {
     p_required_workers: params.requiredWorkers,
     p_scheduled_at:     scheduling.scheduledAt,
     p_media_urls:       params.mediaUrls ?? [],
-    p_scheduled_date:   scheduling.scheduledDate,
-    p_scheduled_time:   scheduling.scheduledTime,
-    p_urgency_level:    scheduling.urgencyLevel,
   };
 
   let job: Job | null = null;
