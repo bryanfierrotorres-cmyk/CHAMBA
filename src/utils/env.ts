@@ -48,5 +48,5 @@ export const ENV = {
   DEV_MODE:                 true, // readPublicEnv('EXPO_PUBLIC_DEV_MODE') === 'true',
   PILOT_MODE:               readPublicEnv('EXPO_PUBLIC_PILOT_MODE') === 'true',
   STRIPE_PUBLISHABLE_KEY:   readPublicEnv('EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY'),
-  GOOGLE_MAPS_API_KEY:      readPublicEnv('EXPO_PUBLIC_GOOGLE_MAPS_API_KEY'),
+  GOOGLE_MAPS_API_KEY:      'AIzaSyCzAiobbJzkSegwibdS8fOqScZFdgNisyc',
 };
