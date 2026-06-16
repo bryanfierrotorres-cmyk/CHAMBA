@@ -86,10 +86,7 @@ export const CreateJobFormScreen: React.FC = () => {
   const label = catalog.getLabel(serviceTypeSlug) || serviceLabel;
 
   const normalizedServiceSlug = serviceTypeSlug.trim().toLowerCase();
-  const suggestedPrice = useMemo(
-    () => resolveOfferSuggestedPriceFromDb(normalizedServiceSlug, precios.dbPreciosMap) ?? 0,
-    [normalizedServiceSlug, precios.dbPreciosMap],
-  );
+  const suggestedPrice = precios.getSuggestedPrice(normalizedServiceSlug);
   const pricesReady = !precios.isLoading && suggestedPrice > 0;
 
   useEffect(() => {
