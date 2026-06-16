@@ -177,13 +177,7 @@ export const LoginScreen: React.FC = () => {
   };
 
   const validateLogin = () => {
-    let valid = validatePhone();
-    setNameErr('');
-    if (!fullName.trim() || fullName.trim().split(/\s+/).length < 2) {
-      setNameErr('Ingresá tu nombre completo (nombre y apellido)');
-      valid = false;
-    }
-    return valid;
+    return validatePhone();
   };
 
   const handleSubmit = async () => {
@@ -194,10 +188,8 @@ export const LoginScreen: React.FC = () => {
     }
 
     const cleanPhone = getPhoneDigits();
-    const cleanName = fullName.trim();
 
     try {
-      await registerPhoneProfile(cleanName, cleanPhone, role);
       await requestPhoneLoginOtp(cleanPhone);
       navigation.navigate('VerifyOtp', { phone: cleanPhone, role });
     } catch {
@@ -318,17 +310,7 @@ export const LoginScreen: React.FC = () => {
             </View>
 
             <View style={styles.fields}>
-              <PremiumField
-                  label="Nombre completo"
-                  icon="person-outline"
-                  placeholder="Ej. Juan Pérez"
-                  value={fullName}
-                  onChangeText={setFullName}
-                  onClearError={() => setNameErr('')}
-                  error={nameErr}
-                  autoCapitalize="words"
-                  returnKeyType="next"
-                />
+
 
               <View style={fieldStyles.wrap}>
                 <Text style={fieldStyles.label}>Número de celular</Text>
