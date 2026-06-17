@@ -30,7 +30,7 @@ export function useJobChat(jobId: string) {
 
   const contextQuery = useQuery({
     queryKey: ['chat', 'context', jobId],
-    queryFn: () => fetchJobChatContext(jobId),
+    queryFn: () => fetchJobChatContext(jobId, actorId ?? profile?.id),
     enabled: !!jobId && !!profile?.id,
     staleTime: 30_000,
   });

@@ -47,7 +47,7 @@ const unwrapProfileJoin = (
   return Array.isArray(value) ? value[0] ?? null : value;
 };
 
-export async function fetchJobChatContext(jobId: string): Promise<JobChatContext | null> {
+export async function fetchJobChatContext(jobId: string, callerId?: string): Promise<JobChatContext | null> {
   const { data, error } = await supabase
     .from('jobs')
     .select(`
@@ -64,6 +64,47 @@ export async function fetchJobChatContext(jobId: string): Promise<JobChatContext
     .maybeSingle();
 
   if (error || !data) {
+    if (callerId) {
+      // Fallback a RPC existentes porque RLS bloquea lectura directa local (DEV_MODE)
+      // Buscamos si el caller es técnico asignado a este servicio
+      const { data: assignments } = await supabase.rpc('get_worker_assignments', { p_worker_id: callerId });
+      if (assignments && Array.isArray(assignments)) {
+        const match = assignments.find((a: any) => a.job_id === jobId);
+        if (match && match.job) {
+          const j = match.job;
+          return {
+            jobId: j.id,
+            status: j.status as JobStatus,
+            serviceTitle: j.title?.trim() || 'Servicio CHAMBA',
+            clientId: j.created_by,
+            workerId: j.assigned_worker_id ?? null,
+            clientName: 'Cliente',
+            clientAvatar: null,
+            workerName: 'Técnico',
+            workerAvatar: null,
+          };
+        }
+      }
+      
+      // Si el caller es el cliente creador
+      const { data: clientJobs } = await supabase.rpc('get_client_jobs', { p_client_id: callerId, p_status: 'all' });
+      if (clientJobs && Array.isArray(clientJobs)) {
+        const match = clientJobs.find((j: any) => j.id === jobId);
+        if (match) {
+          return {
+            jobId: match.id,
+            status: match.status as JobStatus,
+            serviceTitle: match.title?.trim() || 'Servicio CHAMBA',
+            clientId: match.created_by,
+            workerId: match.assigned_worker_id ?? null,
+            clientName: 'Cliente',
+            clientAvatar: null,
+            workerName: 'Técnico',
+            workerAvatar: null,
+          };
+        }
+      }
+    }
     console.warn('[fetchJobChatContext]', error?.message);
     return null;
   }
