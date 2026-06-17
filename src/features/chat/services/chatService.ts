@@ -48,6 +48,7 @@ const unwrapProfileJoin = (
 };
 
 export async function fetchJobChatContext(jobId: string, callerId?: string): Promise<JobChatContext | null> {
+  // 1) Intento directo (funciona con JWT real)
   const { data, error } = await supabase
     .from('jobs')
     .select(`
@@ -63,70 +64,59 @@ export async function fetchJobChatContext(jobId: string, callerId?: string): Pro
     .eq('id', jobId)
     .maybeSingle();
 
-  if (error || !data) {
-    if (callerId) {
-      // Fallback a RPC existentes porque RLS bloquea lectura directa local (DEV_MODE)
-      // Buscamos si el caller es técnico asignado a este servicio
-      const { data: assignments } = await supabase.rpc('get_worker_assignments', { p_worker_id: callerId });
-      if (assignments && Array.isArray(assignments)) {
-        const match = assignments.find((a: any) => a.job_id === jobId);
-        if (match && match.job) {
-          const j = match.job;
-          return {
-            jobId: j.id,
-            status: j.status as JobStatus,
-            serviceTitle: j.title?.trim() || 'Servicio CHAMBA',
-            clientId: j.created_by,
-            workerId: j.assigned_worker_id ?? null,
-            clientName: 'Cliente',
-            clientAvatar: null,
-            workerName: 'Técnico',
-            workerAvatar: null,
-          };
-        }
-      }
-      
-      // Si el caller es el cliente creador
-      const { data: clientJobs } = await supabase.rpc('get_client_jobs', { p_client_id: callerId, p_status: 'all' });
-      if (clientJobs && Array.isArray(clientJobs)) {
-        const match = clientJobs.find((j: any) => j.id === jobId);
-        if (match) {
-          return {
-            jobId: match.id,
-            status: match.status as JobStatus,
-            serviceTitle: match.title?.trim() || 'Servicio CHAMBA',
-            clientId: match.created_by,
-            workerId: match.assigned_worker_id ?? null,
-            clientName: 'Cliente',
-            clientAvatar: null,
-            workerName: 'Técnico',
-            workerAvatar: null,
-          };
-        }
-      }
-    }
-    console.warn('[fetchJobChatContext]', error?.message);
-    return null;
+  if (!error && data) {
+    const creator = unwrapProfileJoin(
+      data.creator as ProfileJoin | ProfileJoin[] | null | undefined,
+    );
+    const worker = unwrapProfileJoin(
+      data.worker as ProfileJoin | ProfileJoin[] | null | undefined,
+    );
+    return {
+      jobId: data.id,
+      status: data.status as JobStatus,
+      serviceTitle: data.title?.trim() || 'Servicio CHAMBA',
+      clientId: data.created_by,
+      workerId: data.assigned_worker_id ?? null,
+      clientName: creator?.full_name ?? 'Cliente',
+      clientAvatar: creator?.avatar_url ?? null,
+      workerName: worker?.full_name ?? null,
+      workerAvatar: worker?.avatar_url ?? null,
+    };
   }
 
-  const creator = unwrapProfileJoin(
-    data.creator as ProfileJoin | ProfileJoin[] | null | undefined,
-  );
-  const worker = unwrapProfileJoin(
-    data.worker as ProfileJoin | ProfileJoin[] | null | undefined,
-  );
+  // 2) Fallback: RPC get_job_chat_context (DEV_MODE / sin JWT)
+  if (callerId) {
+    try {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_job_chat_context', {
+        p_servicio_id: jobId,
+        p_caller_id: callerId,
+      });
 
-  return {
-    jobId: data.id,
-    status: data.status as JobStatus,
-    serviceTitle: data.title?.trim() || 'Servicio CHAMBA',
-    clientId: data.created_by,
-    workerId: data.assigned_worker_id ?? null,
-    clientName: creator?.full_name ?? 'Cliente',
-    clientAvatar: creator?.avatar_url ?? null,
-    workerName: worker?.full_name ?? null,
-    workerAvatar: worker?.avatar_url ?? null,
-  };
+      if (!rpcError && rpcData) {
+        const body = rpcData as { success?: boolean; context?: Record<string, unknown> };
+        if (body.success && body.context) {
+          const ctx = body.context;
+          return {
+            jobId: (ctx.jobId as string) ?? jobId,
+            status: (ctx.status as JobStatus) ?? 'open',
+            serviceTitle: ((ctx.serviceTitle as string) ?? '').trim() || 'Servicio CHAMBA',
+            clientId: ctx.clientId as string,
+            workerId: (ctx.workerId as string) ?? null,
+            clientName: (ctx.clientName as string) ?? 'Cliente',
+            clientAvatar: (ctx.clientAvatar as string) ?? null,
+            workerName: (ctx.workerName as string) ?? null,
+            workerAvatar: (ctx.workerAvatar as string) ?? null,
+          };
+        }
+      }
+      console.warn('[fetchJobChatContext] RPC fallback:', rpcError?.message);
+    } catch (e) {
+      console.warn('[fetchJobChatContext] RPC exception:', e);
+    }
+  }
+
+  console.warn('[fetchJobChatContext]', error?.message);
+  return null;
 }
 
 async function fetchJobMessagesDirect(servicioId: string): Promise<ServiceMessage[]> {
