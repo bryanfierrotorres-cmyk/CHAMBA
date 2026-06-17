@@ -54,7 +54,7 @@ export function useJobChat(jobId: string) {
     queryFn: loadMessages,
     enabled: !!jobId && !!profile?.id && !!context,
     staleTime: 30_000,
-    refetchInterval: false,
+    refetchInterval: CHAT_POLL_MS,
     refetchIntervalInBackground: false,
   });
 
