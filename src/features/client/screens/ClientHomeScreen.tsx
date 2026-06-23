@@ -61,7 +61,7 @@ import { useClientPublishLimit } from '@features/jobs/hooks/useJobActiveLimits';
 import { SkeletonCard } from '@components/SkeletonCard';
 import { SmoothEntrance } from '@components/SmoothEntrance';
 import { AnimatedBottomSheet } from '@components/AnimatedBottomSheet';
-import { CustomServiceCard } from '@components/client/CustomServiceCard';
+import { CustomServiceCard, type CustomServiceCardRef } from '@components/client/CustomServiceCard';
 import type { ClientStackParamList } from '@/types';
 
 type Nav = NativeStackNavigationProp<ClientStackParamList, 'CategoryGrid'>;
@@ -125,7 +125,16 @@ export const ClientHomeScreen: React.FC = () => {
   }, [catalog.serviceTypes]);
 
   const activeExpressTiles = useMemo((): ExpressTileDef[] => {
-    if (selectedExpressCat) return EXPRESS_SUB_TILES[selectedExpressCat];
+    if (selectedExpressCat) {
+      return [
+        ...EXPRESS_SUB_TILES[selectedExpressCat],
+        {
+          id: 'virtual_custom',
+          title: 'Otro / Servicio Personalizado',
+          slug: 'virtual_custom',
+        }
+      ];
+    }
     return EXPRESS_MAIN_TILES;
   }, [selectedExpressCat]);
 
@@ -133,9 +142,21 @@ export const ClientHomeScreen: React.FC = () => {
     ? EXPRESS_SUBMENU_META[selectedExpressCat]
     : null;
 
+  const customServiceRef = useRef<CustomServiceCardRef>(null);
+
   const onExpressPress = (tile: ExpressTileDef) => {
     if (tile.submenu) {
       setSelectedExpressCat(prev => prev === tile.submenu ? null : tile.submenu);
+      return;
+    }
+    if (tile.slug === 'virtual_custom') {
+      setSelectedExpressCat(null);
+      setTimeout(() => {
+        scrollRef.current?.scrollToEnd({ animated: true });
+        setTimeout(() => {
+          customServiceRef.current?.focusDescription();
+        }, 350); // Wait for the scroll animation
+      }, 200); // Wait for the bottom sheet to start closing
       return;
     }
     if (tile.slug) {
@@ -315,6 +336,7 @@ export const ClientHomeScreen: React.FC = () => {
             )}
 
             <CustomServiceCard
+              ref={customServiceRef}
               disabled={publishLimit.atLimit}
               onSendRequest={(desc, price) => {
                 handlePress('servicio_personalizado', 'Servicio Personalizado', desc, price);

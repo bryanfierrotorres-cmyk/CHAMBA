@@ -155,6 +155,23 @@ export const PremiumSubcategoryList: React.FC<PremiumSubcategoryListProps> = ({
       .filter((tile) => !!tile.slug)
       .map((tile, index) => {
         const slug = tile.slug!;
+        
+        if (slug === 'virtual_custom') {
+          return {
+            id: tile.id,
+            title: tile.title,
+            description: 'Describe tu necesidad y te daremos una cotización a la medida.',
+            priceLabel: 'Cotizar',
+            estimatedMinutes: 60,
+            techniciansNearby: 15,
+            imageSource: null,
+            imageResizeMode: 'contain',
+            iconColor: '#0F172A',
+            icon: <Text style={{ fontSize: 22 }}>✨</Text>,
+            onPress: () => onTilePress(tile),
+          };
+        }
+
         const price = getSuggestedPrice(slug, tile.fallbackPrice ?? 0);
         const imageSource = resolveTileImageSource(tile, submenu, serviceTypes);
         const imageResizeMode: ImageResizeMode =
