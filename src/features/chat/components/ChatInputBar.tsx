@@ -18,6 +18,7 @@ interface Props {
   isSending?: boolean;
   error?: string | null;
   onSend: (text: string) => void;
+  onTyping?: () => void;
 }
 
 export const ChatInputBar: React.FC<Props> = ({
@@ -26,10 +27,18 @@ export const ChatInputBar: React.FC<Props> = ({
   isSending,
   error,
   onSend,
+  onTyping,
 }) => {
   const insets = useSafeAreaInsets();
   const [text, setText] = useState('');
   const canSend = text.trim().length > 0 && !readOnly && !isSending;
+
+  const handleChangeText = (val: string) => {
+    setText(val);
+    if (val.length > 0 && onTyping) {
+      onTyping();
+    }
+  };
 
   const handleSend = () => {
     const trimmed = text.trim();
@@ -66,7 +75,7 @@ export const ChatInputBar: React.FC<Props> = ({
         <TextInput
           style={styles.input}
           value={text}
-          onChangeText={setText}
+          onChangeText={handleChangeText}
           placeholder="Escribí un mensaje…"
           placeholderTextColor={CHAT_THEME.muted}
           multiline

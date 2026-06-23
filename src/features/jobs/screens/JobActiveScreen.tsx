@@ -260,6 +260,7 @@ export const JobActiveScreen: React.FC = () => {
   const { mutateAsync: completeMut, isPending: isCompleting } = useCompleteJob();
 
   const [showSuccess, setShowSuccess] = useState(false);
+  const [phaseConfirmed, setPhaseConfirmed] = useState<WorkerOperationalPhase | null>(null);
 
   const handleOpenChat = useCallback(async (readOnly: boolean) => {
     if (!profile) return;
@@ -276,16 +277,17 @@ export const JobActiveScreen: React.FC = () => {
   const operationalPhase = resolveOperationalPhase(job);
 
   const handleAdvance = useCallback(async (nextPhase: WorkerOperationalPhase) => {
+    // ✅ Feedback INMEDIATO — antes de esperar la RPC
+    setPhaseConfirmed(nextPhase);
+    const clearConfirm = setTimeout(() => setPhaseConfirmed(null), 4000);
     try {
       await advanceMut({ jobId, nextPhase, job: job ?? null });
-      if (nextPhase === 'en_route') {
-        showMessage('En camino', 'El cliente fue notificado de que vas al destino.');
-      } else if (nextPhase === 'arrived') {
-        showMessage('Llegaste', 'El cliente fue notificado de que estás en el lugar.');
-      }
+      // Éxito real confirmado por el servidor
     } catch (err: unknown) {
+      clearTimeout(clearConfirm);
+      setPhaseConfirmed(null);
       const msg = err instanceof Error ? err.message : 'No se pudo actualizar';
-      showMessage('Error', msg);
+      showMessage('Error al actualizar estado', msg);
     }
   }, [jobId, advanceMut, job]);
 
@@ -353,9 +355,23 @@ export const JobActiveScreen: React.FC = () => {
         <Text style={{ fontSize: 28 }}>{getCategoryEmoji(job.category)}</Text>
       </View>
 
+      {/* ── Banner confirmación inmediata para el técnico ── */}
+      {phaseConfirmed != null && (
+        <View style={styles.confirmBanner}>
+          <Ionicons name="checkmark-circle" size={20} color="#fff" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.confirmBannerTitle}>
+              {phaseConfirmed === 'en_route' ? '🚗 ¡En camino al lugar!' : '📍 ¡Llegaste al lugar!'}
+            </Text>
+            <Text style={styles.confirmBannerSub}>Confirmado · Notificando al cliente...</Text>
+          </View>
+        </View>
+      )}
+
       <ScrollView
         contentContainerStyle={{ padding: SPACING.lg, gap: SPACING.lg, paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
+
       >
         {/* ── Pay Summary ── */}
         <Card elevated style={{ borderColor: COLORS.brand[700], borderWidth: 1 }}>
@@ -493,6 +509,24 @@ const styles = StyleSheet.create({
     color: COLORS.text.primary,
     fontSize: FONT_SIZE.lg,
     fontWeight: '800',
+  },
+  confirmBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    backgroundColor: '#16a34a',
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+  },
+  confirmBannerTitle: {
+    color: '#fff',
+    fontSize: FONT_SIZE.sm,
+    fontWeight: '700',
+  },
+  confirmBannerSub: {
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: FONT_SIZE.xs,
+    marginTop: 1,
   },
   sectionMicro: {
     color: COLORS.text.muted,

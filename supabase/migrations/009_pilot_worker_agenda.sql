@@ -4,6 +4,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- 1. Perfil por teléfono (login técnico sin Supabase Auth)
+DROP FUNCTION IF EXISTS get_profile_by_phone(TEXT);
 CREATE OR REPLACE FUNCTION get_profile_by_phone(p_phone TEXT)
 RETURNS JSONB
 LANGUAGE plpgsql

@@ -1,6 +1,0 @@
--- CHAMBA 010 — OPCIONAL: solo si la Parte 1 dio timeout en el ALTER de jobs
--- Ejecuta esto SOLO si service_categories ya existe pero jobs.category sigue siendo enum.
-
-SET statement_timeout = '300s';
-
-ALTER TABLE jobs ALTER COLUMN category TYPE TEXT USING category::TEXT;

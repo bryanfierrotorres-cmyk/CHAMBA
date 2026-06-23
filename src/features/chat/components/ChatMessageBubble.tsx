@@ -16,10 +16,19 @@ export const ChatMessageBubble: React.FC<Props> = ({ message, isMine, accentColo
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(fade, { toValue: 1, duration: 220, useNativeDriver: true }),
-      Animated.spring(slide, { toValue: 0, friction: 10, tension: 90, useNativeDriver: true }),
+      Animated.timing(fade, { 
+        toValue: message.isOptimistic ? 0.6 : 1, 
+        duration: 220, 
+        useNativeDriver: true 
+      }),
+      Animated.spring(slide, { 
+        toValue: 0, 
+        friction: 10, 
+        tension: 90, 
+        useNativeDriver: true 
+      }),
     ]).start();
-  }, [fade, slide]);
+  }, [fade, slide, message.isOptimistic]);
 
   return (
     <Animated.View

@@ -23,11 +23,18 @@ export class AppErrorBoundary extends React.Component<Props, State> {
   render() {
     if (this.state.error) {
       return (
-        <StartupErrorScreen
-          title="Error inesperado al cargar CHAMBA"
-          message="La aplicación encontró un problema al renderizar. Intenta recargar la página."
-          details={this.state.error.message}
-        />
+      <StartupErrorScreen
+        title="Error inesperado al cargar CHAMBA"
+        message="La aplicación encontró un problema al renderizar. Intenta recargar la página."
+        details={this.state.error.message}
+        // Add a retry button
+        actionLabel="Reintentar"
+        onAction={() => {
+          if (typeof window !== 'undefined') {
+            window.location.reload();
+          }
+        }}
+      />
       );
     }
     return this.props.children;

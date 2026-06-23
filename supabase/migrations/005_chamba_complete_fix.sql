@@ -9,14 +9,15 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
--- ── 2. Las 8 categorías oficiales en job_category ───────────────────────────
-DO $$ BEGIN ALTER TYPE job_category ADD VALUE 'limpieza_sofas';          EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN ALTER TYPE job_category ADD VALUE 'limpieza_alfombra';       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN ALTER TYPE job_category ADD VALUE 'alfombra_institucional';  EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN ALTER TYPE job_category ADD VALUE 'fumigacion';              EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN ALTER TYPE job_category ADD VALUE 'vehiculo_profundo';       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN ALTER TYPE job_category ADD VALUE 'conserjeria_ocasional';   EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN ALTER TYPE job_category ADD VALUE 'conserjeria_contrato';    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+-- ── 2. Las 8 categorías oficiales en job_category (SALTAR - ya usamos TEXT) ──
+-- job_category enum no existe en el nuevo esquema; category es TEXT
+-- DO $$ BEGIN ALTER TYPE job_category ADD VALUE 'limpieza_sofas';          EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+-- DO $$ BEGIN ALTER TYPE job_category ADD VALUE 'limpieza_alfombra';       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+-- DO $$ BEGIN ALTER TYPE job_category ADD VALUE 'alfombra_institucional';  EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+-- DO $$ BEGIN ALTER TYPE job_category ADD VALUE 'fumigacion';              EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+-- DO $$ BEGIN ALTER TYPE job_category ADD VALUE 'vehiculo_profundo';       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+-- DO $$ BEGIN ALTER TYPE job_category ADD VALUE 'conserjeria_ocasional';   EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+-- DO $$ BEGIN ALTER TYPE job_category ADD VALUE 'conserjeria_contrato';    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 -- jardineria suele existir en esquemas legacy
 
 -- ── 3. Columnas de perfil (documentos + especialidades) ───────────────────
@@ -102,7 +103,7 @@ BEGIN
     duration_hours, required_workers, slots_taken,
     media_urls, created_by
   ) VALUES (
-    p_title, p_description, p_category::job_category, 'open',
+    p_title, p_description, p_category, 'open',
     p_pay_amount, v_fee, v_payout,
     p_address, p_lat, p_lng, p_scheduled_at,
     p_duration_hours, p_required_workers, 0,

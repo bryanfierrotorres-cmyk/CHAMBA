@@ -49,6 +49,8 @@ export const JobChatScreen: React.FC<Props> = ({ accentColor }) => {
     readOnly,
     counterpart,
     send,
+    sendTypingSignal,
+    counterpartTyping,
     sendError,
     isSending,
   } = useJobChat(jobId);
@@ -137,12 +139,19 @@ export const JobChatScreen: React.FC<Props> = ({ accentColor }) => {
           />
         )}
 
+        {counterpartTyping && (
+          <View style={styles.typingIndicator}>
+            <Text style={styles.typingText}>{counterpart?.name ?? 'Contacto'} está escribiendo...</Text>
+          </View>
+        )}
+
         <ChatInputBar
           accentColor={roleAccent}
           readOnly={effectiveReadOnly || isLoading || !context}
           isSending={isSending}
           error={sendError}
           onSend={send}
+          onTyping={sendTypingSignal}
         />
       </KeyboardAvoidingView>
     </View>
@@ -230,5 +239,15 @@ const styles = StyleSheet.create({
     color: CHAT_THEME.muted,
     textAlign: 'center',
     lineHeight: 21,
+  },
+  typingIndicator: {
+    paddingHorizontal: 20,
+    paddingVertical: 6,
+    backgroundColor: CHAT_THEME.bg,
+  },
+  typingText: {
+    fontSize: 13,
+    color: CHAT_THEME.muted,
+    fontStyle: 'italic',
   },
 });

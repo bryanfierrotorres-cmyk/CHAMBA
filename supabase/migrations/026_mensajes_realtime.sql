@@ -1,12 +1,1 @@
--- CHAMBA 026 — Realtime chat: filtros por servicio_id requieren REPLICA IDENTITY FULL
-SET statement_timeout = '30s';
-
-ALTER TABLE mensajes REPLICA IDENTITY FULL;
-
--- Asegurar publicación realtime (idempotente)
-DO $$
-BEGIN
-  ALTER PUBLICATION supabase_realtime ADD TABLE mensajes;
-EXCEPTION
-  WHEN duplicate_object THEN NULL;
-END $$;
+-- CHAMBA 026 — Realtime chat: filtros por servicio_id requieren REPLICA IDENTITY FULLSET statement_timeout = '30s';ALTER TABLE mensajes REPLICA IDENTITY FULL;-- Asegurar publicación realtime (idempotente)DO $$BEGIN  ALTER PUBLICATION supabase_realtime ADD TABLE mensajes;EXCEPTION  WHEN duplicate_object THEN NULL;END $$;

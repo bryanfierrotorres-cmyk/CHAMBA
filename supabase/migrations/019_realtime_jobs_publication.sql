@@ -1,16 +1,1 @@
--- CHAMBA 019 — Realtime: solicitudes (jobs) y postulaciones para toasts del cliente
-SET statement_timeout = '60s';
-
-DO $$
-BEGIN
-  ALTER PUBLICATION supabase_realtime ADD TABLE jobs;
-EXCEPTION
-  WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-  ALTER PUBLICATION supabase_realtime ADD TABLE job_assignments;
-EXCEPTION
-  WHEN duplicate_object THEN NULL;
-END $$;
+-- CHAMBA 019 — Realtime: solicitudes (jobs) y postulaciones para toasts del clienteSET statement_timeout = '60s';DO $$BEGIN  ALTER PUBLICATION supabase_realtime ADD TABLE jobs;EXCEPTION  WHEN duplicate_object THEN NULL;END $$;DO $$BEGIN  ALTER PUBLICATION supabase_realtime ADD TABLE job_assignments;EXCEPTION  WHEN duplicate_object THEN NULL;END $$;

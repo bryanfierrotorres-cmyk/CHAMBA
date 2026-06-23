@@ -11,6 +11,9 @@
       "@components/*": [
         "src/components/*"
       ],
+      "@context/*": [
+        "src/context/*"
+      ],
       "@features/*": [
         "src/features/*"
       ],

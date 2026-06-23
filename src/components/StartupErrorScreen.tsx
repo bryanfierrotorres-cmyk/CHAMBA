@@ -1,18 +1,20 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, Platform } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Platform, TouchableOpacity } from 'react-native';
 import { M3, SPACING, BORDER_RADIUS, CARD_ELEVATION } from '@constants/stitchStyles';
 import { webMinViewportStyle } from '@constants/webMobileLayout';
 
 interface StartupErrorScreenProps {
   title?: string;
-  message: string;
+  message?: string;
   details?: string;
+  onRetry?: () => void;
 }
 
 export const StartupErrorScreen: React.FC<StartupErrorScreenProps> = ({
-  title = 'CHAMBA no pudo iniciar',
-  message,
+  title = 'Error de configuración',
+  message = 'No se pudo inicializar la aplicación. Verifica que las variables de entorno estén configuradas correctamente.',
   details,
+  onRetry,
 }) => (
   <View style={styles.root}>
     <ScrollView contentContainerStyle={styles.scroll}>
@@ -20,14 +22,22 @@ export const StartupErrorScreen: React.FC<StartupErrorScreenProps> = ({
         <Text style={styles.emoji}>⚠️</Text>
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.message}>{message}</Text>
-        {details ? (
+
+        {details && (
           <View style={styles.detailsBox}>
-            <Text style={styles.detailsLabel}>Detalle técnico</Text>
+            <Text style={styles.detailsLabel}>Detalles técnicos:</Text>
             <Text style={styles.detailsText}>{details}</Text>
           </View>
-        ) : null}
+        )}
+
+        {onRetry && (
+          <TouchableOpacity style={styles.actionButton} onPress={onRetry}>
+            <Text style={styles.actionLabel}>Reintentar</Text>
+          </TouchableOpacity>
+        )}
+
         <View style={styles.hintBox}>
-          <Text style={styles.hintTitle}>Si despliegas en Vercel</Text>
+          <Text style={styles.hintTitle}>¿Faltan variables?</Text>
           <Text style={styles.hintText}>
             Agrega estas variables en Project Settings → Environment Variables y vuelve a desplegar:{'\n\n'}
             • EXPO_PUBLIC_SUPABASE_URL{'\n'}
@@ -112,6 +122,19 @@ const styles = StyleSheet.create({
     fontSize:   12,
     lineHeight: 18,
     color:      M3.onPrimaryFixedVariant,
+  },
+  actionButton: {
+    marginTop: SPACING.md,
+    backgroundColor: M3.error,
+    borderRadius: BORDER_RADIUS,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    alignItems: 'center',
+  },
+  actionLabel: {
+    color: M3.onError,
+    fontSize: 14,
+    fontWeight: '600',
   },
   footer: {
     marginTop:  SPACING.md,

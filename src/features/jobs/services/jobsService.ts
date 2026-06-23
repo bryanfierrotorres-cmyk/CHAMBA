@@ -1373,6 +1373,20 @@ export const fetchJobActive = async (
         : normalizedJob;
       return { job, assignment: found };
     }
+    if (normalizedJob.assigned_worker_id === workerId) {
+      const fallbackAssignment: JobAssignment = {
+        id: `${jobId}-${workerId}`,
+        job_id: jobId,
+        worker_id: workerId,
+        assigned_at: normalizedJob.updated_at ?? normalizedJob.created_at,
+        completed_at: normalizedJob.status === 'completed' ? (normalizedJob.updated_at ?? null) : null,
+        payment_status: 'pending' as const,
+        payment_intent_id: null,
+        selection_status: 'approved',
+      };
+      return { job: normalizedJob, assignment: fallbackAssignment };
+    }
+
     throw new Error(assignRes.error.message);
   }
 

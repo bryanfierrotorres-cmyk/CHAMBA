@@ -295,6 +295,16 @@ export interface ServiceMessage {
   remitente_id: string;
   texto: string;
   creado_al: string;
+  isOptimistic?: boolean;
+}
+
+export interface TypingBroadcastPayload {
+  type: 'broadcast';
+  event: 'typing';
+  payload: {
+    userId: string;
+    isTyping: boolean;
+  };
 }
 
 export type JobChatStackParamList = {

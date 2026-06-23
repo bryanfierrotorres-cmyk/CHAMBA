@@ -177,6 +177,9 @@ function AppBootstrap() {
   );
 }
 
+import { ErrorProvider } from './context/ErrorContext';
+import { ErrorBanner } from './components/shared/ErrorBanner';
+
 export default function App() {
   const configError = getSupabaseConfigError();
 
@@ -185,9 +188,12 @@ export default function App() {
   }
 
   return (
-    <AppErrorBoundary>
-      <AppBootstrap />
-    </AppErrorBoundary>
+    <ErrorProvider>
+      <ErrorBanner />
+      <AppErrorBoundary>
+        <AppBootstrap />
+      </AppErrorBoundary>
+    </ErrorProvider>
   );
 }
 

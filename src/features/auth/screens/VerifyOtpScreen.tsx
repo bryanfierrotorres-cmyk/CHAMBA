@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAuthStore } from '@store/authStore';
 import { CHAMBA } from '@constants/chambaUI';
 import { FONT_SIZE, SPACING } from '@constants/theme';
+import { ENV } from '@utils/env';
 import type { AuthStackParamList, UserRole } from '@/types';
 
 type VerifyOtpNav = NativeStackNavigationProp<AuthStackParamList, 'VerifyOtp'>;
@@ -124,6 +125,11 @@ export const VerifyOtpScreen: React.FC = () => {
             </View>
 
             <Text style={styles.title}>Ingresá el código</Text>
+            {ENV.DEV_MODE && (
+              <View style={styles.devBadge}>
+                <Text style={styles.devBadgeText}>DEV — Código: 123456</Text>
+              </View>
+            )}
             <Text style={styles.subtitle}>
               Te enviamos un SMS al{' '}
               <Text style={styles.phone}>+505 {formatPhone(phone)}</Text>
@@ -245,6 +251,21 @@ const styles = StyleSheet.create({
   phone: {
     color: CHAMBA.white,
     fontWeight: '600',
+  },
+  devBadge: {
+    backgroundColor: 'rgba(234, 179, 8, 0.15)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(234, 179, 8, 0.4)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginBottom: SPACING.md,
+  },
+  devBadgeText: {
+    color: '#EAB308',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   errorCard: {
     flexDirection: 'row',

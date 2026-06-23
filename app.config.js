@@ -57,6 +57,8 @@ module.exports = {
       ...appJson.expo.extra,
       supabaseUrl,
       supabaseAnonKey,
+      devMode: process.env.EXPO_PUBLIC_DEV_MODE === 'true',
+      pilotMode: process.env.EXPO_PUBLIC_PILOT_MODE === 'true',
       stripePublishableKey: process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '',
       googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? '',
       eas: {

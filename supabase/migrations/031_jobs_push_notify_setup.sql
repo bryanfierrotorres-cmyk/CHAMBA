@@ -1,14 +1,1 @@
--- CHAMBA 031 — Documentación push en INSERT jobs + índice para tokens
-SET statement_timeout = '60s';
-
-COMMENT ON TABLE public.jobs IS
-  'Solicitudes de servicio. Push a técnicos: Database Webhook INSERT → Edge Function notify-new-job → send-push-notification → Expo.';
-
-CREATE INDEX IF NOT EXISTS idx_profiles_worker_push_token
-  ON public.profiles (id)
-  WHERE role = 'worker'
-    AND is_approved = true
-    AND fcm_token IS NOT NULL;
-
-COMMENT ON COLUMN public.profiles.fcm_token IS
-  'Expo Push Token (ExponentPushToken[...]). Sincronizado desde la app móvil.';
+-- CHAMBA 031 — Documentación push en INSERT jobs + índice para tokensSET statement_timeout = '60s';COMMENT ON TABLE public.jobs IS  'Solicitudes de servicio. Push a técnicos: Database Webhook INSERT → Edge Function notify-new-job → send-push-notification → Expo.';CREATE INDEX IF NOT EXISTS idx_profiles_worker_push_token  ON public.profiles (id)  WHERE role = 'worker'    AND is_approved = true    AND fcm_token IS NOT NULL;COMMENT ON COLUMN public.profiles.fcm_token IS  'Expo Push Token (ExponentPushToken[...]). Sincronizado desde la app móvil.';

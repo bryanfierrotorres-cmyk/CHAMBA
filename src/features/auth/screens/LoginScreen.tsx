@@ -33,7 +33,7 @@ type LoginNav = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
 const LOGIN_PRIMARY = '#1E293B';
 const LOGIN_PRIMARY_PRESSED = '#334155';
 
-const LOGIN_BG = require('../../../../assets/Gemini_Generated_Image_9bxg669bxg669bxg.png');
+const LOGIN_BG = require('../../../../assets/chamba_logo.png');
 
 const COMPACT_BREAKPOINT = LOGIN_SCREEN_LAYOUT.compactBreakpoint;
 
@@ -205,10 +205,15 @@ export const LoginScreen: React.FC = () => {
   const bgImageStyle = [
     styles.bgImageCover,
     Platform.OS === 'web'
-      ? { objectPosition: 'center 16%' as const }
+      ? { objectPosition: '60% 0%' as any }
       : {
-          height: screenHeight * 1.22,
-          top: -screenHeight * 0.11,
+          width: screenWidth,
+          height: screenHeight,
+          transform: [
+            { scale: 1.25 },
+            { translateX: -30 }, // 3cm a la izquierda
+            { translateY: -50 }, // 5cm arriba
+          ],
         },
   ];
 
@@ -256,12 +261,11 @@ export const LoginScreen: React.FC = () => {
                 activeOpacity={0.8}
                 accessibilityLabel="Logo CHAMBA"
               >
-                  <LinearGradient
-                    colors={['rgba(13,148,136,0.35)', 'rgba(2,132,199,0.35)']}
-                    style={styles.logoBg}
-                  >
-                    <Ionicons name="flash" size={36} color="#5EEAD4" />
-                  </LinearGradient>
+                  <Image
+                    source={require('../../../../assets/images/icon.png')}
+                    style={styles.logoImage}
+                    resizeMode="contain"
+                  />
                 </TouchableOpacity>
 
                 <Text style={[styles.appName, isCompactLayout && styles.appNameCompact]}>
@@ -370,25 +374,10 @@ export const LoginScreen: React.FC = () => {
               onPress={handleSubmit}
               accessibilityRole="button"
               accessibilityLabel="Entrar a CHAMBA"
+              style={styles.submitBtn}
             >
-              {({ pressed }) => (
-                <View
-                  style={[
-                    styles.submitBtn,
-                    {
-                      backgroundColor: pressed ? LOGIN_PRIMARY_PRESSED : LOGIN_PRIMARY,
-                    },
-                  ]}
-                >
-                  <Ionicons
-                    name="flash"
-                    size={18}
-                    color="#FFFFFF"
-                    style={styles.submitBtnIcon}
-                  />
-                  <Text style={styles.submitBtnText}>Entrar a CHAMBA</Text>
-                </View>
-              )}
+              <Ionicons name="flash" size={18} color="#FFFFFF" style={styles.submitBtnIcon} />
+              <Text style={styles.submitBtnText}>Entrar a CHAMBA</Text>
             </Pressable>
 
             <TouchableOpacity
@@ -510,10 +499,11 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: CHAMBA.navy, overflow: 'hidden' },
   flexFill: { flex: 1 },
   bgImageCover: {
-    ...StyleSheet.absoluteFillObject,
-    ...(Platform.OS === 'web'
-      ? { objectFit: 'cover' as const, objectPosition: 'center center' }
-      : {}),
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   bgTopGradient: {
     position: 'absolute',
@@ -543,14 +533,10 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   logoWrap: { marginBottom: SPACING.md },
-  logoBg: {
+  logoImage: {
     width: 80,
     height: 80,
     borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.25)',
   },
   appName: {
     color: '#FFFFFF',

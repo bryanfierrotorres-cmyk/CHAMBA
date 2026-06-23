@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { ChambaSlidingToggle } from '@components/chamba/ChambaSlidingToggle';
 import { ClientActiveServiceCard } from '@components/client/ClientActiveServiceCard';
 import { useAuthStore } from '@store/authStore';
 import { useClientOrders, patchClientOrderAfterWorkerApproval } from '@features/client/hooks/useClientOrders';
@@ -35,6 +34,10 @@ import {
   isClientOrderPending,
 } from '@utils/clientOrderClassification';
 import { isJobExpiredLocally } from '@constants/jobExpiry';
+import { SkeletonCard } from '@components/SkeletonCard';
+import { SmoothEntrance } from '@components/SmoothEntrance';
+import { SlidingPillTabs } from '@components/SlidingPillTabs';
+import { AnimatedRefreshIcon } from '@components/AnimatedRefreshIcon';
 import type {
   AssignedWorkerSummary,
   ClientOrderJob,
@@ -255,22 +258,23 @@ export const ClientOrdersScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <View style={styles.headerTextWrap}>
-          <Text style={styles.headerTitle}>Mis Solicitudes</Text>
-          <Text style={styles.headerSubtitle}>Monitoreá tus servicios en tiempo real</Text>
-        </View>
-        <TouchableOpacity onPress={() => refetch()} style={styles.refreshBtn} activeOpacity={0.85}>
-          <Ionicons name="refresh-outline" size={20} color="#0284C7" />
+        <TouchableOpacity style={styles.headerIconBtn} activeOpacity={0.7}>
+          <Ionicons name="menu-outline" size={28} color="#0F172A" />
         </TouchableOpacity>
+        <Text style={styles.headerTitle}>Mis Solicitudes</Text>
+        <AnimatedRefreshIcon 
+          isRefetching={isRefetching} 
+          onPress={() => refetch()} 
+          style={styles.headerIconBtn} 
+          color="#0F172A"
+          size={24}
+        />
       </View>
 
-      <ChambaSlidingToggle
-        options={ORDER_FILTER_TABS}
+      <SlidingPillTabs
+        options={ORDER_FILTER_TABS as any}
         active={activeFilter}
-        onChange={setActiveFilter}
-        style={styles.orderFilterToggle}
-        cornerRadius={14}
-        activeFontWeight="600"
+        onChange={(id) => setActiveFilter(id as OrderFilter)}
       />
 
       {ordersError ? (
@@ -285,8 +289,10 @@ export const ClientOrdersScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
       ) : isLoading && jobs.length === 0 ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#0284C7" />
+        <View style={styles.skeletonContainer}>
+          <SkeletonCard variant="request" />
+          <SkeletonCard variant="request" />
+          <SkeletonCard variant="request" />
         </View>
       ) : (
         <ScrollView
@@ -308,15 +314,16 @@ export const ClientOrdersScreen: React.FC = () => {
           ) : (
             filteredJobs.map((job) =>
               profileId && job?.id ? (
-                <OrderCard
-                  key={job.id}
-                  job={job}
-                  clientId={profileId}
-                  clientName={profileName}
-                  onOpenCompleted={handleOpenCompleted}
-                  onApplicantDecision={handleApplicantDecision}
-                  onOpenChat={handleOpenChat}
-                />
+                <SmoothEntrance key={job.id}>
+                  <OrderCard
+                    job={job}
+                    clientId={profileId}
+                    clientName={profileName}
+                    onOpenCompleted={handleOpenCompleted}
+                    onApplicantDecision={handleApplicantDecision}
+                    onOpenChat={handleOpenChat}
+                  />
+                </SmoothEntrance>
               ) : null,
             )
           )}
@@ -337,26 +344,23 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     backgroundColor: '#F2F4F7',
   },
-  headerTextWrap: { flex: 1 },
-  headerTitle: { fontSize: 26, fontWeight: '600', color: '#0F172A', letterSpacing: -0.5 },
-  headerSubtitle: { fontSize: 14, color: '#8A94A6', marginTop: 2, fontWeight: '400' },
-  refreshBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    backgroundColor: '#FFF',
+  headerIconBtn: {
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    ...CARD_STEP_SHADOW,
   },
-
-  orderFilterToggle: {
-    marginHorizontal: 20,
-    marginBottom: 16,
+  headerTitle: { 
+    fontSize: 22, 
+    fontWeight: '800', 
+    color: '#0F172A', 
+    letterSpacing: -0.5,
+    fontFamily: 'sans-serif', // Use default sans-serif bold
   },
 
   scrollContainer: { paddingHorizontal: 20, paddingBottom: 100 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  skeletonContainer: { paddingHorizontal: 20, paddingTop: 10, gap: 16 },
 
   orderWrap: { marginBottom: 16, gap: 10 },
 

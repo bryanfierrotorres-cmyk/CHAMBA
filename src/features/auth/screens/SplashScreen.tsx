@@ -5,6 +5,7 @@ import {
   Animated,
   Easing,
   StyleSheet,
+  Image,
 } from 'react-native';
 import { COLORS } from '@constants/theme';
 
@@ -103,9 +104,11 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish, authReady 
           opacity: logoOpacity,
         }}
       >
-        <View style={styles.logoBox}>
-          <Text style={styles.logoEmoji}>⚡</Text>
-        </View>
+        <Image 
+          source={require('../../../../assets/images/icon.png')} 
+          style={styles.logoImage} 
+          resizeMode="contain" 
+        />
       </Animated.View>
 
       {/* Text */}
@@ -174,21 +177,9 @@ const styles = StyleSheet.create({
     bottom: -80,
     left: -80,
   },
-  logoBox: {
-    width: 100,
-    height: 100,
-    borderRadius: 30,
-    backgroundColor: COLORS.brand[500],
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: COLORS.brand[400],
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.5,
-    shadowRadius: 24,
-    elevation: 16,
-  },
-  logoEmoji: {
-    fontSize: 52,
+  logoImage: {
+    width: 140,
+    height: 140,
   },
   appName: {
     color: COLORS.white,

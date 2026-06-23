@@ -49,6 +49,8 @@ import {
   type ExpressTileDef,
 } from '@constants/clientHomeExpress';
 import { ClientHomeHeroCarousel } from '@components/client/ClientHomeHeroCarousel';
+import { ClientHomeSearchBar } from '@components/client/ClientHomeSearchBar';
+import { openWhatsAppSupport } from '@utils/whatsappSupport';
 import { getService3dAsset, getService3dImageSize, getService3dImageOffsetY } from '@constants/service3dAssets';
 import {
   CLIENT_EMPRESA_HERO_SLIDES,
@@ -56,6 +58,9 @@ import {
 } from '@constants/clientHomeHeroSlides';
 import type { ServiceType } from '@features/catalog/types';
 import { useClientPublishLimit } from '@features/jobs/hooks/useJobActiveLimits';
+import { SkeletonCard } from '@components/SkeletonCard';
+import { SmoothEntrance } from '@components/SmoothEntrance';
+import { AnimatedBottomSheet } from '@components/AnimatedBottomSheet';
 import type { ClientStackParamList } from '@/types';
 
 type Nav = NativeStackNavigationProp<ClientStackParamList, 'CategoryGrid'>;
@@ -84,7 +89,6 @@ export const ClientHomeScreen: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('hogar');
   const [selectedExpressCat, setSelectedExpressCat] = useState<ExpressSubmenu | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
   const [b2bMode, setB2bMode] = useState<B2bHireMode>('jornadas');
 
   const firstName = profile?.full_name?.split(' ')[0] ?? 'Cliente';
@@ -105,15 +109,7 @@ export const ClientHomeScreen: React.FC = () => {
     return formatCurrency(fromCatalog > 0 ? fromCatalog : fallback);
   };
 
-  const filteredSpecialized = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return CLIENT_SPECIALIZED_SERVICES;
-    return CLIENT_SPECIALIZED_SERVICES.filter(
-      (s) =>
-        s.title.toLowerCase().includes(q) ||
-        s.subtitle.toLowerCase().includes(q),
-    );
-  }, [searchQuery]);
+  const filteredSpecialized = CLIENT_SPECIALIZED_SERVICES;
 
   const empresaTypes = useMemo((): ServiceType[] => {
     const allowed = new Set<string>(EMPRESA_PREMIUM_ORDER);
@@ -212,16 +208,11 @@ export const ClientHomeScreen: React.FC = () => {
           />
 
           {activeTab === 'hogar' && (
-            <View style={styles.searchContainer}>
-              <Ionicons name="search" size={20} color={CHAMBA.muted} style={styles.searchIcon} />
-              <TextInput
-                placeholder="¿Qué ayuda necesitás hoy?"
-                placeholderTextColor={CHAMBA.muted}
-                style={styles.searchInput}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-              />
-            </View>
+            <ClientHomeSearchBar
+              serviceTypes={catalog.serviceTypes}
+              onSelectService={handlePress}
+              onSupportPress={() => void openWhatsAppSupport()}
+            />
           )}
         </View>
 
@@ -241,43 +232,53 @@ export const ClientHomeScreen: React.FC = () => {
             <View style={styles.sectionHeader}>
               <View style={chambaStyles.sectionHeader}>
                 <Text style={chambaStyles.sectionTitle}>
-                  {expressSectionMeta?.sectionTitle ?? 'Servicios Express'}
+                  {'Servicios Express'}
                 </Text>
                 <Text style={chambaStyles.sectionSubtitle}>
-                  {expressSectionMeta?.sectionSubtitle ?? 'Precio fijo, sin complicaciones'}
+                  {'Precio fijo, sin complicaciones'}
                 </Text>
               </View>
-              {selectedExpressCat ? (
-                <TouchableOpacity
-                  onPress={() => setSelectedExpressCat(null)}
-                  style={styles.backBtn}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="chevron-back" size={22} color={BLUE} />
-                  <Text style={styles.backBtnText}>Volver</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity activeOpacity={0.7}>
-                  <Text style={styles.verTodos}>Ver todos →</Text>
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity activeOpacity={0.7}>
+                <Text style={styles.verTodos}>Ver todos →</Text>
+              </TouchableOpacity>
             </View>
 
-            {selectedExpressCat ? (
-              <PremiumSubcategoryList
-                tiles={activeExpressTiles}
-                submenu={selectedExpressCat}
-                serviceTypes={catalog.serviceTypes}
-                getSuggestedPrice={(slug, fallback = 0) => {
-                  const fromCatalog = catalog.getSuggestedPrice(slug);
-                  return fromCatalog > 0 ? fromCatalog : fallback;
-                }}
-                onTilePress={onExpressPress}
-                listBottomPadding={SERVICE_LIST_BOTTOM_PAD + insets.bottom}
-              />
+            {catalog.isLoading ? (
+              <View style={styles.gridContainer}>
+                {[1, 2, 3, 4, 5, 6].map((key) => (
+                  <SkeletonCard key={key} variant="grid" />
+                ))}
+              </View>
             ) : (
-              <ExpressServiceCompactGrid items={expressCompactItems} />
+              <SmoothEntrance>
+                <ExpressServiceCompactGrid items={expressCompactItems} />
+              </SmoothEntrance>
             )}
+
+            <AnimatedBottomSheet
+              visible={!!selectedExpressCat}
+              onClose={() => setSelectedExpressCat(null)}
+            >
+              {selectedExpressCat && (
+                <View style={{ paddingHorizontal: 20 }}>
+                  <View style={styles.sheetHeader}>
+                    <Text style={styles.sheetTitle}>{expressSectionMeta?.sectionTitle ?? 'Opciones'}</Text>
+                    <Text style={styles.sheetSubtitle}>{expressSectionMeta?.sectionSubtitle ?? 'Selecciona un servicio'}</Text>
+                  </View>
+                  <PremiumSubcategoryList
+                    tiles={activeExpressTiles}
+                    submenu={selectedExpressCat}
+                    serviceTypes={catalog.serviceTypes}
+                    getSuggestedPrice={(slug, fallback = 0) => {
+                      const fromCatalog = catalog.getSuggestedPrice(slug);
+                      return fromCatalog > 0 ? fromCatalog : fallback;
+                    }}
+                    onTilePress={onExpressPress}
+                    listBottomPadding={insets.bottom}
+                  />
+                </View>
+              )}
+            </AnimatedBottomSheet>
 
             <View style={[styles.sectionHeader, { marginTop: 8 }]}>
               <View style={chambaStyles.sectionHeader}>
@@ -286,25 +287,28 @@ export const ClientHomeScreen: React.FC = () => {
               </View>
             </View>
 
-            {filteredSpecialized.map((item) => (
-              <ChambaServiceOptionRow
-                key={item.id}
-                title={item.title}
-                subtitle={item.subtitle}
-                iconColor={getServiceIconBg(item.id, item.slug)}
-                icon={renderSpecializedIcon(item.id)}
-                onPress={() => handlePress(item.slug, item.title)}
-                badge="BAJO COTIZACIÓN"
-              />
-            ))}
-
-            {filteredSpecialized.length === 0 && searchQuery.length > 0 && (
-              <View style={chambaStyles.emptyCard}>
-                <Ionicons name="search-outline" size={32} color={CHAMBA.muted} />
-                <Text style={chambaStyles.cardTitle}>Sin resultados</Text>
-                <Text style={chambaStyles.cardSubtitle}>Probá con otro término de búsqueda.</Text>
+            {catalog.isLoading ? (
+              <View style={{ gap: 12 }}>
+                <SkeletonCard variant="request" />
+                <SkeletonCard variant="request" />
               </View>
+            ) : (
+              <SmoothEntrance>
+                {filteredSpecialized.map((item) => (
+                  <ChambaServiceOptionRow
+                    key={item.id}
+                    title={item.title}
+                    subtitle={item.subtitle}
+                    iconColor={getServiceIconBg(item.id, item.slug)}
+                    icon={renderSpecializedIcon(item.id)}
+                    onPress={() => handlePress(item.slug, item.title)}
+                    badge="BAJO COTIZACIÓN"
+                  />
+                ))}
+              </SmoothEntrance>
             )}
+
+
 
             <View style={styles.chambearBanner}>
               <Text style={styles.tagNuevo}>NUEVO</Text>
@@ -330,28 +334,37 @@ export const ClientHomeScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            {empresaTypes.length === 0 ? (
-              <View style={chambaStyles.emptyCard}>
-                <Ionicons name="business-outline" size={32} color={CHAMBA.muted} />
-                <Text style={chambaStyles.cardTitle}>Sin servicios en esta vista</Text>
-                <Text style={chambaStyles.cardSubtitle}>Cambiá a Para tu Hogar para ver más.</Text>
+            {catalog.isLoading ? (
+              <View style={{ gap: 12 }}>
+                <SkeletonCard variant="request" />
+                <SkeletonCard variant="request" />
               </View>
+            ) : empresaTypes.length === 0 ? (
+              <SmoothEntrance>
+                <View style={chambaStyles.emptyCard}>
+                  <Ionicons name="business-outline" size={32} color={CHAMBA.muted} />
+                  <Text style={chambaStyles.cardTitle}>Sin servicios en esta vista</Text>
+                  <Text style={chambaStyles.cardSubtitle}>Cambiá a Para tu Hogar para ver más.</Text>
+                </View>
+              </SmoothEntrance>
             ) : (
-              empresaTypes.map((item) => {
-                const price = catalog.getSuggestedPrice(item.slug);
-                return (
-                  <ChambaServiceOptionRow
-                    key={item.id}
-                    title={catalog.getLabel(item.slug) || item.name}
-                    subtitle={item.description ?? 'Personal capacitado para tu negocio'}
-                    iconColor={getServiceIconBg(item.slug, item.slug)}
-                    icon={renderEmpresaServiceIcon(item.slug)}
-                    onPress={() => handlePress(item.slug, catalog.getLabel(item.slug) || item.name)}
-                    badge="ALTA DEMANDA"
-                    priceLine={`Desde ${formatCurrency(price)}/día`}
-                  />
-                );
-              })
+              <SmoothEntrance>
+                {empresaTypes.map((item) => {
+                  const price = catalog.getSuggestedPrice(item.slug);
+                  return (
+                    <ChambaServiceOptionRow
+                      key={item.id}
+                      title={catalog.getLabel(item.slug) || item.name}
+                      subtitle={item.description ?? 'Personal capacitado para tu negocio'}
+                      iconColor={getServiceIconBg(item.slug, item.slug)}
+                      icon={renderEmpresaServiceIcon(item.slug)}
+                      onPress={() => handlePress(item.slug, catalog.getLabel(item.slug) || item.name)}
+                      badge="ALTA DEMANDA"
+                      priceLine={`Desde ${formatCurrency(price)}/día`}
+                    />
+                  );
+                })}
+              </SmoothEntrance>
             )}
           </View>
         )}
@@ -417,19 +430,7 @@ const styles = StyleSheet.create({
 
   modeToggle: { marginTop: 4, marginBottom: 16 },
 
-  searchContainer: {
-    flexDirection: 'row',
-    backgroundColor: CHAMBA.white,
-    borderRadius: 12,
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: CHAMBA.border,
-    zIndex: 1,
-  },
-  searchIcon: { marginRight: 8 },
-  searchInput: { flex: 1, height: 44, fontSize: 14, color: CHAMBA.navy },
+
 
   sectionHeader: {
     flexDirection: 'row',
@@ -475,5 +476,23 @@ const styles = StyleSheet.create({
   },
   chambearTitle: { fontSize: 18, fontWeight: '800', color: BLUE, marginTop: 10, marginBottom: 4 },
   chambearSubtitle: { fontSize: 12, color: '#0369A1' },
-
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 12,
+  },
+  sheetHeader: {
+    marginBottom: 16,
+  },
+  sheetTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  sheetSubtitle: {
+    fontSize: 14,
+    color: '#64748B',
+    marginTop: 2,
+  },
 });

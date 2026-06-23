@@ -89,7 +89,7 @@ export function useClientOrders() {
     staleTime: 10_000,
     refetchOnWindowFocus: false,
     refetchInterval: (query) =>
-      clientOrdersNeedLivePoll(query.state.data) ? 15_000 : false,
-    refetchIntervalInBackground: false,
+      clientOrdersNeedLivePoll(query.state.data) ? 5_000 : false,
+    refetchIntervalInBackground: true,
   });
 }

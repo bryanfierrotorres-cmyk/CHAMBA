@@ -1,7 +1,7 @@
 -- Reseñas de trabajadores (admin + cliente)
 
 CREATE TABLE IF NOT EXISTS worker_reviews (
-  id             UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   worker_id      UUID        NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   reviewer_id    UUID        NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   reviewer_role  TEXT        NOT NULL CHECK (reviewer_role IN ('admin', 'client')),
