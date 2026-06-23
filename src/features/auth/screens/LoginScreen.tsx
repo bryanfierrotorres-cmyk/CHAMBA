@@ -205,23 +205,36 @@ export const LoginScreen: React.FC = () => {
   const bgImageStyle = [
     styles.bgImageCover,
     Platform.OS === 'web'
-      ? { objectPosition: '60% 0%' as any }
+      ? {} // Web positioning is handled by injected CSS below
       : {
           width: screenWidth,
           height: screenHeight,
           transform: [
             { scale: 1.25 },
-            { translateX: -30 }, // 3cm a la izquierda
-            { translateY: -50 }, // 5cm arriba
+            { translateX: screenWidth * -0.075 }, // aprox 3cm a la izquierda relativos
+            { translateY: screenHeight * -0.06 }, // aprox 5cm arriba relativos
           ],
         },
   ];
+
+  const WebStyle = Platform.OS === 'web'
+    ? React.createElement('style', null, `
+        [data-testid="login-bg-image"],
+        [data-testid="login-bg-image"] img,
+        [data-testid="login-bg-image"] div {
+          object-position: 60% 0% !important;
+          background-position: 60% 0% !important;
+        }
+      `)
+    : null;
 
   const showHeroExtras = !isCompactLayout;
 
   return (
     <View style={styles.root}>
+      {WebStyle}
       <Image
+        testID="login-bg-image"
         source={LOGIN_BG}
         accessibilityIgnoresInvertColors
         style={bgImageStyle}
