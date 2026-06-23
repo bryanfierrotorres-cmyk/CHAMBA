@@ -94,7 +94,7 @@ export const CreateJobFormScreen: React.FC = () => {
   }, [normalizedServiceSlug, precios.refetch]);
 
   const [currentStep, setCurrentStep] = useState(1);
-  const [description, setDescription] = useState('');
+  const [description, setDescription] = useState(route.params.initialDescription ?? '');
   const [address, setAddress] = useState('');
   const [serviceLat, setServiceLat] = useState<number | null>(null);
   const [serviceLng, setServiceLng] = useState<number | null>(null);
@@ -103,7 +103,9 @@ export const CreateJobFormScreen: React.FC = () => {
   const [successMessage, setSuccessMessage] = useState('');
   const [publishedMeta, setPublishedMeta] = useState<{ id: string; created_at: string } | null>(null);
   const [requestPhotoUri, setRequestPhotoUri] = useState<string | null>(null);
-  const [offerPriceText, setOfferPriceText] = useState('');
+  const [offerPriceText, setOfferPriceText] = useState(
+    route.params.initialOfferPrice ? String(route.params.initialOfferPrice) : ''
+  );
   const schedulingFields = useJobSchedulingFields();
 
   const suggestedMinimum = useMemo(

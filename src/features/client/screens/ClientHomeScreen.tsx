@@ -61,6 +61,7 @@ import { useClientPublishLimit } from '@features/jobs/hooks/useJobActiveLimits';
 import { SkeletonCard } from '@components/SkeletonCard';
 import { SmoothEntrance } from '@components/SmoothEntrance';
 import { AnimatedBottomSheet } from '@components/AnimatedBottomSheet';
+import { CustomServiceCard } from '@components/client/CustomServiceCard';
 import type { ClientStackParamList } from '@/types';
 
 type Nav = NativeStackNavigationProp<ClientStackParamList, 'CategoryGrid'>;
@@ -93,14 +94,19 @@ export const ClientHomeScreen: React.FC = () => {
 
   const firstName = profile?.full_name?.split(' ')[0] ?? 'Cliente';
 
-  const handlePress = (slug: string, serviceLabel: string) => {
+  const handlePress = (slug: string, serviceLabel: string, initialDesc?: string, initialPrice?: number) => {
     if (publishLimit.atLimit) {
       const msg = publishLimit.message;
       if (Platform.OS === 'web') window.alert(msg);
       else Alert.alert('Límite de solicitudes', msg);
       return;
     }
-    navigation.navigate('CreateJobForm', { serviceTypeSlug: slug, serviceLabel });
+    navigation.navigate('CreateJobForm', { 
+      serviceTypeSlug: slug, 
+      serviceLabel,
+      initialDescription: initialDesc,
+      initialOfferPrice: initialPrice,
+    });
   };
 
   const priceFor = (slug: string | undefined, fallback: number): string => {
@@ -129,9 +135,13 @@ export const ClientHomeScreen: React.FC = () => {
 
   const onExpressPress = (tile: ExpressTileDef) => {
     if (tile.submenu) {
-      setSelectedExpressCat(tile.submenu);
+      setSelectedExpressCat(prev => prev === tile.submenu ? null : tile.submenu);
       return;
     }
+    if (tile.slug) {
+      handlePress(tile.slug, tile.title);
+    }
+  };
     if (tile.slug) {
       handlePress(tile.slug, tile.title);
     }
@@ -307,6 +317,13 @@ export const ClientHomeScreen: React.FC = () => {
                 ))}
               </SmoothEntrance>
             )}
+
+            <CustomServiceCard
+              disabled={publishLimit.atLimit}
+              onSendRequest={(desc, price) => {
+                handlePress('servicio_personalizado', 'Servicio Personalizado', desc, price);
+              }}
+            />
 
 
 

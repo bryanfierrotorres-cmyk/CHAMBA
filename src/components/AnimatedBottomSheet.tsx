@@ -4,8 +4,10 @@ import {
   Modal,
   Animated,
   StyleSheet,
+  StyleSheet,
   TouchableWithoutFeedback,
   Dimensions,
+  ScrollView,
 } from 'react-native';
 
 interface Props {
@@ -73,7 +75,13 @@ export const AnimatedBottomSheet: React.FC<Props> = ({ visible, onClose, childre
           ]}
         >
           <View style={styles.dragHandle} />
-          {children}
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+            bounces={false}
+          >
+            {children}
+          </ScrollView>
         </Animated.View>
       </View>
     </Modal>
@@ -90,17 +98,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   sheetContainer: {
-    backgroundColor: '#F8FAFC', // Or #FFF depending on design
+    backgroundColor: '#F8FAFC',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: 8,
-    paddingBottom: 24, // extra padding for bottom safe area
-    maxHeight: SCREEN_H * 0.85,
+    maxHeight: SCREEN_H * 0.95,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.1,
     shadowRadius: 10,
     elevation: 10,
+  },
+  scrollContent: {
+    paddingBottom: 24, // extra padding for bottom safe area
   },
   dragHandle: {
     width: 40,

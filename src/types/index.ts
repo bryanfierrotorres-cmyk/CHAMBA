@@ -262,6 +262,8 @@ export type ClientStackParamList = {
   CreateJobForm: {
     serviceTypeSlug: string;
     serviceLabel: string;
+    initialDescription?: string;
+    initialOfferPrice?: number;
     /** @deprecated usar serviceTypeSlug */
     clientCategory?: ClientCategory;
   };
