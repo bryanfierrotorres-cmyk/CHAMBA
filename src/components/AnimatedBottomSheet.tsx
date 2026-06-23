@@ -4,7 +4,6 @@ import {
   Modal,
   Animated,
   StyleSheet,
-  StyleSheet,
   TouchableWithoutFeedback,
   Dimensions,
   ScrollView,
