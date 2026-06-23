@@ -119,6 +119,7 @@ export const LoginScreen: React.FC = () => {
   const cardY = useRef(new Animated.Value(40)).current;
   const shakeX = useRef(new Animated.Value(0)).current;
   const roleHintOp = useRef(new Animated.Value(1)).current;
+  const btnScale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     setError(null);
@@ -158,6 +159,42 @@ export const LoginScreen: React.FC = () => {
       Animated.timing(shakeX, { toValue: -8, duration: 60, useNativeDriver: true }),
       Animated.timing(shakeX, { toValue: 0, duration: 60, useNativeDriver: true }),
     ]).start();
+
+  const handlePressIn = () => {
+    Animated.spring(btnScale, {
+      toValue: 0.95,
+      useNativeDriver: true,
+      speed: 30,
+      bounciness: 10,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(btnScale, {
+      toValue: Platform.OS === 'web' ? 1.02 : 1,
+      useNativeDriver: true,
+      speed: 20,
+      bounciness: 12,
+    }).start();
+  };
+
+  const handleHoverIn = () => {
+    if (Platform.OS !== 'web') return;
+    Animated.spring(btnScale, {
+      toValue: 1.02,
+      useNativeDriver: true,
+      speed: 20,
+    }).start();
+  };
+
+  const handleHoverOut = () => {
+    if (Platform.OS !== 'web') return;
+    Animated.spring(btnScale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 20,
+    }).start();
+  };
 
   const getPhoneDigits = () => phone.replace(/\D/g, '');
 
@@ -384,13 +421,19 @@ export const LoginScreen: React.FC = () => {
             )}
 
             <Pressable
+              onPressIn={handlePressIn}
+              onPressOut={handlePressOut}
+              onHoverIn={handleHoverIn}
+              onHoverOut={handleHoverOut}
               onPress={handleSubmit}
               accessibilityRole="button"
               accessibilityLabel="Entrar a CHAMBA"
-              style={styles.submitBtn}
+              style={{ width: '100%', alignItems: 'center' }}
             >
-              <Ionicons name="flash" size={18} color="#FFFFFF" style={styles.submitBtnIcon} />
-              <Text style={styles.submitBtnText}>Entrar a CHAMBA</Text>
+              <Animated.View style={[styles.submitBtn, { transform: [{ scale: btnScale }] }]}>
+                <Ionicons name="flash" size={18} color="#FFFFFF" style={styles.submitBtnIcon} />
+                <Text style={styles.submitBtnText}>Entrar a CHAMBA</Text>
+              </Animated.View>
             </Pressable>
 
             <TouchableOpacity
