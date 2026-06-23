@@ -142,10 +142,6 @@ export const ClientHomeScreen: React.FC = () => {
       handlePress(tile.slug, tile.title);
     }
   };
-    if (tile.slug) {
-      handlePress(tile.slug, tile.title);
-    }
-  };
 
   const expressCompactItems = useMemo((): ExpressCompactItem[] => {
     return activeExpressTiles.map((tile, index) => {
