@@ -135,11 +135,12 @@ export interface JobWorkerApplication {
   /** Opcional: coords del técnico para cálculo local de distancia. */
   worker_lat?: number | null;
   worker_lng?: number | null;
+  counter_offer_amount?: number | null;
 }
 
 // ─── Jobs ─────────────────────────────────────────────────────────────────────
 
-export type JobStatus = 'open' | 'taken' | 'in_progress' | 'completed' | 'cancelled';
+export type JobStatus = 'open' | 'taken' | 'in_progress' | 'completed' | 'cancelled' | 'pending_bidding' | 'counter_offered';
 
 export type JobModerationReason = 'spam' | 'mistake' | 'admin';
 
@@ -189,6 +190,7 @@ export interface Job {
   after_photo_url?: string | null;
   created_by: string;
   assigned_worker_id?: string | null;
+  locked_with_worker_id?: string | null;
   created_at: string;
   updated_at: string;
   moderated_by?: string | null;

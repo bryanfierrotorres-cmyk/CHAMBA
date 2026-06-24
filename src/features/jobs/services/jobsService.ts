@@ -552,6 +552,7 @@ const tryRpcAccept = async (
   jobId: string,
   workerId: string,
   applicantCoords?: { lat: number; lng: number } | null,
+  counterOfferAmount?: number | null,
 ): Promise<{
   ok: boolean;
   assignmentId?: string;
@@ -563,6 +564,7 @@ const tryRpcAccept = async (
     p_worker_id: string;
     p_applicant_lat?: number;
     p_applicant_lng?: number;
+    p_counter_offer_amount?: number;
   } = {
     p_job_id: jobId,
     p_worker_id: workerId,
@@ -570,6 +572,9 @@ const tryRpcAccept = async (
   if (applicantCoords) {
     rpcParams.p_applicant_lat = applicantCoords.lat;
     rpcParams.p_applicant_lng = applicantCoords.lng;
+  }
+  if (counterOfferAmount != null) {
+    rpcParams.p_counter_offer_amount = counterOfferAmount;
   }
 
   const { data, error } = await supabase.rpc('accept_job', rpcParams);
@@ -861,6 +866,7 @@ export const acceptJob = async (
   workerId: string,
   workerCtx?: AcceptWorkerContext,
   jobSnapshot?: Job | null,
+  counterOfferAmount?: number | null,
 ): Promise<{
   success: boolean;
   assignmentId?: string;
@@ -889,7 +895,7 @@ export const acceptJob = async (
     await assertWorkerCanPostulate(effectiveWorkerId);
 
     const applicantCoords = await captureWorkerApplicantLocation();
-    let rpc = await tryRpcAccept(jobId, effectiveWorkerId, applicantCoords);
+    let rpc = await tryRpcAccept(jobId, effectiveWorkerId, applicantCoords, counterOfferAmount);
 
     const retriable =
       rpc.error?.includes('no encontrado') ||
@@ -901,7 +907,7 @@ export const acceptJob = async (
       effectiveWorkerId = reResolved.id;
       effectiveCtx = reResolved;
       await ensureProfileInDb(reResolved);
-      rpc = await tryRpcAccept(jobId, effectiveWorkerId, applicantCoords);
+      rpc = await tryRpcAccept(jobId, effectiveWorkerId, applicantCoords, counterOfferAmount);
     }
 
     let assignmentId = rpc.assignmentId;

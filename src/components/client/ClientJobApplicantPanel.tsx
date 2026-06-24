@@ -221,27 +221,39 @@ export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = (
 
             {isPending && canChoose && (
               <View style={styles.actions}>
-                <TouchableOpacity
-                  style={[styles.rejectBtn, busy && styles.btnDisabled]}
-                  onPress={() => void handleReject(app)}
-                  disabled={busy}
-                >
-                  <Text style={styles.rejectText}>Rechazar</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.approveBtn, busy && styles.btnDisabled]}
-                  onPress={() => void handleApprove(app)}
-                  disabled={busy}
-                >
-                  {busy ? (
-                    <ActivityIndicator color="#FFF" size="small" />
-                  ) : (
-                    <>
-                      <Ionicons name="checkmark-circle" size={18} color="#FFF" />
-                      <Text style={styles.approveText}>Aprobar técnico</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
+                {app.counter_offer_amount != null ? (
+                  <View style={styles.counterOfferBadge}>
+                    <Ionicons name="cash-outline" size={16} color={CHAMBA.white} />
+                    <Text style={styles.counterOfferText}>
+                      Contraoferta: C$ {app.counter_offer_amount}
+                    </Text>
+                  </View>
+                ) : null}
+                <View style={styles.buttonsRow}>
+                  <TouchableOpacity
+                    style={[styles.rejectBtn, busy && styles.btnDisabled]}
+                    onPress={() => void handleReject(app)}
+                    disabled={busy}
+                  >
+                    <Text style={styles.rejectText}>Rechazar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.approveBtn, busy && styles.btnDisabled]}
+                    onPress={() => void handleApprove(app)}
+                    disabled={busy}
+                  >
+                    {busy ? (
+                      <ActivityIndicator color="#FFF" size="small" />
+                    ) : (
+                      <>
+                        <Ionicons name="checkmark-circle" size={18} color="#FFF" />
+                        <Text style={styles.approveText}>
+                          {app.counter_offer_amount != null ? 'Aceptar Contraoferta' : 'Aprobar técnico'}
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
           </View>
@@ -355,7 +367,23 @@ const styles = StyleSheet.create({
   statusApproved: { backgroundColor: '#DCFCE7' },
   statusRejected: { backgroundColor: '#FEE2E2' },
   statusText: { fontSize: 10, fontWeight: '800', color: CHAMBA.navy },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  actions: { flexDirection: 'column', gap: 12, marginTop: 12 },
+  buttonsRow: { flexDirection: 'row', gap: 10 },
+  counterOfferBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#059669', // Emerald 600
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  counterOfferText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: CHAMBA.white,
+  },
   rejectBtn: {
     flex: 1,
     paddingVertical: 12,

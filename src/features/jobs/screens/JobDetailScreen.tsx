@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, Image,
-  Alert, ActivityIndicator, StyleSheet, Platform, ViewStyle, StyleProp,
+  Alert, ActivityIndicator, StyleSheet, Platform, ViewStyle, StyleProp, TextInput
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
@@ -105,6 +105,8 @@ export const JobDetailScreen: React.FC = () => {
   const [awaitingClientChoice, setAwaitingClientChoice] = useState(false);
   const [previewOpen, setPreviewOpen]    = useState(false);
   const [radarExpired, setRadarExpired]    = useState(false);
+  const [isBidding, setIsBidding]          = useState(false);
+  const [bidAmount, setBidAmount]          = useState('');
   const isAdmin = profile?.role === 'admin';
 
   useEffect(() => {
@@ -167,64 +169,67 @@ export const JobDetailScreen: React.FC = () => {
       ? formatTime(job.scheduled_at)
       : 'Sin hora definida';
 
-  const handleAccept = () => {
-    const confirmMsg =
-      `¿Postularte a "${job.title}"?\n\nEl cliente verá tu perfil y decidirá si te elige.\nGanancia estimada: ${formatCurrency(job.worker_payout)}`;
+  const submitApplication = async (amount?: number) => {
+    try {
+      const result = await accept({ jobId: job.id, job, counterOfferAmount: amount });
+      if (result.pendingClientSelection) {
+        setAwaitingClientChoice(true);
+        setIsBidding(false);
+        const msg = amount 
+          ? `Contraoferta de C$ ${amount} enviada. El cliente decidirá.` 
+          : 'Postulación enviada. El cliente revisará tu perfil.';
+        if (Platform.OS === 'web') alert('📨 ' + msg);
+        else Alert.alert('📨 Postulación enviada', msg);
+        return;
+      }
+      setAccepted(true);
+      setIsBidding(false);
+      const successMsg = `El servicio quedó en proceso. Aparece en Mis Chambas.`;
+      if (Platform.OS === 'web') {
+        alert('✅ ¡Chamba asignada! ' + successMsg);
+        navigation.navigate('JobActive', { jobId: job.id });
+      } else {
+        Alert.alert('✅ ¡Chamba asignada!', successMsg, [
+          { text: 'Ver trabajo', onPress: () => navigation.navigate('JobActive', { jobId: job.id }) },
+          { text: 'OK' },
+        ]);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'No se pudo postular';
+      if (Platform.OS === 'web') alert(`Error: ${msg}`);
+      else Alert.alert('No disponible', msg);
+    }
+  };
 
+  const handleAcceptBasePrice = () => {
+    const confirmMsg = `¿Aceptar este trabajo por ${formatCurrency(job.worker_payout)}?\n\nEl cliente deberá confirmar tu perfil.`;
     if (Platform.OS === 'web') {
       if (!confirm(confirmMsg)) return;
-      accept({ jobId: job.id, job })
-        .then((result) => {
-          if (result.pendingClientSelection) {
-            setAwaitingClientChoice(true);
-            alert('📨 Postulación enviada. El cliente revisará tu perfil.');
-            return;
-          }
-          setAccepted(true);
-          alert(`✅ ¡Chamba asignada! Recibirás ${formatCurrency(job.worker_payout)}`);
-          navigation.navigate('JobActive', { jobId: job.id });
-        })
-        .catch((err: unknown) => {
-          const msg = err instanceof Error ? err.message : 'No se pudo postular';
-          alert(`Error: ${msg}`);
-        });
+      submitApplication();
       return;
     }
-
     Alert.alert('¿Postularte?', confirmMsg, [
       { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Enviar postulación',
-        style: 'default',
-        onPress: async () => {
-          try {
-            const result = await accept({ jobId: job.id, job });
-            if (result.pendingClientSelection) {
-              setAwaitingClientChoice(true);
-              Alert.alert(
-                '📨 Postulación enviada',
-                'El cliente revisará tu perfil y te avisará si te elige.',
-              );
-              return;
-            }
-            setAccepted(true);
-            Alert.alert(
-              '✅ ¡Chamba asignada!',
-              'El servicio quedó en proceso. Aparece en Mis Chambas.',
-              [
-                {
-                  text: 'Ver trabajo',
-                  onPress: () => navigation.navigate('JobActive', { jobId: job.id }),
-                },
-                { text: 'OK' },
-              ],
-            );
-          } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : 'No se pudo postular';
-            Alert.alert('No disponible', msg);
-          }
-        },
-      },
+      { text: 'Enviar postulación', onPress: () => submitApplication() },
+    ]);
+  };
+
+  const handleSubmitBid = () => {
+    const amount = parseFloat(bidAmount);
+    if (isNaN(amount) || amount <= 0) {
+      if (Platform.OS === 'web') alert('Ingresa un monto válido');
+      else Alert.alert('Monto inválido', 'Por favor ingresa un monto mayor a 0');
+      return;
+    }
+    const confirmMsg = `¿Enviar contraoferta por C$ ${amount}?\n\nBloquearás esta solicitud hasta que el cliente decida.`;
+    if (Platform.OS === 'web') {
+      if (!confirm(confirmMsg)) return;
+      submitApplication(amount);
+      return;
+    }
+    Alert.alert('¿Confirmar contraoferta?', confirmMsg, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Enviar', style: 'default', onPress: () => submitApplication(amount) },
     ]);
   };
 
@@ -509,15 +514,57 @@ export const JobDetailScreen: React.FC = () => {
               <Ionicons name="checkmark-circle" size={22} color={COLORS.success} />
               <Text style={styles.takenText}>¡Chamba asignada!</Text>
             </View>
+          ) : isBidding ? (
+            <View style={styles.biddingContainer}>
+              <View style={styles.biddingHeader}>
+                <Text style={styles.biddingTitle}>Hacer una contraoferta</Text>
+                <TouchableOpacity onPress={() => setIsBidding(false)}>
+                  <Ionicons name="close" size={24} color={COLORS.text.secondary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.biddingSubtitle}>
+                El precio original es {formatCurrency(job.worker_payout)}. Ingresa tu propuesta:
+              </Text>
+              <View style={styles.bidInputWrapper}>
+                <Text style={styles.bidCurrency}>C$</Text>
+                <TextInput
+                  style={styles.bidInput}
+                  keyboardType="numeric"
+                  placeholder="0.00"
+                  value={bidAmount}
+                  onChangeText={setBidAmount}
+                  autoFocus
+                />
+              </View>
+              <Button
+                label="Enviar contraoferta"
+                onPress={handleSubmitBid}
+                isLoading={isPending}
+                disabled={!bidAmount}
+                fullWidth
+                size="md"
+              />
+            </View>
           ) : (
-            <Button
-              label={`Postularme  •  ${formatCurrency(job.worker_payout)}`}
-              onPress={handleAccept}
-              isLoading={isPending}
-              disabled={!canAccept}
-              fullWidth
-              size="lg"
-            />
+            <View style={styles.actionButtons}>
+              <Button
+                label={`Aceptar  •  ${formatCurrency(job.worker_payout)}`}
+                onPress={handleAcceptBasePrice}
+                isLoading={isPending}
+                disabled={!canAccept}
+                fullWidth
+                size="lg"
+                style={{ flex: 1 }}
+              />
+              <TouchableOpacity 
+                style={styles.counterBtn} 
+                onPress={() => setIsBidding(true)}
+                disabled={!canAccept || isPending}
+              >
+                <Ionicons name="cash-outline" size={20} color={COLORS.brand[600]} />
+                <Text style={styles.counterBtnText}>Contraofertar</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
       )}
@@ -886,6 +933,64 @@ const styles = StyleSheet.create({
     color: COLORS.success,
     fontSize: FONT_SIZE.md,
     fontWeight: '700',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  counterBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.sm,
+  },
+  counterBtnText: {
+    color: COLORS.brand[600],
+    fontSize: FONT_SIZE.xs,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  biddingContainer: {
+    paddingBottom: SPACING.sm,
+  },
+  biddingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
+  biddingTitle: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+  },
+  biddingSubtitle: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.text.secondary,
+    marginBottom: SPACING.md,
+  },
+  bidInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border.default,
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.lg,
+    backgroundColor: COLORS.bg.primary,
+  },
+  bidCurrency: {
+    fontSize: FONT_SIZE.xl,
+    fontWeight: '600',
+    color: COLORS.text.primary,
+    marginRight: SPACING.xs,
+  },
+  bidInput: {
+    flex: 1,
+    fontSize: FONT_SIZE.xl,
+    fontWeight: '700',
+    color: COLORS.text.primary,
+    paddingVertical: SPACING.md,
   },
   adminModerationBar: {
     position: 'absolute',

@@ -593,12 +593,9 @@ export const useAcceptJob = () => {
 
 
   return useMutation({
-
-    mutationFn: async ({ jobId, job }: { jobId: string; job?: Job | null }) => {
-
+    mutationFn: async ({ jobId, job, counterOfferAmount }: { jobId: string; job?: Job | null, counterOfferAmount?: number | null }) => {
       try {
-
-        return await acceptJob(jobId, profile!.id, profile ?? undefined, job ?? null);
+        return await acceptJob(jobId, profile!.id, profile ?? undefined, job ?? null, counterOfferAmount);
 
       } catch (err) {
 
