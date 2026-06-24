@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -87,6 +87,8 @@ export const ClientHomeScreen: React.FC = () => {
   const catalog = useCatalog();
   const publishLimit = useClientPublishLimit();
   const supportBubbleScroll = useSupportBubbleScrollHandlers();
+
+  const scrollRef = useRef<ScrollView>(null);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('hogar');
   const [selectedExpressCat, setSelectedExpressCat] = useState<ExpressSubmenu | null>(null);
@@ -244,6 +246,7 @@ export const ClientHomeScreen: React.FC = () => {
         </View>
 
         <ScrollView
+          ref={scrollRef}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.scrollContainer,
