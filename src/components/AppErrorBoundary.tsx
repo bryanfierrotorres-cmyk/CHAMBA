@@ -28,8 +28,7 @@ export class AppErrorBoundary extends React.Component<Props, State> {
         message="La aplicación encontró un problema al renderizar. Intenta recargar la página."
         details={this.state.error.message}
         // Add a retry button
-        actionLabel="Reintentar"
-        onAction={() => {
+        onRetry={() => {
           if (typeof window !== 'undefined') {
             window.location.reload();
           }

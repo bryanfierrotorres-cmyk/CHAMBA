@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
   actionButton: {
     marginTop: SPACING.md,
     backgroundColor: M3.error,
-    borderRadius: BORDER_RADIUS,
+    borderRadius: BORDER_RADIUS.md,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
     alignItems: 'center',

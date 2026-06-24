@@ -386,6 +386,8 @@ export const migrateLocalAssignmentsWorkerId = async (
 
 const STATUS_RANK: Record<JobStatus, number> = {
   open: 0,
+  pending_bidding: 0.5,
+  counter_offered: 0.5,
   taken: 1,
   in_progress: 2,
   completed: 3,

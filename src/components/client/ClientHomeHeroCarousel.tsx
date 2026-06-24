@@ -124,7 +124,7 @@ export const ClientHomeHeroCarousel: React.FC<ClientHomeHeroCarouselProps> = ({
   const [activeIndex, setActiveIndex] = useState(0);
 
   const onScrollEnd = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    (e: any) => {
       const x = e.nativeEvent.contentOffset.x;
       const next = Math.round(x / slideWidth);
       if (next >= 0 && next < slides.length) setActiveIndex(next);

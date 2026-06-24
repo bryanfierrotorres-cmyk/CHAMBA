@@ -107,9 +107,9 @@ const GLOBAL_STATUS_COLORS: Record<JobStatus, { color: string; bg: string }> = {
   in_progress: { color: '#1D4ED8', bg: '#DBEAFE' },
 
   completed:   { color: '#6D28D9', bg: '#EDE9FE' },
-
   cancelled:   { color: '#B91C1C', bg: '#FEE2E2' },
-
+  pending_bidding: { color: '#B45309', bg: '#FEF3C7' },
+  counter_offered: { color: '#047857', bg: '#D1FAE5' },
 };
 
 
@@ -145,9 +145,9 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size, style })
       in_progress: { color: m3.onPrimaryContainer, bg: m3.primaryFixed },
 
       completed:   { color: m3.onSecondaryFixed, bg: m3.secondaryFixed },
-
       cancelled:   { color: m3.onErrorContainer, bg: m3.errorContainer },
-
+      pending_bidding: { color: m3.onTertiaryContainer, bg: m3.tertiaryContainer },
+      counter_offered: { color: m3.onPrimaryContainer, bg: m3.primaryContainer },
     } satisfies Record<JobStatus, { color: string; bg: string }>;
 
   }, [m3]);

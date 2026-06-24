@@ -148,7 +148,7 @@ export const ClientHomeScreen: React.FC = () => {
 
   const onExpressPress = (tile: ExpressTileDef) => {
     if (tile.submenu) {
-      setSelectedExpressCat(prev => prev === tile.submenu ? null : tile.submenu);
+      setSelectedExpressCat(prev => prev === tile.submenu ? null : (tile.submenu ?? null));
       return;
     }
     if (tile.slug === 'virtual_custom') {

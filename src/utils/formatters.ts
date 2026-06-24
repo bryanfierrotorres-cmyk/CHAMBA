@@ -63,6 +63,8 @@ export const getStatusLabel = (status: JobStatus): string => {
     in_progress: 'En proceso',
     completed: 'Finalizado',
     cancelled: 'Cancelado',
+    pending_bidding: 'Contraoferta',
+    counter_offered: 'Contraoferta',
   };
   return labels[status] ?? status;
 };

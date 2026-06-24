@@ -76,7 +76,7 @@ export const OnboardingTour: React.FC = () => {
   return (
     <Modal transparent visible={visible} animationType="fade">
       <View style={styles.overlay}>
-        <View style={styles.container} accessibilityRole="dialog">
+        <View style={styles.container}>
           <Text style={styles.title}>{step.title}</Text>
           <Text style={styles.description}>{step.description}</Text>
           <View style={styles.progress}>
