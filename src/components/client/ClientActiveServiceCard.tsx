@@ -72,7 +72,7 @@ export const ClientActiveServiceCard: React.FC<Props> = ({
   const payAmount = coerceNumber(job.pay_amount, 0);
   const isVariablePrice = job.status === 'open' && payAmount <= 0;
   const isCompleted = job.status === 'completed';
-  const isCancelled = job.status === 'cancelled';
+  const isCancelled = job.status === 'cancelled' || job.status === 'cancelled_by_client_pending';
   const showWorkerHero = !!worker && !isCancelled && job.status !== 'open';
   const canChat = !!worker && !!onOpenChat && !isCancelled;
   const createdLabel = formatCardDate(job.created_at);

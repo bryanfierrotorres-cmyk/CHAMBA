@@ -1311,6 +1311,23 @@ export const boostClientJobOffer = async ({
   return normalizeJobRow(body.job);
 };
 
+export const cancelClientJob = async (jobId: string): Promise<Job> => {
+  const { data, error } = await supabase.rpc('cancel_client_job', {
+    p_job_id: jobId,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const body = data as { success?: boolean; error?: string; job?: Job } | null;
+  if (!body?.success || !body.job) {
+    throw new Error(body?.error ?? 'No se pudo cancelar la solicitud');
+  }
+
+  return normalizeJobRow(body.job);
+};
+
 /** Admin: Update job status. */
 export const updateJobStatus = async (
   jobId: string,

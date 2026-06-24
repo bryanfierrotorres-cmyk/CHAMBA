@@ -12,7 +12,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { JobExpiryBadge } from '@components/shared/JobExpiryBadge';
 import { CHAMBA, CARD_STEP_SHADOW } from '@constants/chambaUI';
 import { isJobExpiredLocally } from '@constants/jobExpiry';
-import { boostClientJobOffer } from '@features/jobs/services/jobsService';
+import { boostClientJobOffer, cancelClientJob } from '@features/jobs/services/jobsService';
 import {
   clientOrdersQueryKey,
   patchClientOrderRowInCache,
@@ -41,6 +41,7 @@ export const ClientOpenJobStatusPanel: React.FC<Props> = ({
   );
   const [showBoostPicker, setShowBoostPicker] = useState(false);
   const [boosting, setBoosting] = useState(false);
+  const [canceling, setCanceling] = useState(false);
 
   useEffect(() => {
     const expired = isJobExpiredLocally(job.created_at);
@@ -87,6 +88,37 @@ export const ClientOpenJobStatusPanel: React.FC<Props> = ({
       setBoosting(false);
     }
   }, [clientId, job.id, payAmount, queryClient, onExpiredChange]);
+
+  const handleCancel = useCallback(() => {
+    Alert.alert(
+      'Cancelar Solicitud',
+      '¿Estás seguro que deseas cancelar esta solicitud?',
+      [
+        { text: 'No, mantener', style: 'cancel' },
+        {
+          text: 'Sí, cancelar',
+          style: 'destructive',
+          onPress: async () => {
+            setCanceling(true);
+            try {
+              const updated = await cancelClientJob(job.id);
+              patchClientOrderRowInCache(queryClient, clientId, {
+                id: updated.id,
+                status: updated.status,
+                updated_at: updated.updated_at,
+              });
+              // El panel se ocultará o mostrará como cancelado automáticamente al cambiar el status
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : 'Error al cancelar la solicitud';
+              Alert.alert('Error', msg);
+            } finally {
+              setCanceling(false);
+            }
+          },
+        },
+      ],
+    );
+  }, [clientId, job.id, queryClient]);
 
   if (localExpired) {
     return (
@@ -176,6 +208,17 @@ export const ClientOpenJobStatusPanel: React.FC<Props> = ({
           onExpirar={handleExpire}
         />
       </View>
+      <TouchableOpacity
+        style={styles.cancelActionBtn}
+        onPress={handleCancel}
+        disabled={canceling}
+      >
+        {canceling ? (
+          <ActivityIndicator size="small" color="#991B1B" />
+        ) : (
+          <Ionicons name="close-circle-outline" size={24} color="#991B1B" />
+        )}
+      </TouchableOpacity>
     </View>
   );
 };
@@ -315,5 +358,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: CHAMBA.muted,
+  },
+  cancelActionBtn: {
+    padding: 8,
+    alignSelf: 'flex-start',
   },
 });

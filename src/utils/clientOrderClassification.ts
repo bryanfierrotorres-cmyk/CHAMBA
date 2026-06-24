@@ -6,18 +6,18 @@ export const isClientOrderPending = (
 ): boolean =>
   job.status === 'open' && !job.assigned_worker_id;
 
-/** Servicio en ejecución (técnico asignado o trabajo en curso). */
+/** Servicio en ejecución (técnico asignado, negociando, o trabajo en curso). */
 export const isClientOrderActive = (
   job: Pick<ClientOrderJob, 'status' | 'assigned_worker_id'>,
 ): boolean => {
-  if (job.status === 'taken' || job.status === 'in_progress') return true;
+  if (['taken', 'in_progress', 'pending_bidding', 'counter_offered'].includes(job.status)) return true;
   return job.status === 'open' && !!job.assigned_worker_id;
 };
 
 /** Servicio cerrado — solo finalizados o cancelados. */
 export const isClientOrderHistory = (job: Pick<ClientOrderJob, 'status'>): boolean =>
-  job.status === 'completed' || job.status === 'cancelled';
+  ['completed', 'cancelled', 'cancelled_by_client_pending'].includes(job.status);
 
 export const CLIENT_PENDING_STATUSES = new Set<JobStatus>(['open']);
-export const CLIENT_ACTIVE_STATUSES = new Set<JobStatus>(['taken', 'in_progress']);
-export const CLIENT_HISTORY_STATUSES = new Set<JobStatus>(['completed', 'cancelled']);
+export const CLIENT_ACTIVE_STATUSES = new Set<JobStatus>(['taken', 'in_progress', 'pending_bidding', 'counter_offered']);
+export const CLIENT_HISTORY_STATUSES = new Set<JobStatus>(['completed', 'cancelled', 'cancelled_by_client_pending' as JobStatus]);
