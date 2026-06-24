@@ -162,7 +162,10 @@ export const ClientHomeScreen: React.FC = () => {
       return;
     }
     if (tile.slug) {
-      handlePress(tile.slug, tile.title);
+      setSelectedExpressCat(null);
+      setTimeout(() => {
+        handlePress(tile.slug!, tile.title);
+      }, 200); // Wait briefly so the modal animation starts closing smoothly
     }
   };
 
