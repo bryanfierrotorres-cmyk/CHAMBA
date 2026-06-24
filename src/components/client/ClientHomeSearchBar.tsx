@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useAuthStore } from '@store/authStore';
+import { trackEvent } from '@services/analytics';
 import {
   View,
   TextInput,
@@ -36,6 +38,7 @@ export const ClientHomeSearchBar: React.FC<Props> = ({
   onSelectService,
   onSupportPress,
 }) => {
+  const userId = useAuthStore((s) => s.profile?.id ?? null);
   const [query, setQuery] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
@@ -113,6 +116,11 @@ export const ClientHomeSearchBar: React.FC<Props> = ({
       if (text.trim().length > 0) {
         const results = searchServices(text, serviceTypes);
         setSearchResults(results);
+        trackEvent('search', userId, {
+          query: text.trim(),
+          category: results.length > 0 ? results[0].slug : null,
+          results_count: results.length,
+        });
       } else {
         setSearchResults([]);
       }

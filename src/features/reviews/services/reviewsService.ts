@@ -1,4 +1,5 @@
 import { supabase } from '@services/supabase';
+import { trackEvent } from '@services/analytics';
 import { coerceNumber } from '@utils/formatters';
 import type { UserRole, WorkerReview, WorkerRatingSummary } from '@/types';
 import {
@@ -103,7 +104,12 @@ export const submitWorkerReview = async ({
   });
 
   if (!error && data && (data as { success?: boolean }).success) {
-    return (data as { review: WorkerReview }).review;
+    const review = (data as { review: WorkerReview }).review;
+    trackEvent('review_sent', reviewerId, {
+      worker_id: workerId,
+      rating,
+    });
+    return review;
   }
 
   const now = new Date().toISOString();

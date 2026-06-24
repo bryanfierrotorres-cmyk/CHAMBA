@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import { trackEvent } from '@services/analytics';
 import {
   View,
   Text,
@@ -215,6 +216,12 @@ export const CreateJobFormScreen: React.FC = () => {
       });
 
       setPublishedMeta({ id: created.id, created_at: created.created_at });
+
+      trackEvent('request_created', profile?.id, {
+        job_id: created.id,
+        category: serviceTypeSlug,
+        pay_amount: offerAmount,
+      });
 
       setSuccessMessage(
         `Tu solicitud de "${serviceLabel}" quedó en pendiente. Revisala en Mis Solicitudes → Pendientes.`,

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from '@components/Avatar';
+import { trackEvent } from '@services/analytics';
 import { CHAMBA, CARD_STEP_SHADOW } from '@constants/chambaUI';
 import { getCategoryLabel } from '@utils/formatters';
 import { formatNicaPhoneDisplay } from '@utils/phoneNicaragua';
@@ -20,7 +21,7 @@ import {
   clientApproveWorkerApplication,
   clientRejectWorkerApplication,
 } from '@features/client/services/clientJobSelectionService';
-import { WorkerApplicantProfileModal } from '@components/client/WorkerApplicantProfileModal';
+import { TechnicianAdvancedProfileModal } from '@components/client/TechnicianAdvancedProfileModal';
 import { hasUsableJobCoordinates } from '@utils/shareJobLocation';
 import type { JobWorkerApplication } from '@/types';
 
@@ -78,6 +79,10 @@ export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = (
     setActingId(app.worker_id);
     try {
       await clientApproveWorkerApplication(jobId, clientId, app.worker_id);
+      trackEvent('request_accepted', clientId, {
+        job_id: jobId,
+        worker_id: app.worker_id,
+      });
       onDecision?.({ jobId, workerId: app.worker_id });
       await refetch();
     } catch (err: unknown) {
@@ -243,11 +248,17 @@ export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = (
         );
       })}
 
-      <WorkerApplicantProfileModal
-        visible={profileApp != null}
+      <TechnicianAdvancedProfileModal
+        ref={(ref) => {
+          if (profileApp && ref) ref.present();
+          else if (!profileApp && ref) ref.dismiss();
+        }}
         application={profileApp}
-        jobCoords={jobCoords}
-        onClose={() => setProfileApp(null)}
+        onConfirm={(app) => {
+          handleApprove(app);
+          setProfileApp(null);
+        }}
+        onDismiss={() => setProfileApp(null)}
       />
     </View>
   );

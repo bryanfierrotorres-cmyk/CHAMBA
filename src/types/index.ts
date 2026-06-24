@@ -76,6 +76,27 @@ export interface WorkerRatingSummary {
   total_reviews: number;
 }
 
+export interface WorkerReviewsStats {
+  rating_avg: number;
+  total_reviews: number;
+  distribution: {
+    '5': number;
+    '4': number;
+    '3': number;
+    '2': number;
+    '1': number;
+  };
+}
+
+export interface TechnicianPortfolioItem {
+  id: string;
+  worker_id: string;
+  image_before_url: string | null;
+  image_after_url: string | null;
+  description: string | null;
+  created_at: string;
+}
+
 export interface AssignedWorkerSummary {
   id: string;
   full_name: string;

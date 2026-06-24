@@ -1,4 +1,5 @@
 import { supabase } from '@services/supabase';
+import { trackEvent } from '@services/analytics';
 import type {
   Job,
   JobAssignment,
@@ -803,6 +804,7 @@ export const completeJob = async (
     const body = data as { success?: boolean; error?: string } | null;
     if (!error && body?.success) {
       await finishLocally();
+      trackEvent('request_completed', workerId ?? null, { job_id: jobId });
       return;
     }
 
