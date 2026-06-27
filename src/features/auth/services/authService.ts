@@ -80,6 +80,10 @@ export const updateProfile = async (
   userId: string,
   updates: Partial<Pick<UserProfile, 'full_name' | 'phone' | 'avatar_url' | 'fcm_token'>>,
 ) => {
+  if (updates.avatar_url != null && updates.avatar_url.startsWith('data:')) {
+    throw new Error('avatar_url inválida: no se permiten imágenes en base64');
+  }
+
   const { data, error } = await supabase
     .from('profiles')
     .update({ ...updates, updated_at: new Date().toISOString() })
@@ -91,43 +95,48 @@ export const updateProfile = async (
   return data as UserProfile;
 };
 
-/** Upload avatar — Storage first, base64 data URI fallback for pilot/web. */
+/** Upload avatar to Supabase Storage. */
 export const uploadAvatar = async (userId: string, uri: string): Promise<string> => {
-  const response = await fetch(uri);
-  const blob     = await response.blob();
-  const extRaw     = uri.split('.').pop()?.split('?')[0]?.toLowerCase() ?? 'jpg';
-  const extension  = extRaw === 'jpeg' ? 'jpg' : extRaw;
-  const path       = `${userId}/avatar.${extension}`;
-  const contentType = blob.type || (extension === 'png' ? 'image/png' : 'image/jpeg');
+  let blob: Blob;
+  let extension: string;
+  let contentType: string;
 
-  try {
-    const { error } = await supabase.storage
-      .from('avatars')
-      .upload(path, blob, { upsert: true, contentType });
-
-    if (!error) {
-      const { data } = supabase.storage.from('avatars').getPublicUrl(path);
-      return data.publicUrl;
-    }
-    console.warn('[uploadAvatar] Storage unavailable, using base64 fallback:', error.message);
-  } catch (storageErr: any) {
-    console.warn('[uploadAvatar] Storage error, using base64 fallback:', storageErr.message);
+  if (uri.startsWith('data:')) {
+    // Web: Expo ImagePicker puede devolver data URIs.
+    // Extraemos el MIME directamente en lugar de depender de la extensión del path.
+    const mimeMatch  = uri.match(/^data:([^;]+);/);
+    const mimeType   = mimeMatch?.[1] ?? 'image/jpeg';
+    contentType      = mimeType;
+    extension        = mimeType === 'image/png' ? 'png' : 'jpg';
+    const base64Part = uri.slice(uri.indexOf(',') + 1);
+    const byteStr    = atob(base64Part);
+    const bytes      = new Uint8Array(byteStr.length);
+    for (let i = 0; i < byteStr.length; i++) bytes[i] = byteStr.charCodeAt(i);
+    blob = new Blob([bytes], { type: mimeType });
+  } else {
+    // Native o blob URI
+    const response = await fetch(uri);
+    blob           = await response.blob();
+    const extRaw   = uri.split('.').pop()?.split('?')[0]?.toLowerCase() ?? 'jpg';
+    extension      = extRaw === 'jpeg' ? 'jpg' : extRaw;
+    contentType    = blob.type || (extension === 'png' ? 'image/png' : 'image/jpeg');
   }
 
-  return new Promise<string>((resolve, reject) => {
-    const FileReaderClass = (globalThis as { FileReader?: typeof FileReader }).FileReader;
-    if (FileReaderClass) {
-      const reader = new FileReaderClass();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror   = () => reject(new Error('No se pudo leer la imagen'));
-      reader.readAsDataURL(blob);
-      return;
-    }
-    blob.arrayBuffer().then((buf) => {
-      const bytes = new Uint8Array(buf);
-      let binary  = '';
-      bytes.forEach((b) => { binary += String.fromCharCode(b); });
-      resolve(`data:${contentType};base64,${btoa(binary)}`);
-    }).catch(reject);
-  });
+  const path = `${userId}/avatar.${extension}`;
+
+  const { error } = await supabase.storage
+    .from('perfil')
+    .upload(path, blob, { upsert: true, contentType });
+
+  if (error) {
+    throw new Error(`Error al subir imagen: ${error.message}`);
+  }
+
+  const { data } = supabase.storage.from('perfil').getPublicUrl(path);
+
+  if (!data.publicUrl || !data.publicUrl.startsWith('http')) {
+    throw new Error('No se obtuvo la URL pública. Verificá la configuración del bucket "perfil" en Supabase Storage.');
+  }
+
+  return data.publicUrl;
 };

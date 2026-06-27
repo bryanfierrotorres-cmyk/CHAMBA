@@ -10,6 +10,7 @@ import {
   fetchProfileByPhoneQuick,
   ensureProfileInDb,
 } from '@utils/profileSync';
+import { resolveLoginProfile } from '@utils/loginSafety';
 import { useAssignmentsStore } from '@store/assignmentsStore';
 import { ENV } from '@utils/env';
 
@@ -95,14 +96,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         .single();
 
       if (error) throw error;
-      let profile = data as UserProfile;
+      
+      console.log('FETCH PROFILE RAW:', data);
+      console.log('STORE PROFILE SET:', data.avatar_url);
 
-      const current = get().profile;
-      if (current?.id === userId && current.avatar_url && !profile.avatar_url) {
-        profile = { ...profile, avatar_url: current.avatar_url };
-      }
-
-      set({ profile });
+      set({ profile: data as UserProfile });
     } catch (err: unknown) {
       console.error('[AuthStore] fetchProfile error:', (err as Error).message);
       const { profile: current, session } = get();
@@ -207,12 +205,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         throw new Error('Ingresá exactamente 8 dígitos de tu celular');
       }
 
-      const existing = await fetchProfileByPhone(cleanPhone);
-      if (!existing) {
-        const msg = 'Número no registrado, por favor regístrate primero';
-        set({ error: msg, isLoading: false });
-        throw new Error(msg);
-      }
+      // SYSTEM GUARD: distingue "no registrado" de "servidor caído" antes de
+      // mostrar cualquier error. Lanza el mensaje correcto; el catch lo refleja.
+      await resolveLoginProfile(cleanPhone);
 
       if (ENV.DEV_MODE) {
         set({ isLoading: false, error: null });
@@ -252,12 +247,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       if (ENV.DEV_MODE && code === '123456') {
-        const existing = await fetchProfileByPhone(cleanPhone);
-        if (!existing) {
-          const msg = 'Número no registrado, por favor regístrate primero';
-          set({ error: msg, isLoading: false });
-          throw new Error(msg);
-        }
+        const existing = await resolveLoginProfile(cleanPhone);
 
         const userId = existing.id;
         const fakeSession = {
@@ -306,12 +296,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         throw new Error('Código inválido o expirado. Solicitá uno nuevo.');
       }
 
-      let profile = await fetchProfileByPhone(cleanPhone);
-      if (!profile) {
-        const msg = 'Número no registrado, por favor regístrate primero';
-        set({ error: msg, isLoading: false });
-        throw new Error(msg);
-      }
+      let profile = await resolveLoginProfile(cleanPhone);
 
       if (data.session?.user?.id) {
         profile = { ...profile, id: data.session.user.id };
