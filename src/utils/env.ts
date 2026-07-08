@@ -43,10 +43,14 @@ export function readSupabaseAnonKey(): string {
 }
 
 export const ENV = {
-  SUPABASE_URL:              'https://xvolxgonpjzjkytpsmil.supabase.co',
-  SUPABASE_ANON_KEY:         'sb_publishable_uhhzt2htaTjd2BmCOJn80g__R-_shQZ',
+  // Leen del entorno (.env / .env.local) para permitir el switch local↔nube.
+  // Fallback a los valores de la nube si no hay env (comportamiento previo).
+  SUPABASE_URL:              readPublicEnv('EXPO_PUBLIC_SUPABASE_URL') || 'https://xvolxgonpjzjkytpsmil.supabase.co',
+  SUPABASE_ANON_KEY:         readSupabaseAnonKey() || 'sb_publishable_uhhzt2htaTjd2BmCOJn80g__R-_shQZ',
   DEV_MODE:                 true, // readPublicEnv('EXPO_PUBLIC_DEV_MODE') === 'true',
   PILOT_MODE:               readPublicEnv('EXPO_PUBLIC_PILOT_MODE') === 'true',
   STRIPE_PUBLISHABLE_KEY:   readPublicEnv('EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY'),
   GOOGLE_MAPS_API_KEY:      'AIzaSyCzAiobbJzkSegwibdS8fOqScZFdgNisyc',
+  // 'demo' | 'development' | 'production'. Sin definir → 'production' (comportamiento actual, sin cambios).
+  DATA_MODE:                readPublicEnv('EXPO_PUBLIC_DATA_MODE') || 'production',
 };

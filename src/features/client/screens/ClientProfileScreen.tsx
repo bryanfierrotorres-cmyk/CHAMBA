@@ -16,13 +16,18 @@ import { useAuthStore } from '@store/authStore';
 import { ChambaScreenHeader } from '@components/chamba/ChambaScreenHeader';
 import { ChambaProfileHeroCard } from '@components/chamba/ChambaProfileHeroCard';
 import { ChambaMenuRow } from '@components/chamba/ChambaMenuRow';
-import { CHAMBA, chambaStyles } from '@constants/chambaUI';
+import { CHAMBA, chambaStyles, CARD_STEP_SHADOW } from '@constants/chambaUI';
 import { webMinViewportStyle } from '@constants/webMobileLayout';
 import { openWhatsAppSupport } from '@utils/whatsappSupport';
+import { LEGAL_LINKS, APP_VERSION_LABEL, openLegalLink } from '@constants/legalLinks';
+import { StarRating } from '@components/StarRating';
+import { useWorkerReviews } from '@features/reviews/hooks/useWorkerReviews';
+import { ReviewCard } from '@features/workers/components/static/ReviewCard';
 import { useSupportBubbleScrollHandlers } from '@hooks/useSupportBubbleScrollHandlers';
 import { pickProfileAvatarUri, showProfileAvatarError } from '@utils/profileAvatarPicker';
 import { uploadAvatar, updateProfile } from '@features/auth/services/authService';
-import type { ClientTabParamList } from '@/types';
+import { DeleteAccountModal } from '@features/account/components/DeleteAccountModal';
+import type { ClientTabParamList, WorkerReview } from '@/types';
 
 type TabNav = BottomTabNavigationProp<ClientTabParamList>;
 
@@ -37,6 +42,9 @@ export const ClientProfileScreen: React.FC = () => {
   const [signingOut, setSigningOut] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  // Reseñas recibidas por el cliente (mismo servicio/RPC que el técnico, por subject_id).
+  const { reviews: clientReviews } = useWorkerReviews(profile?.id);
 
   const handlePickAvatar = useCallback(async () => {
     if (!profile?.id || uploadingAvatar) return;
@@ -49,9 +57,7 @@ export const ClientProfileScreen: React.FC = () => {
       setUploadingAvatar(true);
 
       const url = await uploadAvatar(profile.id, localUri);
-      const updatedProfile = { ...profile, avatar_url: url };
-
-      setProfile(updatedProfile);
+      setProfile({ ...profile, avatar_url: url });
       setAvatarPreview(url);
 
       try {
@@ -137,6 +143,33 @@ export const ClientProfileScreen: React.FC = () => {
           avatarUploading={uploadingAvatar}
         />
 
+        {(profile.total_reviews ?? 0) > 0 && (
+          <>
+            <View style={styles.reputationCard}>
+              <StarRating
+                rating={profile.rating_avg ?? 0}
+                totalReviews={profile.total_reviews ?? 0}
+                size="md"
+              />
+              <Text style={styles.reputationHint}>
+                Calificación recibida de tus técnicos
+              </Text>
+            </View>
+
+            {clientReviews.length > 0 && (
+              <View style={styles.reviewsSection}>
+                <View style={chambaStyles.sectionHeader}>
+                  <Text style={chambaStyles.sectionTitle}>Reseñas recibidas</Text>
+                  <Text style={chambaStyles.sectionSubtitle}>Lo que opinan los técnicos</Text>
+                </View>
+                {clientReviews.map((review: WorkerReview) => (
+                  <ReviewCard key={review.id} review={review} />
+                ))}
+              </View>
+            )}
+          </>
+        )}
+
         <View style={chambaStyles.sectionHeader}>
           <Text style={chambaStyles.sectionTitle}>Cuenta</Text>
           <Text style={chambaStyles.sectionSubtitle}>Información y acciones</Text>
@@ -175,8 +208,67 @@ export const ClientProfileScreen: React.FC = () => {
           loading={signingOut}
         />
 
-        <Text style={styles.version}>CHAMBA · Solicitar servicios</Text>
+        <View style={chambaStyles.sectionHeader}>
+          <Text style={chambaStyles.sectionTitle}>Información legal</Text>
+          <Text style={chambaStyles.sectionSubtitle}>Políticas, normas y soporte</Text>
+        </View>
+
+        <ChambaMenuRow
+          title="Política de Privacidad"
+          subtitle="Cómo protegemos tus datos"
+          iconColor="#0EA5E9"
+          icon={<Ionicons name="shield-checkmark" size={22} color="#FFF" />}
+          onPress={() => openLegalLink(LEGAL_LINKS.privacy)}
+        />
+
+        <ChambaMenuRow
+          title="Términos y Condiciones"
+          subtitle="Reglas de uso del servicio"
+          iconColor="#6366F1"
+          icon={<Ionicons name="document-text" size={22} color="#FFF" />}
+          onPress={() => openLegalLink(LEGAL_LINKS.terms)}
+        />
+
+        <ChambaMenuRow
+          title="Normas de la Comunidad"
+          subtitle="Convivencia y buenas prácticas"
+          iconColor="#8B5CF6"
+          icon={<Ionicons name="people" size={22} color="#FFF" />}
+          onPress={() => openLegalLink(LEGAL_LINKS.community)}
+        />
+
+        <ChambaMenuRow
+          title="Política de Cancelaciones"
+          subtitle="Condiciones para cancelar"
+          iconColor="#F97316"
+          icon={<Ionicons name="close-circle" size={22} color="#FFF" />}
+          onPress={() => openLegalLink(LEGAL_LINKS.cancellations)}
+        />
+
+        <ChambaMenuRow
+          title="Soporte / Contacto"
+          subtitle="soporte@chamba.app"
+          iconColor="#10B981"
+          icon={<Ionicons name="mail" size={22} color="#FFF" />}
+          onPress={() => openLegalLink(LEGAL_LINKS.support)}
+        />
+
+        <ChambaMenuRow
+          title="Eliminar cuenta"
+          subtitle="Borrar tu cuenta y tus datos de forma permanente"
+          iconColor="#DC2626"
+          icon={<Ionicons name="trash-outline" size={22} color="#FFF" />}
+          onPress={() => setShowDeleteAccount(true)}
+          destructive
+        />
+
+        <Text style={styles.version}>{APP_VERSION_LABEL}</Text>
       </ScrollView>
+
+      <DeleteAccountModal
+        visible={showDeleteAccount}
+        onClose={() => setShowDeleteAccount(false)}
+      />
     </SafeAreaView>
   );
 };
@@ -191,5 +283,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 8,
     fontWeight: '400',
+  },
+  reputationCard: {
+    backgroundColor: CHAMBA.white,
+    borderRadius: 18,
+    padding: 18,
+    marginTop: 12,
+    alignItems: 'center',
+    gap: 8,
+    ...CARD_STEP_SHADOW,
+  },
+  reputationHint: {
+    fontSize: 13,
+    color: CHAMBA.muted,
+    fontWeight: '500',
+  },
+  reviewsSection: {
+    marginTop: 4,
   },
 });
