@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Font from 'expo-font';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { RootNavigator } from '@navigation/RootNavigator';
@@ -19,6 +20,10 @@ import { configurePushNotificationHandler, syncPushTokenForUser } from '@utils/p
 import { StartupErrorScreen } from '@components/StartupErrorScreen';
 import { AppErrorBoundary } from '@components/AppErrorBoundary';
 import { usePreciosCatalogProbe } from '@features/catalog/hooks/usePreciosCatalogProbe';
+import { ENV } from '@utils/env';
+import { demoDb } from '@/demo/demoDb';
+import { buildDemoSession, readDemoSessionUserId } from '@/demo/demoSession';
+import { DemoModeBadge } from '@/demo/DemoModeBadge';
 
 function PreciosCatalogProbeRunner() {
   usePreciosCatalogProbe();
@@ -63,7 +68,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 }
 
 function AppBootstrap() {
-  const { setSession, setHydrated, setLoading, fetchProfile, reset } = useAuthStore();
+  const { setSession, setProfile, setHydrated, setLoading, fetchProfile, reset } = useAuthStore();
   const profile = useAuthStore((s) => s.profile);
   const session = useAuthStore((s) => s.session);
   const isHydrated = useAuthStore((s) => s.isHydrated);
@@ -105,6 +110,28 @@ function AppBootstrap() {
     setHydrated(true);
 
     const bootstrap = async () => {
+      // DEMO MODE: restaura la sesión local sin tocar Supabase ni la red.
+      if (ENV.DATA_MODE === 'demo') {
+        try {
+          const userId = await readDemoSessionUserId();
+          if (userId && !cancelled) {
+            const demoProfile = await demoDb.findProfileById(userId);
+            if (demoProfile && !cancelled) {
+              setSession(buildDemoSession(demoProfile));
+              setProfile(demoProfile);
+            }
+          }
+        } catch (err) {
+          console.warn('[App] demo bootstrap error:', err);
+        } finally {
+          if (!cancelled) {
+            setLoading(false);
+            setHydrated(true);
+          }
+        }
+        return;
+      }
+
       try {
         if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
           const blob = localStorage.getItem('CHAMBA_WORKER_ASSIGNMENTS');
@@ -168,9 +195,12 @@ function AppBootstrap() {
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
-          {__DEV__ ? <PreciosCatalogProbeRunner /> : null}
-          <StatusBar style="light" backgroundColor="transparent" translucent />
-          <RootNavigator />
+          <BottomSheetModalProvider>
+            {__DEV__ ? <PreciosCatalogProbeRunner /> : null}
+            <StatusBar style="light" backgroundColor="transparent" translucent />
+            <RootNavigator />
+            <DemoModeBadge />
+          </BottomSheetModalProvider>
         </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

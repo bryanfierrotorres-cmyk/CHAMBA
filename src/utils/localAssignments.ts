@@ -386,12 +386,16 @@ export const migrateLocalAssignmentsWorkerId = async (
 
 const STATUS_RANK: Record<JobStatus, number> = {
   open: 0,
+  pending: 0.3,
   pending_bidding: 0.5,
   counter_offered: 0.5,
   taken: 1,
+  assigned: 1,
+  arrived: 1.5,
   in_progress: 2,
   completed: 3,
   cancelled: 3,
+  rejected: 3,
 };
 
 function preferStatus(a: JobStatus, b: JobStatus): JobStatus {

@@ -6,6 +6,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HomeScreen }                from '@features/jobs/screens/HomeScreen';
+import { RadarInboxScreen }          from '@features/jobs/screens/RadarInboxScreen';
 import { JobDetailScreen }           from '@features/jobs/screens/JobDetailScreen';
 import { JobActiveScreen }           from '@features/jobs/screens/JobActiveScreen';
 import { JobChatScreen }             from '@features/chat/screens/JobChatScreen';
@@ -114,16 +115,18 @@ export const WorkerNavigator: React.FC = () => {
       {!needsOnboarding && !isPendingApproval && (
         <View style={webAppShellStyle}>
           <Tab.Navigator
+            initialRouteName="JobFeed"
             tabBar={(props) => <WorkerTabBar {...props} />}
             screenOptions={{ headerShown: false }}
             sceneContainerStyle={Platform.OS === 'web' ? { paddingBottom: webTabScenePadding(insets.bottom) } : undefined}
           >
-            <Tab.Screen name="JobFeed" component={JobsStack} />
+            <Tab.Screen name="Home"    component={RadarInboxScreen} />
             <Tab.Screen name="MyJobs"  component={MyJobsScreen} />
+            <Tab.Screen name="JobFeed" component={JobsStack} />
             <Tab.Screen name="Wallet"  component={WalletScreen} />
             <Tab.Screen name="Profile" component={ProfileStack} />
           </Tab.Navigator>
-          <WhatsAppBubble bottom={insets.bottom + 72} />
+          <WhatsAppBubble bottom={insets.bottom + 100} />
         </View>
       )}
     </WorkerThemeProvider>

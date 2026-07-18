@@ -1,6 +1,9 @@
 import { supabase } from '@services/supabase';
 import { withTimeout } from '@utils/withTimeout';
+import { ENV } from '@utils/env';
 import type { UserProfile, UserRole } from '@/types';
+
+const IS_DEMO = ENV.DATA_MODE === 'demo';
 
 type SyncableProfile = Pick<
   UserProfile,
@@ -86,24 +89,23 @@ export const lookupProfileByPhone = async (
       supabase.rpc('get_profile_by_phone', { p_phone: normalized }),
       timeoutMs,
     );
-    if (error) {
-      if (isDbUnavailableMessage(error.message)) {
-        return { status: 'unavailable', reason: error.message };
-      }
-    } else {
+    if (!error) {
       const fromRpc = parseProfileRpcRow(data);
       if (fromRpc) return cacheFound(fromRpc);
       if (data === null || data === undefined) return cacheNotFound();
     }
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : 'timeout';
-    return { status: 'unavailable', reason };
+    // RPC con error (p. ej. "statement timeout"): NO abortar el login.
+    // Continuar al SELECT directo de respaldo, que es más liviano y sí responde.
+  } catch {
+    // RPC excedió el withTimeout: continuar al SELECT directo de respaldo.
   }
 
   const trySelect = async (phoneValue: string): Promise<UserProfile | null> => {
     try {
+      // limit(1) en lugar de maybeSingle(): tolera teléfonos duplicados en la DB
+      // (maybeSingle lanza error si hay >1 fila y el login fallaría injustamente).
       const { data, error } = await withTimeout(
-        supabase.from('profiles').select('*').eq('phone', phoneValue).maybeSingle(),
+        supabase.from('profiles').select('*').eq('phone', phoneValue).limit(1),
         timeoutMs,
       );
       if (error) {
@@ -112,7 +114,8 @@ export const lookupProfileByPhone = async (
         }
         return null;
       }
-      return data ? (data as UserProfile) : null;
+      const row = Array.isArray(data) ? data[0] : data;
+      return row ? (row as UserProfile) : null;
     } catch (err) {
       if (err instanceof Error && isDbUnavailableMessage(err.message)) {
         throw err;
@@ -191,6 +194,10 @@ export const mergeProfileFromDatabase = (
 export const syncProfileWithDatabase = async (
   profile: UserProfile,
 ): Promise<UserProfile> => {
+  // Demo Mode es 100% offline por diseño — demoDb ya es la fuente de verdad
+  // completa para el perfil local, no hay una BD remota con la que sincronizar.
+  if (IS_DEMO) return profile;
+
   const phone = normalizePhone(profile.phone);
   if (!phone) return profile;
 

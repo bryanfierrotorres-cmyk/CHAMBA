@@ -10,10 +10,9 @@ const LEGAL_BASE = 'https://chamba-woad.vercel.app';
 export const LEGAL_LINKS = {
   privacy: `${LEGAL_BASE}/privacy.html`,
   accountDeletion: `${LEGAL_BASE}/eliminar-cuenta.html`,
-  // TODO(legal): estas 3 aún apuntan al dominio muerto chamba.app — falta crear sus páginas.
-  terms: 'https://chamba.app/terms',
-  community: 'https://chamba.app/community',
-  cancellations: 'https://chamba.app/cancellations',
+  terms: `${LEGAL_BASE}/terms.html`,
+  community: `${LEGAL_BASE}/community.html`,
+  cancellations: `${LEGAL_BASE}/cancellations.html`,
   support: 'mailto:soporte@chamba.app',
 } as const;
 

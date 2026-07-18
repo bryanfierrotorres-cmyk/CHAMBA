@@ -11,8 +11,8 @@ const EXTRA_KEY_MAP: Record<string, string> = {
   EXPO_PUBLIC_SUPABASE_ANON_KEY:  'supabaseAnonKey',
   EXPO_PUBLIC_PILOT_MODE:         'pilotMode',
   EXPO_PUBLIC_DEV_MODE:           'devMode',
+  EXPO_PUBLIC_DATA_MODE:          'dataMode',
   EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: 'stripePublishableKey',
-  EXPO_PUBLIC_GOOGLE_MAPS_API_KEY:    'googleMapsApiKey',
 };
 
 /**
@@ -50,7 +50,6 @@ export const ENV = {
   DEV_MODE:                 true, // readPublicEnv('EXPO_PUBLIC_DEV_MODE') === 'true',
   PILOT_MODE:               readPublicEnv('EXPO_PUBLIC_PILOT_MODE') === 'true',
   STRIPE_PUBLISHABLE_KEY:   readPublicEnv('EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY'),
-  GOOGLE_MAPS_API_KEY:      'AIzaSyCzAiobbJzkSegwibdS8fOqScZFdgNisyc',
   // 'demo' | 'development' | 'production'. Sin definir → 'production' (comportamiento actual, sin cambios).
   DATA_MODE:                readPublicEnv('EXPO_PUBLIC_DATA_MODE') || 'production',
 };

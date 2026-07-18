@@ -26,6 +26,7 @@ interface WorkerReviewsPanelProps {
 const ROLE_LABELS: Record<ReviewerRole, string> = {
   admin:  'Administrador',
   client: 'Cliente',
+  worker: 'Técnico',
 };
 
 const ReviewRow: React.FC<{ review: WorkerReview }> = ({ review }) => (
@@ -116,11 +117,15 @@ export const WorkerReviewsPanel: React.FC<WorkerReviewsPanelProps> = ({
     return (
       <View style={[styles.root, compact && styles.rootCompact]}>
         <View style={styles.summaryRow}>
-          <StarRating
-            rating={summary.rating_avg}
-            totalReviews={summary.total_reviews}
-            size={compact ? 'sm' : 'md'}
-          />
+          {summary.total_reviews > 0 ? (
+            <StarRating
+              rating={summary.rating_avg}
+              totalReviews={summary.total_reviews}
+              size={compact ? 'sm' : 'md'}
+            />
+          ) : (
+            <Text style={{ color: '#F59E0B', fontWeight: 'bold' }}>✨ Primera Chamba</Text>
+          )}
         </View>
         <View style={styles.clientThankCard}>
           <Text style={styles.clientThankTitle}>Tu calificación</Text>
@@ -149,11 +154,15 @@ export const WorkerReviewsPanel: React.FC<WorkerReviewsPanelProps> = ({
   return (
     <View style={[styles.root, compact && styles.rootCompact]}>
       <View style={styles.summaryRow}>
-        <StarRating
-          rating={summary.rating_avg}
-          totalReviews={summary.total_reviews}
-          size={compact ? 'sm' : 'md'}
-        />
+        {summary.total_reviews > 0 ? (
+          <StarRating
+            rating={summary.rating_avg}
+            totalReviews={summary.total_reviews}
+            size={compact ? 'sm' : 'md'}
+          />
+        ) : (
+          <Text style={{ color: '#F59E0B', fontWeight: 'bold', fontSize: 16 }}>✨ Primera Chamba</Text>
+        )}
         {workerName && (
           <Text style={styles.workerLabel} numberOfLines={1}>
             {workerName}

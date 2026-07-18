@@ -1,6 +1,9 @@
 import { useEffect } from 'react';
 import { useAuthStore } from '@store/authStore';
 import { syncProfileWithDatabase } from '@utils/profileSync';
+import { ENV } from '@utils/env';
+
+const IS_DEMO = ENV.DATA_MODE === 'demo';
 
 /** Sincroniza perfil con BD para que RLS y el radar no queden vacíos. */
 export function useAuthSessionWarmup(): void {
@@ -8,7 +11,9 @@ export function useAuthSessionWarmup(): void {
   const session = useAuthStore((s) => s.session);
 
   useEffect(() => {
-    if (!profile?.id) return;
+    // Demo Mode es 100% offline por diseño — este warmup solo tiene sentido
+    // contra Supabase real; en demo, demoDb ya es la fuente de verdad completa.
+    if (IS_DEMO || !profile?.id) return;
 
     void (async () => {
       const synced = await syncProfileWithDatabase(profile);

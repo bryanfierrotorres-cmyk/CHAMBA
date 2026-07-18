@@ -249,13 +249,13 @@ export const PremiumSubcategoryList: React.FC<PremiumSubcategoryListProps> = ({
             <Pressable
               onPress={item.onPress}
               accessibilityRole="button"
-              accessibilityLabel={`Subastar ${item.title}`}
+              accessibilityLabel={`Solicitar servicio ${item.title}`}
               style={({ pressed }) => [
                 styles.actionBtn,
                 pressed && styles.actionBtnPressed,
               ]}
             >
-              <Text style={styles.actionBtnText}>Subastar</Text>
+              <Text style={styles.actionBtnText}>Solicitar servicio</Text>
             </Pressable>
           </View>
         </View>

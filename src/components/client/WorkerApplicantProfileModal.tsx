@@ -119,9 +119,9 @@ export const WorkerApplicantProfileModal: React.FC<WorkerApplicantProfileModalPr
                 {trust.starLabel ? (
                   <View style={styles.trustChip}>
                     <Text style={styles.trustChipText}>
-                      {formatRatingAvg(application.rating_avg) !== '—'
+                      {formatRatingAvg(application.rating_avg) !== '—' && Number(application.rating_avg) > 0
                         ? `⭐ ${formatRatingAvg(application.rating_avg)}`
-                        : trust.starLabel}
+                        : '✨ Primera Chamba'}
                     </Text>
                   </View>
                 ) : null}

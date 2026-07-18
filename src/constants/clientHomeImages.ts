@@ -18,7 +18,7 @@ const picsumSeed = (seed: string) =>
 /** Carrusel Home — primary + fallback por slide.id */
 export const CLIENT_HERO_SLIDE_IMAGES: Record<string, HeroSlideImageSet> = {
   'hogar-promo-segundo-servicio': {
-    primary: unsplash('photo-1556911228-bff31c812bea'),
+    primary: unsplash('photo-1519085360753-af0119f7cbe7'),
     fallback: picsumSeed('hogar-promo'),
   },
   'hogar-limpieza': {
@@ -26,7 +26,7 @@ export const CLIENT_HERO_SLIDE_IMAGES: Record<string, HeroSlideImageSet> = {
     fallback: picsumSeed('hogar-limpieza'),
   },
   'hogar-mantenimiento': {
-    primary: unsplash('photo-1504307651096-0c2f4f49e62b'),
+    primary: unsplash('photo-1621961458348-f013d219b50c'),
     fallback: picsumSeed('hogar-ac'),
   },
   'hogar-vida': {
@@ -65,7 +65,7 @@ const expressU = (photoId: string) => unsplash(photoId, 640);
 export const EXPRESS_MAIN_SERVICE_IMAGES: Record<string, string> = {
   limpieza: expressU('photo-1581578731548-c64695cc6952'),
   car:      expressU('photo-1549317661-bd32c8ce0db2'),
-  ac:       expressU('photo-1504307651096-0c2f4f49e62b'),
+  ac:       expressU('photo-1621961458348-f013d219b50c'),
   jardineria: expressU('photo-1558904541-efa843a96f01'),
   grama:      expressU('photo-1558904541-efa843a96f01'),
   pet:      expressU('photo-1583337130417-3346a1be7dee'),

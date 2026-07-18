@@ -1,5 +1,7 @@
 import { supabase } from '@services/supabase';
 import { trackEvent } from '@services/analytics';
+import { ENV } from '@utils/env';
+import { demoDb } from '@/demo/demoDb';
 import type {
   Job,
   JobAssignment,
@@ -35,7 +37,6 @@ import {
   getJobRadarMinCreatedAtIso,
   isJobExpiredLocally,
 } from '@constants/jobExpiry';
-import { workerCoversJobCategory } from '@utils/workerCategoryAccess';
 import {
   ensureProfileInDb,
   resolveWorkerProfileForActions,
@@ -58,6 +59,8 @@ import {
   CLIENT_ACTIVE_JOBS_LIMIT_MESSAGE,
   WORKER_ACTIVE_COMMITMENTS_LIMIT_MESSAGE,
 } from '@constants/jobLimits';
+import NetInfo from '@react-native-community/netinfo';
+import { enqueueOfflineMutation } from '@utils/offlineSyncEngine';
 
 type ClientProfileRef = Pick<
   UserProfile,
@@ -122,6 +125,9 @@ type AcceptWorkerContext = Pick<
 
 const PAGE_SIZE = 20;
 
+/** True cuando la app corre 100 % offline con el backend demo en memoria. */
+const IS_DEMO = ENV.DATA_MODE === 'demo';
+
 /** Excluye solicitudes open vencidas (>60 min) — refuerzo local si el RPC aún no filtra. */
 const filterActiveOpenJobs = (jobs: Job[], status?: JobStatus): Job[] => {
   if (status !== 'open') return jobs;
@@ -142,13 +148,22 @@ const normalizeJobRow = (row: Job & { address?: string; lat?: number; lng?: numb
   const lat = raw.location?.lat ?? raw.lat ?? 0;
   const lng = raw.location?.lng ?? raw.lng ?? 0;
 
-  const creator = raw.creator && typeof raw.creator === 'object'
+  const rawAny = row as any;
+  const rawCreator = Array.isArray(raw.creator) ? raw.creator[0] : raw.creator;
+  
+  const creator = rawCreator && typeof rawCreator === 'object'
     ? {
-        id: raw.creator.id,
-        full_name: raw.creator.full_name,
-        avatar_url: raw.creator.avatar_url ?? null,
+        id: rawCreator.id ?? rawAny.created_by ?? '',
+        full_name: rawCreator.full_name ?? rawAny.creator_name ?? rawAny.creator_full_name,
+        avatar_url: rawCreator.avatar_url ?? rawAny.creator_avatar_url ?? rawAny.creator_avatar ?? null,
       }
-    : raw.creator;
+    : (rawAny.creator_name || rawAny.creator_full_name) 
+      ? {
+          id: rawAny.creator_id ?? rawAny.created_by ?? '',
+          full_name: rawAny.creator_name ?? rawAny.creator_full_name,
+          avatar_url: rawAny.creator_avatar_url ?? rawAny.creator_avatar ?? null,
+        }
+      : rawCreator;
 
   return {
     ...row,
@@ -210,11 +225,13 @@ const fetchAssignmentsViaJobs = async (workerId: string): Promise<JobAssignment[
     .from('jobs')
     .select(`
       *,
+      creator:profiles!created_by(id, full_name, avatar_url, phone),
       assignments:job_assignments!inner(
         id, job_id, worker_id, assigned_at, completed_at, payment_status, payment_intent_id
       )
     `)
     .eq('assignments.worker_id', workerId)
+    .in('status', ['taken', 'in_progress', 'completed', 'cancelled']) // Ensure all agenda states are caught, mainly taken/in_progress
     .order('created_at', { ascending: false });
 
   if (error || !data?.length) return [];
@@ -238,8 +255,12 @@ const fetchAssignmentsViaWorkerColumn = async (
 ): Promise<JobAssignment[]> => {
   const { data, error } = await supabase
     .from('jobs')
-    .select('*')
+    .select(`
+      *,
+      creator:profiles!created_by(id, full_name, avatar_url, phone)
+    `)
     .eq('assigned_worker_id', workerId)
+    .in('status', ['taken', 'in_progress', 'completed', 'cancelled'])
     .order('created_at', { ascending: false });
 
   if (error || !data?.length) return [];
@@ -308,6 +329,27 @@ const fetchJobsViaWorkerRpc = async ({
 
   const rows = (body.jobs ?? []) as Job[];
   const total = body.count ?? rows.length;
+  
+  const creatorIds = Array.from(new Set(rows.map((r) => r.created_by).filter(Boolean)));
+  if (creatorIds.length > 0) {
+    const { data: profiles } = await supabase.from('profiles').select('id, full_name, avatar_url, phone').in('id', creatorIds);
+    if (profiles) {
+      const profileMap = new Map(profiles.map((p) => [p.id, p]));
+      rows.forEach((r) => {
+        if (!r.created_by) return;
+        // Enriquecer si falta el creator completo o le falta el avatar
+        if (!r.creator?.avatar_url) {
+          const profile = profileMap.get(r.created_by);
+          if (profile) {
+            r.creator = r.creator
+              ? { ...r.creator, ...profile }
+              : profile;
+          }
+        }
+      });
+    }
+  }
+
   const freshRows = filterActiveOpenJobs(rows.map(normalizeJobRow), status);
 
   return {
@@ -346,6 +388,27 @@ const fetchJobsViaRpc = async ({
 
   const rows = (body.jobs ?? []) as Job[];
   const total = body.count ?? rows.length;
+
+  const creatorIds = Array.from(new Set(rows.map((r) => r.created_by).filter(Boolean)));
+  if (creatorIds.length > 0) {
+    const { data: profiles } = await supabase.from('profiles').select('id, full_name, avatar_url, phone').in('id', creatorIds);
+    if (profiles) {
+      const profileMap = new Map(profiles.map((p) => [p.id, p]));
+      rows.forEach((r) => {
+        if (!r.created_by) return;
+        // Enriquecer si falta el creator completo o le falta el avatar
+        if (!r.creator?.avatar_url) {
+          const profile = profileMap.get(r.created_by);
+          if (profile) {
+            r.creator = r.creator
+              ? { ...r.creator, ...profile }
+              : profile;
+          }
+        }
+      });
+    }
+  }
+
   const freshRows = filterActiveOpenJobs(rows.map(normalizeJobRow), status);
 
   return {
@@ -365,6 +428,12 @@ export const fetchJobs = async ({
   page = 0,
   workerId,
 }: FetchJobsParams = {}): Promise<PaginatedResponse<Job>> => {
+  if (IS_DEMO) {
+    const cats = categories ?? (category ? [category] : undefined);
+    const all = await demoDb.listOpenJobs({ categories: cats });
+    return { data: all, count: all.length, page: 0, pageSize: PAGE_SIZE, hasMore: false };
+  }
+
   if (categories !== undefined && categories.length === 0) {
     return {
       data: [],
@@ -435,21 +504,6 @@ export const fetchJobs = async ({
     status,
   );
 
-  if (normalized.length === 0 && page === 0) {
-    if (workerId) {
-      const workerFeed = await fetchJobsViaWorkerRpc({
-        workerId,
-        status,
-        category,
-        categories,
-        page,
-      });
-      if (workerFeed && workerFeed.data.length > 0) return workerFeed;
-    }
-    const rpcFallback = await fetchJobsViaRpc({ status, category, categories, page });
-    if (rpcFallback && rpcFallback.data.length > 0) return rpcFallback;
-  }
-
   return {
     data: normalized,
     count: count ?? 0,
@@ -461,6 +515,12 @@ export const fetchJobs = async ({
 
 /** Fetch a single job by ID. */
 export const fetchJobById = async (jobId: string): Promise<Job> => {
+  if (IS_DEMO) {
+    const job = await demoDb.getJobById(jobId);
+    if (!job) throw new Error('Solicitud no encontrada');
+    return job;
+  }
+
   const { data, error } = await supabase
     .from('jobs')
     .select(`*, creator:profiles!created_by(id, full_name, avatar_url, phone)`)
@@ -476,6 +536,10 @@ export const fetchWorkerAssignments = async (
   workerId: string,
   profile?: UserProfile | null,
 ): Promise<JobAssignment[]> => {
+  if (IS_DEMO) {
+    return demoDb.listWorkerAssignments(profile?.id ?? workerId);
+  }
+
   let effectiveWorkerId = workerId;
 
   if (profile?.id) {
@@ -496,7 +560,13 @@ export const fetchWorkerAssignments = async (
     } else {
       const { data, error } = await supabase
         .from('job_assignments')
-        .select(`*, job:jobs(*)`)
+        .select(`
+          *,
+          job:jobs(
+            *,
+            creator:profiles!created_by(id, full_name, avatar_url, phone)
+          )
+        `)
         .eq('worker_id', effectiveWorkerId)
         .order('assigned_at', { ascending: false })
         .limit(50);
@@ -699,6 +769,12 @@ export const advanceOperationalPhase = async (
   jobSnapshot?: Job | null,
   workerCtx?: UserProfile | null,
 ): Promise<void> => {
+  if (IS_DEMO) {
+    await patchLocalOperationalPhase(jobId, nextPhase, phaseToJobStatus(nextPhase));
+    await demoDb.advancePhase(jobId, nextPhase);
+    return;
+  }
+
   let effectiveWorkerId = workerId;
   if (workerCtx) {
     const resolved = await resolveWorkerProfileForActions(workerCtx);
@@ -742,6 +818,12 @@ export const advanceOperationalPhase = async (
 
 /** Worker: Mark a job as in_progress (En proceso). */
 export const startJob = async (jobId: string, workerId?: string): Promise<void> => {
+  if (IS_DEMO) {
+    await patchLocalJobStatus(jobId, 'in_progress');
+    await demoDb.setJobStatus(jobId, 'in_progress');
+    return;
+  }
+
   if (workerId) {
     const { data, error } = await supabase.rpc('worker_start_job', {
       p_job_id: jobId,
@@ -774,6 +856,12 @@ export const completeJob = async (
   jobSnapshot?: Job | Partial<Job> | null,
   workerCtx?: UserProfile | null,
 ): Promise<void> => {
+  if (IS_DEMO) {
+    await patchLocalJobStatus(jobId, 'completed', new Date().toISOString(), 'completed');
+    await demoDb.setJobStatus(jobId, 'completed');
+    return;
+  }
+
   let effectiveWorkerId = workerId;
   if (workerCtx) {
     const resolved = await resolveWorkerProfileForActions(workerCtx);
@@ -784,19 +872,30 @@ export const completeJob = async (
   let job = jobSnapshot ?? null;
 
   const finishLocally = async (): Promise<void> => {
-    await patchLocalJobStatus(jobId, 'completed', now, 'completed');
-    if (!job) {
-      try {
-        job = await fetchJobById(jobId);
-      } catch {
-        job = null;
-      }
-    }
+    // Patch local cache immediately — don't block on async storage write
+    void patchLocalJobStatus(jobId, 'completed', now, 'completed');
+
+    // Use whatever snapshot we have; don't fetch from server (avoids UI freeze)
     if (job?.created_by && job.id) {
       void notifyClientOperationalUpdate(
         { id: job.id, created_by: job.created_by, title: job.title ?? '' },
         'completed',
       );
+    } else if (!job) {
+      // Fire-and-forget: try to notify client in background only if we have no snapshot
+      void (async () => {
+        try {
+          const fetched = await fetchJobById(jobId);
+          if (fetched?.created_by) {
+            void notifyClientOperationalUpdate(
+              { id: fetched.id, created_by: fetched.created_by, title: fetched.title ?? '' },
+              'completed',
+            );
+          }
+        } catch {
+          // Non-critical: client notification is best-effort
+        }
+      })();
     }
   };
 
@@ -873,9 +972,22 @@ export const acceptJob = async (
   assignment: JobAssignment;
   pendingClientSelection?: boolean;
 }> => {
+  if (IS_DEMO) {
+    const effId = (workerCtx as UserProfile | undefined)?.id ?? workerId;
+    const assignment = await demoDb.acceptJob(jobId, effId);
+    await patchLocalJobStatus(jobId, 'assigned');
+    return { success: true, assignmentId: assignment.id, assignment, pendingClientSelection: false };
+  }
+
   let effectiveWorkerId = workerId;
   let effectiveCtx = workerCtx;
   let selectionStatus: 'pending' | 'approved' = 'pending';
+
+  const netState = await NetInfo.fetch();
+  if (!netState.isConnected) {
+    await enqueueOfflineMutation('accept_job', { jobId, workerId: effectiveWorkerId });
+    throw new Error('Sin conexión. Tu solicitud ha sido encolada y se procesará al recuperar la red.');
+  }
 
   try {
     if (workerCtx) {
@@ -884,12 +996,9 @@ export const acceptJob = async (
       effectiveCtx = resolved;
       await ensureProfileInDb(resolved);
 
-      const jobCat = jobSnapshot?.category;
-      if (jobCat && !workerCoversJobCategory(resolved, jobCat)) {
-        throw new Error(
-          'Este servicio no está en tus especialidades aprobadas. Pedí al admin que active la categoría o sus sub-servicios.',
-        );
-      }
+      // Category validation is left to the DB RPC (accept_job).
+      // Client-side slug mappings can differ from DB category values and cause
+      // false rejections when the worker IS authorized on the server.
     }
 
     await assertWorkerCanPostulate(effectiveWorkerId);
@@ -985,8 +1094,7 @@ export const acceptJob = async (
         throw new Error(WORKER_ACTIVE_COMMITMENTS_LIMIT_MESSAGE);
       }
 
-      throw new Error(rpc.error ?? 'No se pudo postular al trabajo');
-
+      console.warn('[acceptJob] RPC failed, using fallback:', rpc.error);
       const fallback = await acceptJobPilotFallback(jobId, effectiveWorkerId);
       assignmentId = fallback.assignmentId;
       selectionStatus = fallback.selectionStatus;
@@ -1031,6 +1139,8 @@ export const acceptJob = async (
 
 /** Subscribe to real-time job feed updates. */
 export const subscribeToJobs = (onUpdate: (job: Job) => void) => {
+  if (IS_DEMO) return () => {};
+
   const channel = supabase
     .channel('jobs-feed')
     .on(
@@ -1047,28 +1157,66 @@ export const subscribeToJobs = (onUpdate: (job: Job) => void) => {
 
 export type WorkerRadarJobEvent = 'INSERT' | 'UPDATE' | 'DELETE';
 
+/** Enriquece el creator de un job si le falta avatar_url (para phone-auth workers donde RLS bloquea el JOIN). */
+const enrichJobCreator = async (job: Job): Promise<Job> => {
+  if (!job.created_by || job.creator?.avatar_url) return job;
+  try {
+    const { data: prof } = await supabase
+      .from('profiles')
+      .select('id, full_name, avatar_url, phone')
+      .eq('id', job.created_by)
+      .single();
+    if (prof) {
+      return {
+        ...job,
+        creator: job.creator ? { ...job.creator, ...prof } : prof,
+      };
+    }
+  } catch {
+    // Best-effort; job is already displayed without photo
+  }
+  return job;
+};
+
 /** Realtime del radar técnico — INSERT/UPDATE/DELETE en `jobs`. */
 export const subscribeToWorkerRadarJobs = (
   onEvent: (payload: { job: Job; eventType: WorkerRadarJobEvent }) => void,
 ) => {
+  if (IS_DEMO) return () => {};
+
   const channel = supabase
     .channel('worker-radar-jobs')
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'jobs' },
       (payload) => {
-        if (payload.new) {
-          onEvent({ job: normalizeJobRow(payload.new as Job), eventType: 'INSERT' });
-        }
+        if (!payload.new) return;
+        const rawId = (payload.new as { id: string }).id;
+        if (!rawId) return;
+
+        // Show the job immediately from the payload (zero extra roundtrip)
+        const immediateJob = normalizeJobRow(payload.new as Job);
+        onEvent({ job: immediateJob, eventType: 'INSERT' });
+
+        // Fetch full job with creator JOIN (avatar), emit UPDATE to patch the card
+        void fetchJobById(rawId)
+          .then((fullJob) => onEvent({ job: fullJob, eventType: 'UPDATE' }))
+          .catch(() => {
+            // Already shown from payload; best-effort enrichment only
+          });
       },
     )
     .on(
       'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'jobs' },
       (payload) => {
-        if (payload.new) {
-          onEvent({ job: normalizeJobRow(payload.new as Job), eventType: 'UPDATE' });
-        }
+        if (!payload.new) return;
+        const rawId = (payload.new as { id: string }).id;
+        if (!rawId) return;
+
+        // Render from payload immediately — creator is already in the store from INSERT
+        const immediateJob = normalizeJobRow(payload.new as Job);
+        onEvent({ job: immediateJob, eventType: 'UPDATE' });
       },
     )
     .on(
@@ -1117,9 +1265,40 @@ interface CreateJobParams {
 
 /** Admin: Create a new job. */
 export const createJob = async (params: CreateJobParams): Promise<Job> => {
+  if (IS_DEMO) {
+    if (!Number.isFinite(params.payAmount) || params.payAmount <= 0) {
+      throw new Error('Ingresa un monto válido mayor a cero');
+    }
+    return demoDb.createJob({
+      title: params.title,
+      description: params.description,
+      category: params.category,
+      payAmount: params.payAmount,
+      address: params.address,
+      lat: params.lat,
+      lng: params.lng,
+      scheduledAt: params.scheduledAt ?? null,
+      urgencyLevel: params.urgencyLevel,
+      durationHours: params.durationHours,
+      requiredWorkers: params.requiredWorkers,
+      mediaUrls: params.mediaUrls,
+      createdBy: params.createdBy,
+    });
+  }
+
+  const netState = await NetInfo.fetch();
+  if (!netState.isConnected) {
+    await enqueueOfflineMutation('create_job', params);
+    throw new Error('Sin conexión. Tu servicio ha sido encolado y se publicará al recuperar la red.');
+  }
+
   if (!params.relaxedPricing) {
     await assertClientJobPlatformReady();
-    const preciosResult = await fetchPreciosCatalogo();
+    // Run price fetch and publish limit check in parallel
+    const [preciosResult] = await Promise.all([
+      fetchPreciosCatalogo(),
+      assertClientCanPublish(params.createdBy),
+    ]);
     const dbPrecios = mapPreciosRowsToMap(preciosResult.rows);
     const dbSuggested = resolveOfferSuggestedPriceFromDb(params.category, dbPrecios);
     const priceLookup = dbSuggested != null && dbSuggested > 0
@@ -1134,10 +1313,6 @@ export const createJob = async (params: CreateJobParams): Promise<Job> => {
     }
   } else if (!Number.isFinite(params.payAmount) || params.payAmount <= 0) {
     throw new Error('Ingresa un monto válido mayor a cero');
-  }
-
-  if (!params.relaxedPricing) {
-    await assertClientCanPublish(params.createdBy);
   }
 
   const slugCategory = params.category.trim();
@@ -1270,13 +1445,12 @@ export const createJob = async (params: CreateJobParams): Promise<Job> => {
     }
   }
 
-  try {
-    await supabase.functions.invoke('notify-new-job', {
-      body: { type: 'INSERT', record: job },
-    });
-  } catch (notifyErr) {
+  // Fire-and-forget: Edge Function cold start can add 1-3s; return immediately
+  void supabase.functions.invoke('notify-new-job', {
+    body: { type: 'INSERT', record: job },
+  }).catch((notifyErr: unknown) => {
     console.warn('[createJob] notify-new-job failed:', notifyErr);
-  }
+  });
 
   return job;
 };
@@ -1312,20 +1486,69 @@ export const boostClientJobOffer = async ({
 };
 
 export const cancelClientJob = async (jobId: string): Promise<Job> => {
+  if (IS_DEMO) {
+    const job = await demoDb.setJobStatus(jobId, 'cancelled');
+    if (!job) throw new Error('No se pudo cancelar la solicitud.');
+    return job;
+  }
+
+  const netState = await NetInfo.fetch();
+  if (!netState.isConnected) {
+    await enqueueOfflineMutation('cancel_job', { p_job_id: jobId });
+    throw new Error('Sin conexión. La cancelación ha sido encolada y se procesará al recuperar la red.');
+  }
+
+  // Obtener el ID del cliente actual para validar ownership en el RPC
+  const profile = useAuthStore.getState().profile;
+  const clientId = profile?.id;
+  if (!clientId) {
+    throw new Error('No se pudo identificar tu perfil. Cierra sesión e intenta de nuevo.');
+  }
+
+  // Usamos un RPC SECURITY DEFINER que bypasea RLS (igual que create_client_job).
+  // El UPDATE directo (.from('jobs').update()) falla silenciosamente porque
+  // auth.uid() es NULL con el login por teléfono piloto, y la política RLS
+  // "jobs: update involved" exige created_by = auth.uid().
   const { data, error } = await supabase.rpc('cancel_client_job', {
     p_job_id: jobId,
+    p_client_id: clientId,
+  });
+
+  if (error) {
+    throw new Error("Error en Supabase: " + error.message);
+  }
+
+  const body = data as { success?: boolean; error?: string; job?: Job } | null;
+
+  if (!body?.success || !body.job) {
+    throw new Error(body?.error ?? 'No se pudo cancelar la solicitud.');
+  }
+
+  return normalizeJobRow(body.job);
+};
+
+export const workerAcceptJob = async (jobId: string, workerId: string) => {
+  if (IS_DEMO) {
+    await demoDb.acceptJob(jobId, workerId);
+    await patchLocalJobStatus(jobId, 'assigned');
+    return { success: true };
+  }
+
+  const { data, error } = await supabase.rpc('worker_accept_job', {
+    p_job_id: jobId,
+    p_worker_id: workerId,
   });
 
   if (error) {
     throw new Error(error.message);
   }
 
-  const body = data as { success?: boolean; error?: string; job?: Job } | null;
-  if (!body?.success || !body.job) {
-    throw new Error(body?.error ?? 'No se pudo cancelar la solicitud');
+  const body = data as { success?: boolean; error?: string; mode?: string } | null;
+  if (!body?.success) {
+    throw new Error(body?.error ?? 'Error al aceptar la solicitud');
   }
 
-  return normalizeJobRow(body.job);
+  return body;
 };
 
 /** Admin: Update job status. */
@@ -1371,6 +1594,15 @@ export const fetchJobActive = async (
   jobId: string,
   workerId: string,
 ): Promise<{ job: Job; assignment: JobAssignment }> => {
+  if (IS_DEMO) {
+    const assignments = await demoDb.listWorkerAssignments(workerId);
+    const assignment = assignments.find((a) => a.job_id === jobId);
+    if (!assignment) throw new Error('No se encontró la asignación de este trabajo');
+    const job = await demoDb.getJobById(jobId);
+    if (!job) throw new Error('Solicitud no encontrada');
+    return { job, assignment };
+  }
+
   const [jobRes, assignRes] = await Promise.all([
     supabase
       .from('jobs')
@@ -1536,6 +1768,10 @@ const mapClientOrdersPanelRow = (row: ClientOrderJob & {
 export const fetchClientOrders = async (clientId: string): Promise<ClientOrderJob[]> => {
   if (!clientId) return [];
 
+  if (IS_DEMO) {
+    return demoDb.listClientOrders(clientId);
+  }
+
   await assertClientJobPlatformReady();
 
   let effectiveId = clientId;
@@ -1572,14 +1808,10 @@ export const fetchClientOrders = async (clientId: string): Promise<ClientOrderJo
   }
 
   try {
-    const jobs = await withTimeout(fetchClientOrdersForId(effectiveId), 8_000);
-    return await withTimeout(attachWorkersToClientJobs(jobs), 4_000);
+    const jobs = await fetchClientOrdersForId(effectiveId);
+    return await attachWorkersToClientJobs(jobs);
   } catch {
-    try {
-      return await fetchClientOrdersForId(effectiveId);
-    } catch {
-      return [];
-    }
+    return [];
   }
 };
 

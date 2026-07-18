@@ -2,6 +2,11 @@ import { supabase } from '@services/supabase';
 
 import type { WorkerProfile, AvailabilityStatus } from '@/types';
 import { coerceNumber } from '@utils/formatters';
+import { ENV } from '@utils/env';
+import { demoDb } from '@/demo/demoDb';
+import { getLocalWorkerReviews, computeLocalRatingSummary } from '@utils/localReviews';
+
+const IS_DEMO = ENV.DATA_MODE === 'demo';
 
 const AVAILABILITY_VALUES: AvailabilityStatus[] = ['available', 'busy', 'offline'];
 
@@ -51,6 +56,30 @@ import {
 /** Trae el perfil extendido del trabajador. Crea uno vacío si no existe. */
 
 export const fetchWorkerProfile = async (workerId: string): Promise<WorkerProfile> => {
+
+  if (IS_DEMO) {
+    const cached = await getLocalWorkerProfile(workerId);
+    const reviews = await getLocalWorkerReviews(workerId);
+    const { rating_avg, total_reviews } = computeLocalRatingSummary(reviews);
+    const assignments = await demoDb.listWorkerAssignments(workerId);
+    const total_jobs_done = assignments.filter((a) => a.job?.status === 'completed').length;
+
+    return {
+      worker_id: workerId,
+      bio: cached?.bio ?? null,
+      skills: cached?.skills ?? [],
+      id_document_url: cached?.id_document_url ?? null,
+      id_verified: cached?.id_verified ?? false,
+      availability_status: cached?.availability_status ?? 'offline',
+      last_lat: cached?.last_lat ?? null,
+      last_lng: cached?.last_lng ?? null,
+      last_location_at: cached?.last_location_at ?? null,
+      updated_at: new Date().toISOString(),
+      rating_avg,
+      total_reviews,
+      total_jobs_done,
+    };
+  }
 
   try {
 
@@ -353,6 +382,16 @@ const rowsToStats = (rows: StatsRow[]): WorkerStats => {
 };
 
 export const fetchWorkerStats = async (workerId: string): Promise<WorkerStats> => {
+  if (IS_DEMO) {
+    const assignments = await demoDb.listWorkerAssignments(workerId);
+    return rowsToStats(assignments.map((a) => ({
+      payment_status: a.payment_status,
+      completed_at: a.completed_at,
+      selection_status: a.selection_status,
+      job: a.job ? { worker_payout: a.job.worker_payout ?? 0, status: a.job.status } : null,
+    })));
+  }
+
   const { data, error } = await supabase
     .from('job_assignments')
     .select('id, payment_status, completed_at, selection_status, job:jobs(worker_payout, status)')
@@ -364,6 +403,55 @@ export const fetchWorkerStats = async (workerId: string): Promise<WorkerStats> =
   }
 
   return rowsToStats((data ?? []) as unknown as StatsRow[]);
+};
+
+export interface WorkerTodayStats {
+  earningsToday: number;
+  jobsToday: number;
+}
+
+const isSameLocalDay = (iso: string | null, reference: Date): boolean => {
+  if (!iso) return false;
+  const d = new Date(iso);
+  return (
+    d.getFullYear() === reference.getFullYear()
+    && d.getMonth() === reference.getMonth()
+    && d.getDate() === reference.getDate()
+  );
+};
+
+const rowsToTodayStats = (rows: StatsRow[]): WorkerTodayStats => {
+  const now = new Date();
+  const completedToday = rows.filter((r) => isCompletedApproved(r) && isSameLocalDay(r.completed_at, now));
+  return {
+    earningsToday: completedToday.reduce((s, r) => s + (r.job?.worker_payout ?? 0), 0),
+    jobsToday: completedToday.length,
+  };
+};
+
+/** Ganancias y trabajos completados HOY (misma consulta que fetchWorkerStats, filtrada por fecha local). */
+export const fetchWorkerTodayStats = async (workerId: string): Promise<WorkerTodayStats> => {
+  if (IS_DEMO) {
+    const assignments = await demoDb.listWorkerAssignments(workerId);
+    return rowsToTodayStats(assignments.map((a) => ({
+      payment_status: a.payment_status,
+      completed_at: a.completed_at,
+      selection_status: a.selection_status,
+      job: a.job ? { worker_payout: a.job.worker_payout ?? 0, status: a.job.status } : null,
+    })));
+  }
+
+  const { data, error } = await supabase
+    .from('job_assignments')
+    .select('id, payment_status, completed_at, selection_status, job:jobs(worker_payout, status)')
+    .eq('worker_id', workerId)
+    .eq('selection_status', 'approved');
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return rowsToTodayStats((data ?? []) as unknown as StatsRow[]);
 };
 
 

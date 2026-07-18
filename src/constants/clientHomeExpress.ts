@@ -11,6 +11,8 @@ export interface ExpressTileDef {
   fallbackPrice?: number;
   priceLabel?: string;
   submenu?: ExpressSubmenu;
+  /** Descripción corta para la tarjeta premium del Home (spec v1.0). */
+  description?: string;
 }
 
 export interface ClientHomeSection {
@@ -30,7 +32,7 @@ export const EXPRESS_SUBMENU_META: Record<
     parentTileId: 'limpieza',
   },
   vehiculos: {
-    sectionTitle: 'Car Wash',
+    sectionTitle: 'Servicios Automotrices',
     sectionSubtitle: 'Elegí el tipo de lavado o mantenimiento',
     parentTileId: 'car',
   },
@@ -53,12 +55,12 @@ export const EXPRESS_SUBMENU_META: Record<
 
 /** Seis tiles principales Express — mismo orden/layout que la UI original. */
 export const EXPRESS_MAIN_TILES: ExpressTileDef[] = [
-  { id: 'limpieza', title: 'Limpieza y Desinfección', priceLabel: 'Ver opciones', submenu: 'limpieza' },
-  { id: 'car', title: 'Car Wash', priceLabel: 'Ver opciones', submenu: 'vehiculos' },
-  { id: 'ac', title: 'Mantenimiento AC', priceLabel: 'Ver opciones', submenu: 'ac' },
-  { id: 'jardineria', title: 'Jardinería', priceLabel: 'Ver opciones', submenu: 'jardineria' },
-  { id: 'pet', title: 'Cuidado de Mascotas', priceLabel: 'Ver opciones', submenu: 'mascotas' },
-  { id: 'mandados', title: 'Mandados Express', slug: 'mandados_express', fallbackPrice: 100 },
+  { id: 'limpieza', title: 'Limpieza y Desinfección', priceLabel: 'Ver opciones', submenu: 'limpieza', description: 'Hogares y oficinas' },
+  { id: 'car', title: 'Servicios Automotrices', priceLabel: 'Ver opciones', submenu: 'vehiculos', description: 'Lavado interior y exterior' },
+  { id: 'ac', title: 'Mantenimiento AC', priceLabel: 'Ver opciones', submenu: 'ac', description: 'Revisión y mantenimiento' },
+  { id: 'jardineria', title: 'Jardinería', priceLabel: 'Ver opciones', submenu: 'jardineria', description: 'Cuidado de jardines' },
+  { id: 'pet', title: 'Cuidado de Mascotas', priceLabel: 'Ver opciones', submenu: 'mascotas', description: 'Baño, paseo y grooming' },
+  { id: 'mandados', title: 'Mandados Express', slug: 'mandados_express', fallbackPrice: 100, description: 'Recados y entregas rápidas' },
 ];
 
 /** Mapa jerárquico unificado (solo datos; no altera layout del home). */
@@ -75,7 +77,7 @@ export const CLIENT_HOGAR_SECTIONS: ClientHomeSection[] = [
   },
   {
     id: 'vehiculos',
-    title: 'Car Wash',
+    title: 'Servicios Automotrices',
     tiles: [EXPRESS_MAIN_TILES[1]],
   },
   {

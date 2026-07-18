@@ -84,6 +84,7 @@ export function useClientJobStatusRealtime(): ClientStatusToast | null {
 
     let cancelled = false;
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    let fallbackTimer: ReturnType<typeof setInterval> | null = null;
 
     const setup = async () => {
       const synced = await syncProfileWithDatabase(profile);
@@ -165,11 +166,32 @@ export function useClientJobStatusRealtime(): ClientStatusToast | null {
           },
         )
         .subscribe((status, err) => {
-          if (status === 'CHANNEL_ERROR') {
+          if (status === 'SUBSCRIBED') {
+            // Canal sano: cancelar el fallback si estaba activo.
+            if (fallbackTimer) {
+              clearInterval(fallbackTimer);
+              fallbackTimer = null;
+            }
+          } else if (
+            status === 'CHANNEL_ERROR'
+            || status === 'TIMED_OUT'
+            || status === 'CLOSED'
+          ) {
             console.warn('[ClientRealtime] canal solicitudes:', err?.message ?? status);
-          }
-          if (status === 'TIMED_OUT') {
-            console.warn('[ClientRealtime] canal solicitudes: timeout');
+            // Recovery inmediato + fallback ligero hasta que el canal reconecte (Supabase reintenta solo).
+            const cid = clientIdRef.current;
+            if (cid) refreshClientOrders(queryClient, cid);
+            if (!fallbackTimer) {
+              fallbackTimer = setInterval(() => {
+                const id = clientIdRef.current;
+                if (!cancelled && id) {
+                  void queryClient.refetchQueries({
+                    queryKey: clientOrdersQueryKey(id),
+                    type: 'all',
+                  });
+                }
+              }, 15_000);
+            }
           }
         });
     };
@@ -178,6 +200,7 @@ export function useClientJobStatusRealtime(): ClientStatusToast | null {
 
     return () => {
       cancelled = true;
+      if (fallbackTimer) clearInterval(fallbackTimer);
       if (channel) void supabase.removeChannel(channel);
     };
   }, [

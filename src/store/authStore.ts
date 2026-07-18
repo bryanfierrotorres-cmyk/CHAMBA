@@ -13,6 +13,17 @@ import {
 import { resolveLoginProfile } from '@utils/loginSafety';
 import { useAssignmentsStore } from '@store/assignmentsStore';
 import { ENV } from '@utils/env';
+import { demoDb } from '@/demo/demoDb';
+import {
+  buildDemoSession,
+  persistDemoSession,
+  clearDemoSession,
+  DEMO_OTP_CODE,
+  DEMO_ADMIN_PASSWORD,
+} from '@/demo/demoSession';
+
+/** True cuando la app corre 100 % offline con el backend demo en memoria. */
+const IS_DEMO = ENV.DATA_MODE === 'demo';
 
 /** UUID v4 — uses crypto.getRandomValues for cryptographic security. */
 const uuid4 = () => {
@@ -96,9 +107,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         .single();
 
       if (error) throw error;
-      
-      console.log('FETCH PROFILE RAW:', data);
-      console.log('STORE PROFILE SET:', data.avatar_url);
 
       set({ profile: data as UserProfile });
     } catch (err: unknown) {
@@ -115,8 +123,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signIn: async (email, password) => {
     set({ isLoading: true, error: null });
     try {
+      const cleanEmail = email.trim().toLowerCase();
+
+      // DEMO MODE: acceso admin oculto (doble tap en el logo) resuelto 100% offline.
+      if (IS_DEMO) {
+        if (password !== DEMO_ADMIN_PASSWORD) {
+          throw new Error(`Contraseña incorrecta. En modo demo es "${DEMO_ADMIN_PASSWORD}".`);
+        }
+        const found = await demoDb.findProfileByEmail(cleanEmail);
+        if (!found) {
+          throw new Error('No existe una cuenta demo con ese correo.');
+        }
+        const session = buildDemoSession(found);
+        await persistDemoSession(found.id);
+        set({ session, profile: found, isLoading: false, error: null });
+        return;
+      }
+
       const { data, error } = await supabase.auth.signInWithPassword({
-        email:    email.trim().toLowerCase(),
+        email:    cleanEmail,
         password,
       });
       if (error) throw error;
@@ -167,7 +192,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         full_name:   trimmedName,
         phone:       cleanPhone,
         role,
-        is_approved: false,
+        is_approved: role === 'client',
         ...(role === 'worker' ? { worker_status: 'pending_approval' as const } : {}),
       };
 
@@ -179,7 +204,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             full_name:   trimmedName,
             phone:       cleanPhone,
             role,
-            is_approved: false,
+            is_approved: role === 'client',
             ...(role === 'worker' ? { worker_status: 'pending_approval' } : {}),
           })
           .eq('id', authData.user.id);
@@ -203,6 +228,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const cleanPhone = normalizePhone(phone);
       if (cleanPhone.length !== 8) {
         throw new Error('Ingresá exactamente 8 dígitos de tu celular');
+      }
+
+      // DEMO MODE: valida que el número exista en el backend en memoria; no envía SMS.
+      if (IS_DEMO) {
+        const found = await demoDb.findProfileByPhone(cleanPhone);
+        if (!found) {
+          throw new Error('Número no registrado, por favor regístrate primero');
+        }
+        set({ isLoading: false, error: null });
+        return;
       }
 
       // SYSTEM GUARD: distingue "no registrado" de "servidor caído" antes de
@@ -244,6 +279,27 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const code = token.replace(/\D/g, '');
       if (code.length < 4) {
         throw new Error('Ingresá el código que recibiste por SMS');
+      }
+
+      // DEMO MODE: verifica el código local, abre sesión offline y la persiste.
+      if (IS_DEMO) {
+        if (code !== DEMO_OTP_CODE) {
+          throw new Error('Código incorrecto. En modo demo el código es 123456.');
+        }
+        const found = await demoDb.findProfileByPhone(cleanPhone);
+        if (!found) {
+          throw new Error('Número no registrado, por favor regístrate primero');
+        }
+        // El toggle de login solo ofrece Cliente/Trabajador — un rol admin real
+        // nunca debe ser sobrescrito por esa selección (mismo criterio que
+        // mergeProfileFromDatabase en producción: remote.role admin siempre gana).
+        const profile = found.role === 'admin' || found.role === role
+          ? found
+          : await demoDb.updateProfile(found.id, { role });
+        const session = buildDemoSession(profile);
+        await persistDemoSession(profile.id);
+        set({ session, profile, isLoading: false, error: null });
+        return;
       }
 
       if (ENV.DEV_MODE && code === '123456') {
@@ -335,6 +391,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         throw new Error('Elegí Cliente o Trabajador para registrarte.');
       }
 
+      // DEMO MODE: registro 100 % offline, sin Supabase.
+      if (IS_DEMO) {
+        const taken = await demoDb.findProfileByPhone(cleanPhone);
+        if (taken) {
+          throw new Error('Este número ya está registrado. Iniciá sesión con tu celular.');
+        }
+        await demoDb.createProfile({ full_name: cleanName, phone: cleanPhone, role });
+        set({ isLoading: false, error: null });
+        return;
+      }
+
       const existing = await fetchProfileByPhone(cleanPhone);
       if (existing) {
         throw new Error('Este número ya está registrado. Iniciá sesión con tu celular.');
@@ -346,7 +413,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         full_name: cleanName,
         phone: cleanPhone,
         role,
-        is_approved: false,
+        // Clientes se aprueban solos (reducir fricción de activación); solo los
+        // técnicos pasan por revisión manual de documentos (cédula/récord policial).
+        is_approved: role === 'client',
         ...(role === 'worker'
           ? { worker_status: 'incomplete' as const }
           : {}),
@@ -373,6 +442,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       isLoading: false,
       error: null,
     });
+    if (IS_DEMO) {
+      await clearDemoSession();
+      return;
+    }
     try {
       await supabase.auth.signOut();
     } catch {

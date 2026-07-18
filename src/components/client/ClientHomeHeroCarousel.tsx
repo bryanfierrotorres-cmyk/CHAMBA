@@ -15,6 +15,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { CARD_STEP_SHADOW, CHAMBA } from '@constants/chambaUI';
+import { HOME_PALETTE, HOME_SOFT_SHADOW } from '@constants/clientHomeTheme';
 import type { ClientHeroSlide } from '@constants/clientHomeHeroSlides';
 
 const BANNER_HEIGHT = 196;
@@ -109,6 +110,8 @@ const HeroSlidePhoto: React.FC<HeroSlidePhotoProps> = ({ slide }) => {
 
 interface ClientHomeHeroCarouselProps {
   slides: ClientHeroSlide[];
+  /** CTA del slide "Servicio Express" (banner claro, spec v1.0). */
+  onExpressCtaPress?: () => void;
 }
 
 /**
@@ -117,9 +120,10 @@ interface ClientHomeHeroCarouselProps {
  */
 export const ClientHomeHeroCarousel: React.FC<ClientHomeHeroCarouselProps> = ({
   slides,
+  onExpressCtaPress,
 }) => {
   const { width: screenWidth } = useWindowDimensions();
-  const slideWidth = screenWidth - 40;
+  const slideWidth = screenWidth - 32;
   const listRef = useRef<FlatList<ClientHeroSlide>>(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -157,6 +161,53 @@ export const ClientHomeHeroCarousel: React.FC<ClientHomeHeroCarouselProps> = ({
 
   const renderSlide = ({ item }: { item: ClientHeroSlide }) => {
     const isPromoSlide = item.id === PROMO_SLIDE_ID;
+
+    if (item.isExpressSlide) {
+      return (
+        <View style={[styles.slideOuter, { width: slideWidth }]}>
+          <LinearGradient
+            colors={['#F8FBFF', '#EDF5FF']}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={styles.expressCard}
+          >
+            <View style={styles.expressLeft}>
+              {!!item.badge && (
+                <View style={styles.expressBadge}>
+                  <Text style={styles.expressBadgeText}>{item.badge.toUpperCase()}</Text>
+                </View>
+              )}
+              <Text style={styles.expressTitle} numberOfLines={2}>{item.title}</Text>
+              <Text style={styles.expressSubtitle} numberOfLines={2}>{item.subtitle}</Text>
+              {!!item.ctaLabel && (
+                <Pressable
+                  style={styles.expressCta}
+                  onPress={onExpressCtaPress}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.expressCtaText}>{item.ctaLabel}</Text>
+                  <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+                </Pressable>
+              )}
+            </View>
+
+            <View style={styles.expressPhotoWrap}>
+              <View style={styles.expressPhotoCircle} />
+              <View style={styles.expressPhotoInner}>
+                <HeroSlidePhoto slide={item} />
+              </View>
+              {!!item.timeBadge && (
+                <View style={styles.expressTimeChip}>
+                  <Ionicons name="time-outline" size={15} color={HOME_PALETTE.blue} style={styles.expressTimeChipIcon} />
+                  <Text style={styles.expressTimeChipValue}>{item.timeBadge.split(' ')[0]}</Text>
+                  <Text style={styles.expressTimeChipUnit}>{item.timeBadge.split(' ')[1]}</Text>
+                </View>
+              )}
+            </View>
+          </LinearGradient>
+        </View>
+      );
+    }
 
     return (
       <View style={[styles.slideOuter, { width: slideWidth }]}>
@@ -255,6 +306,115 @@ const styles = StyleSheet.create({
     position: 'relative',
     backgroundColor: '#CBD5E1',
     ...CARD_STEP_SHADOW,
+  },
+  expressCard: {
+    height: 190,
+    borderRadius: 24,
+    paddingVertical: 20,
+    paddingLeft: 20,
+    paddingRight: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  expressLeft: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingRight: 2,
+  },
+  expressBadge: {
+    alignSelf: 'flex-start',
+    height: 34,
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+  },
+  expressBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: HOME_PALETTE.blue,
+    letterSpacing: 0.2,
+  },
+  expressTitle: {
+    fontSize: 15.5,
+    fontWeight: '800',
+    color: HOME_PALETTE.darkGray,
+    letterSpacing: -0.3,
+    lineHeight: 20,
+  },
+  expressSubtitle: {
+    fontSize: 12.5,
+    fontWeight: '400',
+    color: HOME_PALETTE.midGray,
+    lineHeight: 16,
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  expressCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 5,
+    height: 48,
+    backgroundColor: HOME_PALETTE.blue,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    maxWidth: '100%',
+  },
+  expressCtaText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  expressPhotoWrap: {
+    width: '30%',
+    height: '100%',
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  expressPhotoCircle: {
+    position: 'absolute',
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: HOME_PALETTE.circleLight,
+  },
+  expressPhotoInner: {
+    width: '78%',
+    height: '94%',
+    borderRadius: 16,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  expressTimeChip: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    width: 70,
+    height: 70,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    ...HOME_SOFT_SHADOW,
+  },
+  expressTimeChipIcon: {
+    marginBottom: 2,
+  },
+  expressTimeChipValue: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: HOME_PALETTE.blue,
+    lineHeight: 17,
+  },
+  expressTimeChipUnit: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: HOME_PALETTE.blue,
+    lineHeight: 13,
   },
   imageLayer: {
     position: 'absolute',

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import type { BottomSheetModal } from '@gorhom/bottom-sheet';
 import {
   View,
   Text,
@@ -36,7 +37,11 @@ interface ClientJobApplicantPanelProps {
   loading?: boolean;
   error?: string | null;
   onRefetch?: () => void | Promise<unknown>;
-  onDecision?: (result: { jobId: string; workerId: string }) => void;
+  onDecision?: (result: {
+    jobId: string;
+    workerId: string;
+    workerSummary?: { id: string; full_name: string; avatar_url: string | null; phone: string | null } | null;
+  }) => void;
 }
 
 export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = ({
@@ -53,14 +58,23 @@ export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = (
 }) => {
   const [actingId, setActingId] = useState<string | null>(null);
   const [profileApp, setProfileApp] = useState<JobWorkerApplication | null>(null);
+  const modalRef = useRef<BottomSheetModal>(null);
   const refetch = onRefetch ?? (() => undefined);
+
+  useEffect(() => {
+    if (profileApp) {
+      modalRef.current?.present();
+    } else {
+      modalRef.current?.dismiss();
+    }
+  }, [profileApp]);
 
   const jobCoords = hasUsableJobCoordinates(jobLat, jobLng)
     ? { lat: jobLat!, lng: jobLng! }
     : null;
 
   const pending = apps.filter((a) => a.selection_status === 'pending');
-  const canChoose = jobStatus === 'open' && pending.length > 0;
+  const canChoose = ['open', 'pending_bidding', 'counter_offered'].includes(jobStatus) && pending.length > 0;
 
   const handleApprove = async (app: JobWorkerApplication) => {
     const msg = `¿Confirmás a ${app.full_name} para este servicio?`;
@@ -83,7 +97,16 @@ export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = (
         job_id: jobId,
         worker_id: app.worker_id,
       });
-      onDecision?.({ jobId, workerId: app.worker_id });
+      onDecision?.({
+        jobId,
+        workerId: app.worker_id,
+        workerSummary: {
+          id: app.worker_id,
+          full_name: app.full_name,
+          avatar_url: app.avatar_url,
+          phone: app.phone,
+        },
+      });
       await refetch();
     } catch (err: unknown) {
       const text = err instanceof Error ? err.message : 'No se pudo aprobar';
@@ -261,10 +284,7 @@ export const ClientJobApplicantPanel: React.FC<ClientJobApplicantPanelProps> = (
       })}
 
       <TechnicianAdvancedProfileModal
-        ref={(ref) => {
-          if (profileApp && ref) ref.present();
-          else if (!profileApp && ref) ref.dismiss();
-        }}
+        ref={modalRef}
         application={profileApp}
         onConfirm={(app) => {
           handleApprove(app);

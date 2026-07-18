@@ -20,8 +20,10 @@ interface WorkerRatingPromptProps {
   workerId: string;
   workerName: string;
   reviewerId: string;
-  reviewerRole: Extract<ReviewerRole, 'admin' | 'client'>;
+  reviewerRole: Extract<ReviewerRole, 'admin' | 'client' | 'worker'>;
   reviewerName: string;
+  /** Rol del sujeto calificado. Default 'worker'. */
+  subjectRole?: 'worker' | 'client';
   /** Título personalizado (ej. servicio completado). */
   title?: string;
 }
@@ -32,6 +34,7 @@ export const WorkerRatingPrompt: React.FC<WorkerRatingPromptProps> = ({
   reviewerId,
   reviewerRole,
   reviewerName,
+  subjectRole = 'worker',
   title = '¿Cómo fue tu experiencia?',
 }) => {
   const { reviews, summary, isLoading, submitReview, isSubmitting } = useWorkerReviews(workerId);
@@ -65,6 +68,7 @@ export const WorkerRatingPrompt: React.FC<WorkerRatingPromptProps> = ({
         reviewerName,
         rating,
         comment,
+        subjectRole,
       });
       if (Platform.OS === 'web') {
         alert('¡Gracias! Tu calificación fue publicada.');

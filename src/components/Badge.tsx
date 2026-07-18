@@ -100,6 +100,11 @@ export const Badge: React.FC<BadgeProps> = ({
 
 const GLOBAL_STATUS_COLORS: Record<JobStatus, { color: string; bg: string }> = {
 
+  pending:     { color: '#B45309', bg: '#FEF3C7' },
+  assigned:    { color: '#1D4ED8', bg: '#DBEAFE' },
+  arrived:     { color: '#047857', bg: '#D1FAE5' },
+  rejected:    { color: '#B91C1C', bg: '#FEE2E2' },
+
   open:        { color: '#166534', bg: '#DCFCE7' },
 
   taken:       { color: '#92400E', bg: '#FEF3C7' },
@@ -137,6 +142,11 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size, style })
     if (!m3) return GLOBAL_STATUS_COLORS;
 
     return {
+
+      pending:     { color: m3.onTertiaryContainer, bg: m3.tertiaryContainer },
+      assigned:    { color: m3.onPrimaryContainer, bg: m3.primaryFixed },
+      arrived:     { color: m3.onPrimaryContainer, bg: m3.primaryContainer },
+      rejected:    { color: m3.onErrorContainer, bg: m3.errorContainer },
 
       open:        { color: m3.onSecondaryContainer, bg: m3.secondaryContainer },
 

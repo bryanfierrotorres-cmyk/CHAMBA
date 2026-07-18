@@ -101,6 +101,20 @@ export const ClientProfileScreen: React.FC = () => {
     ]);
   };
 
+  // Aviso previo: evita aperturas accidentales del flujo de eliminación.
+  const handleDeleteAccountPress = () => {
+    const warning =
+      'Estás por iniciar la eliminación de tu cuenta. Esta acción es permanente y borra tu perfil, historial y reputación.';
+    if (Platform.OS === 'web') {
+      if (confirm(`⚠️ ${warning}\n\n¿Querés continuar?`)) setShowDeleteAccount(true);
+      return;
+    }
+    Alert.alert('⚠️ Eliminar cuenta', `${warning}\n\n¿Querés continuar?`, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Continuar', style: 'destructive', onPress: () => setShowDeleteAccount(true) },
+    ]);
+  };
+
   if (!profile) {
     return (
       <View style={[chambaStyles.screen, styles.center, webMinViewportStyle]}>
@@ -198,16 +212,6 @@ export const ClientProfileScreen: React.FC = () => {
           onPress={() => void openWhatsAppSupport()}
         />
 
-        <ChambaMenuRow
-          title={signingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}
-          subtitle={signingOut ? 'Un momento' : 'Salir de tu cuenta de forma segura'}
-          iconColor="#FF453A"
-          icon={<Ionicons name="log-out-outline" size={22} color="#FFF" />}
-          onPress={signingOut ? undefined : handleSignOut}
-          destructive
-          loading={signingOut}
-        />
-
         <View style={chambaStyles.sectionHeader}>
           <Text style={chambaStyles.sectionTitle}>Información legal</Text>
           <Text style={chambaStyles.sectionSubtitle}>Políticas, normas y soporte</Text>
@@ -253,12 +257,27 @@ export const ClientProfileScreen: React.FC = () => {
           onPress={() => openLegalLink(LEGAL_LINKS.support)}
         />
 
+        <View style={chambaStyles.sectionHeader}>
+          <Text style={chambaStyles.sectionTitle}>Sesión y cuenta</Text>
+          <Text style={chambaStyles.sectionSubtitle}>Acciones sensibles</Text>
+        </View>
+
+        <ChambaMenuRow
+          title={signingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}
+          subtitle={signingOut ? 'Un momento' : 'Salir de tu cuenta de forma segura'}
+          iconColor="#FF453A"
+          icon={<Ionicons name="log-out-outline" size={22} color="#FFF" />}
+          onPress={signingOut ? undefined : handleSignOut}
+          destructive
+          loading={signingOut}
+        />
+
         <ChambaMenuRow
           title="Eliminar cuenta"
           subtitle="Borrar tu cuenta y tus datos de forma permanente"
           iconColor="#DC2626"
           icon={<Ionicons name="trash-outline" size={22} color="#FFF" />}
-          onPress={() => setShowDeleteAccount(true)}
+          onPress={handleDeleteAccountPress}
           destructive
         />
 

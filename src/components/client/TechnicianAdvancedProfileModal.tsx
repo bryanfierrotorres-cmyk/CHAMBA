@@ -107,8 +107,8 @@ export const TechnicianAdvancedProfileModal = forwardRef<BottomSheetModal, Props
       return `⏱️ Activo ${timeAgo(lastActivity)}`;
     };
 
-    if (!application) return null;
-
+    // El BottomSheetModal SIEMPRE se renderiza para que el ref quede registrado.
+    // El contenido se muestra condicionalmente cuando hay una application activa.
     return (
       <BottomSheetModal
         ref={ref}
@@ -118,104 +118,113 @@ export const TechnicianAdvancedProfileModal = forwardRef<BottomSheetModal, Props
         backgroundStyle={styles.sheetBackground}
         handleIndicatorStyle={styles.indicator}
       >
-        <BottomSheetView style={styles.header}>
-          <Avatar uri={application.avatar_url} name={application.full_name} size={90} />
-          <Text style={styles.name}>{application.full_name}</Text>
-          <Text style={styles.categories}>
-            {application.category_1} {application.category_2 && `• ${application.category_2}`}
-          </Text>
-
-          {workerProfile?.id_verified && (
-            <View style={styles.verifiedBadge}>
-              <Ionicons name="checkmark-circle" size={16} color="#059669" />
-              <Text style={styles.verifiedText}>🛡️ Sello Chamba: Técnico Verificado</Text>
-            </View>
-          )}
-
-          <View style={styles.statsGrid}>
-            <View style={styles.statBox}>
-              <Text style={styles.statValue}>
-                {reviewsStats?.rating_avg ? `⭐ ${reviewsStats.rating_avg}` : 'Nuevo'}
+        {!application ? (
+          <BottomSheetView style={styles.placeholderView}>
+            <View />
+          </BottomSheetView>
+        ) : (
+          <>
+            <BottomSheetView style={styles.header}>
+              <Avatar uri={application.avatar_url} name={application.full_name} size={90} />
+              <Text style={styles.name}>{application.full_name}</Text>
+              <Text style={styles.categories}>
+                {application.category_1} {application.category_2 && `• ${application.category_2}`}
               </Text>
-              <Text style={styles.statLabel}>
-                {reviewsStats?.total_reviews || 0} reseñas
-              </Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statBox}>
-              <Text style={styles.statValue}>
-                💼 {workerProfile?.total_jobs_done || 0}
-              </Text>
-              <Text style={styles.statLabel}>Chambas Completadas</Text>
-            </View>
-          </View>
-        </BottomSheetView>
 
-        <View style={styles.tabRow}>
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 'reputacion' && styles.tabBtnActive]}
-            onPress={() => setActiveTab('reputacion')}
-          >
-            <Text style={[styles.tabText, activeTab === 'reputacion' && styles.tabTextActive]}>
-              Reputación
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 'galeria' && styles.tabBtnActive]}
-            onPress={() => setActiveTab('galeria')}
-          >
-            <Text style={[styles.tabText, activeTab === 'galeria' && styles.tabTextActive]}>
-              Galería
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <BottomSheetScrollView contentContainerStyle={styles.scrollContent}>
-          {loading ? (
-            <ActivityIndicator style={{ marginTop: 40 }} color="#059669" />
-          ) : activeTab === 'reputacion' ? (
-            reviews.length > 0 ? (
-              reviews.map((r) => (
-                <View key={r.id} style={styles.reviewCard}>
-                  <View style={styles.reviewHeader}>
-                    <Text style={styles.reviewerName}>{r.reviewer?.full_name || 'Cliente'}</Text>
-                    <Text style={styles.reviewDate}>
-                      {timeAgo(new Date(r.created_at))}
-                    </Text>
-                  </View>
-                  <View style={styles.starsRow}>
-                    {Array.from({ length: r.rating }).map((_, i) => (
-                      <Ionicons key={i} name="star" size={14} color="#F59E0B" />
-                    ))}
-                  </View>
-                  <Text style={styles.reviewComment}>{r.comment}</Text>
+              {workerProfile?.id_verified && (
+                <View style={styles.verifiedBadge}>
+                  <Text style={styles.verifiedText}>🛡️ Sello Chamba: Técnico Verificado</Text>
                 </View>
-              ))
-            ) : (
-              <Text style={styles.emptyText}>Este técnico aún no tiene reseñas.</Text>
-            )
-          ) : (
-            portfolio.length > 0 ? (
-              portfolio.map((p) => (
-                <View key={p.id} style={styles.portfolioCard}>
-                  <Text style={styles.emptyText}>Imagen Antes/Después no implementada en UI aún.</Text>
-                </View>
-              ))
-            ) : (
-              <Text style={styles.emptyText}>Este técnico no ha subido fotos a su galería.</Text>
-            )
-          )}
-        </BottomSheetScrollView>
+              )}
 
-        <View style={styles.footer}>
-          <Text style={styles.activityText}>{getLastActivityText()}</Text>
-          <TouchableOpacity
-            style={styles.confirmBtn}
-            onPress={() => onConfirm(application)}
-          >
-            <Text style={styles.confirmBtnText}>Confirmar y Contratar Técnico</Text>
-          </TouchableOpacity>
-        </View>
+              <View style={styles.statsGrid}>
+                <View style={styles.statBox}>
+                  <Text style={styles.statValue}>
+                    {reviewsStats?.rating_avg && reviewsStats.rating_avg > 0
+                      ? `⭐ ${reviewsStats.rating_avg}`
+                      : '✨ Primera Chamba'}
+                  </Text>
+                  <Text style={styles.statLabel}>
+                    {reviewsStats?.total_reviews || 0} reseñas
+                  </Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statBox}>
+                  <Text style={styles.statValue}>
+                    💼 {workerProfile?.total_jobs_done || 0}
+                  </Text>
+                  <Text style={styles.statLabel}>Chambas Completadas</Text>
+                </View>
+              </View>
+            </BottomSheetView>
+
+            <View style={styles.tabRow}>
+              <TouchableOpacity
+                style={[styles.tabBtn, activeTab === 'reputacion' && styles.tabBtnActive]}
+                onPress={() => setActiveTab('reputacion')}
+              >
+                <Text style={[styles.tabText, activeTab === 'reputacion' && styles.tabTextActive]}>
+                  Reputación
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tabBtn, activeTab === 'galeria' && styles.tabBtnActive]}
+                onPress={() => setActiveTab('galeria')}
+              >
+                <Text style={[styles.tabText, activeTab === 'galeria' && styles.tabTextActive]}>
+                  Galería
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <BottomSheetScrollView contentContainerStyle={styles.scrollContent}>
+              {loading ? (
+                <ActivityIndicator style={{ marginTop: 40 }} color="#059669" />
+              ) : activeTab === 'reputacion' ? (
+                reviews.length > 0 ? (
+                  reviews.map((r) => (
+                    <View key={r.id} style={styles.reviewCard}>
+                      <View style={styles.reviewHeader}>
+                        <Text style={styles.reviewerName}>{r.reviewer?.full_name || 'Cliente'}</Text>
+                        <Text style={styles.reviewDate}>
+                          {timeAgo(new Date(r.created_at))}
+                        </Text>
+                      </View>
+                      <View style={styles.starsRow}>
+                        {Array.from({ length: r.rating }).map((_, i) => (
+                          <Ionicons key={i} name="star" size={14} color="#F59E0B" />
+                        ))}
+                      </View>
+                      <Text style={styles.reviewComment}>{r.comment}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.emptyText}>Este técnico aún no tiene reseñas.</Text>
+                )
+              ) : (
+                portfolio.length > 0 ? (
+                  portfolio.map((p) => (
+                    <View key={p.id} style={styles.portfolioCard}>
+                      <Text style={styles.emptyText}>Imagen Antes/Después no implementada en UI aún.</Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.emptyText}>Este técnico no ha subido fotos a su galería.</Text>
+                )
+              )}
+            </BottomSheetScrollView>
+
+            <View style={styles.footer}>
+              <Text style={styles.activityText}>{getLastActivityText()}</Text>
+              <TouchableOpacity
+                style={styles.confirmBtn}
+                onPress={() => onConfirm(application)}
+              >
+                <Text style={styles.confirmBtnText}>Confirmar y Contratar Técnico</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
       </BottomSheetModal>
     );
   }
@@ -226,6 +235,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
+  },
+  placeholderView: {
+    height: 1,
   },
   indicator: {
     backgroundColor: '#CBD5E1',

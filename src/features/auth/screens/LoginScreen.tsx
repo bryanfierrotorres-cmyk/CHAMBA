@@ -15,7 +15,7 @@ import {
   useWindowDimensions,
   type TextInputProps,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -29,9 +29,11 @@ import type { AuthStackParamList, UserRole } from '@/types';
 import { LOGIN_SCREEN_LAYOUT } from '@features/auth/constants/loginScreenLayout';
 
 type LoginNav = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
+type LoginRoute = RouteProp<AuthStackParamList, 'Login'>;
 
-const LOGIN_PRIMARY = '#1E293B';
-const LOGIN_PRIMARY_PRESSED = '#334155';
+// Alineado con el azul de marca del componente Button compartido (colors.brand[500]/[600]).
+const LOGIN_PRIMARY = '#3B82F6';
+const LOGIN_PRIMARY_PRESSED = '#2563EB';
 
 const LOGIN_BG = require('../../../../assets/chamba_logo.png');
 
@@ -99,6 +101,7 @@ import { AdminLoginModal } from './AdminLoginModal';
 
 export const LoginScreen: React.FC = () => {
   const navigation = useNavigation<LoginNav>();
+  const route = useRoute<LoginRoute>();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const isCompactLayout = screenWidth < COMPACT_BREAKPOINT;
 
@@ -108,7 +111,9 @@ export const LoginScreen: React.FC = () => {
   const logoTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
+  // Si venimos de Registro, el celular ya se escribió hace segundos —
+  // no hacer que la persona lo vuelva a tipear.
+  const [phone, setPhone] = useState(() => formatNicaPhone(route.params?.prefillPhone ?? ''));
   const [role, setRole] = useState<UserRole>('client');
   const [nameErr, setNameErr] = useState('');
   const [phoneErr, setPhoneErr] = useState('');

@@ -267,7 +267,7 @@ export const ClientNavigator: React.FC = () => {
           <Tab.Screen name="ClientOrders" component={ClientOrdersNavigator} />
           <Tab.Screen name="Profile"      component={ClientProfileScreen} />
         </Tab.Navigator>
-        <WhatsAppBubble bottom={insets.bottom + 72} />
+        <WhatsAppBubble bottom={insets.bottom + 100} />
       </View>
     </ClientJobPlatformGate>
   );

@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useNavigationState } from '@react-navigation/native';
 import { openWhatsAppSupport } from '@utils/whatsappSupport';
-import { isJobChatRouteFocused } from '@utils/navigationFocus';
+import { isJobChatRouteFocused, isCreateJobFormFocused } from '@utils/navigationFocus';
 import { useSupportBubbleStore } from '@store/supportBubbleStore';
 
 interface Props {
@@ -17,6 +17,7 @@ interface Props {
 
 export const WhatsAppBubble: React.FC<Props> = ({ bottom = 90, right = 20 }) => {
   const hiddenOnChat = useNavigationState(isJobChatRouteFocused);
+  const hiddenOnCreateJobForm = useNavigationState(isCreateJobFormFocused);
   const hiddenByScroll = useSupportBubbleStore((s) => s.hiddenByScroll);
   const pulse = useRef(new Animated.Value(1)).current;
   const enter = useRef(new Animated.Value(0)).current;
@@ -49,7 +50,7 @@ export const WhatsAppBubble: React.FC<Props> = ({ bottom = 90, right = 20 }) => 
     void openWhatsAppSupport();
   };
 
-  if (hiddenOnChat) {
+  if (hiddenOnChat || hiddenOnCreateJobForm) {
     return null;
   }
 

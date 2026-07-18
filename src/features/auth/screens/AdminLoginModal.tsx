@@ -16,6 +16,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAuthStore } from '@store/authStore';
 import { CHAMBA } from '@constants/chambaUI';
 import { FONT_SIZE, SPACING } from '@constants/theme';
+import { ENV } from '@utils/env';
+import { DEMO_ADMIN_PASSWORD } from '@/demo/demoSession';
 
 interface AdminLoginModalProps {
   visible: boolean;
@@ -77,6 +79,13 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ visible, onClo
             </View>
 
             <Text style={styles.title}>Acceso Administrador</Text>
+            {ENV.DATA_MODE === 'demo' && (
+              <View style={styles.devBadge}>
+                <Text style={styles.devBadgeText}>
+                  DEMO — admin@prueba.com / {DEMO_ADMIN_PASSWORD}
+                </Text>
+              </View>
+            )}
             <Text style={styles.subtitle}>Ingresá con tu cuenta de administrador</Text>
 
             {error ? (
@@ -190,6 +199,19 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     textAlign: 'center',
     marginBottom: SPACING.lg,
+  },
+  devBadge: {
+    alignSelf: 'center',
+    backgroundColor: 'rgba(245,158,11,0.15)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginBottom: SPACING.sm,
+  },
+  devBadgeText: {
+    color: '#F59E0B',
+    fontSize: 12,
+    fontWeight: '700',
   },
   errorCard: {
     flexDirection: 'row',

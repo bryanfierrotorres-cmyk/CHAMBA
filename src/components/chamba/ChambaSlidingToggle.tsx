@@ -26,6 +26,8 @@ interface ChambaSlidingToggleProps<T extends string> {
   cornerRadius?: number;
   /** Peso tipográfico del segmento activo. */
   activeFontWeight?: '600' | '700';
+  /** Color del pill activo — por defecto CHAMBA.primary (navy), para no afectar otras pantallas. */
+  activeColor?: string;
 }
 
 export function ChambaSlidingToggle<T extends string>({
@@ -35,6 +37,7 @@ export function ChambaSlidingToggle<T extends string>({
   style,
   cornerRadius,
   activeFontWeight = '700',
+  activeColor = CHAMBA.primary,
 }: ChambaSlidingToggleProps<T>) {
   const outerRadius = cornerRadius ?? 30;
   const pillRadius = cornerRadius ?? 24;
@@ -98,7 +101,7 @@ export function ChambaSlidingToggle<T extends string>({
           ]}
         >
           <LinearGradient
-            colors={[CHAMBA.primary, CHAMBA.primary]}
+            colors={[activeColor, activeColor]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={[styles.gradientButton, { borderRadius: pillRadius }]}
@@ -115,6 +118,7 @@ export function ChambaSlidingToggle<T extends string>({
         >
           <View style={styles.tabLabelStack}>
             <Animated.Text
+              numberOfLines={1}
               style={[
                 styles.tabTextActive,
                 styles.tabLabelOverlay,
@@ -123,7 +127,7 @@ export function ChambaSlidingToggle<T extends string>({
             >
               {option.label}
             </Animated.Text>
-            <Animated.Text style={[styles.tabTextInactive, { opacity: inactiveOpacityFor(index) }]}>
+            <Animated.Text numberOfLines={1} style={[styles.tabTextInactive, { opacity: inactiveOpacityFor(index) }]}>
               {option.label}
             </Animated.Text>
           </View>

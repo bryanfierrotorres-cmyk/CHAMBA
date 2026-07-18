@@ -107,7 +107,7 @@ const AcceptButton: React.FC<AcceptButtonProps> = ({
   </Pressable>
 );
 
-export const CompactJobCard = React.memo<CompactJobCardProps>(function CompactJobCard({
+export const CompactJobCard: React.FC<CompactJobCardProps> = React.memo(({
   job,
   onPressDetail,
   onAccept,
@@ -117,7 +117,7 @@ export const CompactJobCard = React.memo<CompactJobCardProps>(function CompactJo
   isAccepted = false,
   acceptBlocked = false,
   onExpire,
-}) {
+}) => {
   const price = formatCurrency(job.worker_payout || job.pay_amount);
   const client = useMemo(
     () => getClientDisplay(job),
@@ -180,8 +180,10 @@ export const CompactJobCard = React.memo<CompactJobCardProps>(function CompactJo
                 {client.name}
               </Text>
               <View style={styles.ratingRow}>
-                <Ionicons name="star" size={12} color={STAR_GOLD} />
-                <Text style={styles.ratingText}>{rating}</Text>
+                <Ionicons name="star" size={14} color="#F59E0B" />
+                <Text style={styles.ratingText}>
+                  {rating === 'Nuevo' ? '✨ Primera Chamba' : rating}
+                </Text>
               </View>
             </View>
           </View>

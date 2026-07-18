@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   StyleSheet,
   Alert,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
@@ -90,6 +91,36 @@ export const ClientOpenJobStatusPanel: React.FC<Props> = ({
   }, [clientId, job.id, payAmount, queryClient, onExpiredChange]);
 
   const handleCancel = useCallback(() => {
+    const doCancel = async () => {
+      setCanceling(true);
+      try {
+        const updated = await cancelClientJob(job.id);
+        patchClientOrderRowInCache(queryClient, clientId, {
+          id: updated.id,
+          status: updated.status,
+          updated_at: updated.updated_at,
+        });
+        queryClient.invalidateQueries({ queryKey: clientOrdersQueryKey(clientId) });
+        // El panel se ocultará o mostrará como cancelado automáticamente al cambiar el status
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Error al cancelar la solicitud';
+        if (Platform.OS === 'web') {
+          window.alert(msg);
+        } else {
+          Alert.alert('Error', msg);
+        }
+      } finally {
+        setCanceling(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('¿Estás seguro que deseas cancelar esta solicitud?')) {
+        void doCancel();
+      }
+      return;
+    }
+
     Alert.alert(
       'Cancelar Solicitud',
       '¿Estás seguro que deseas cancelar esta solicitud?',
@@ -98,25 +129,9 @@ export const ClientOpenJobStatusPanel: React.FC<Props> = ({
         {
           text: 'Sí, cancelar',
           style: 'destructive',
-          onPress: async () => {
-            setCanceling(true);
-            try {
-              const updated = await cancelClientJob(job.id);
-              patchClientOrderRowInCache(queryClient, clientId, {
-                id: updated.id,
-                status: updated.status,
-                updated_at: updated.updated_at,
-              });
-              // El panel se ocultará o mostrará como cancelado automáticamente al cambiar el status
-            } catch (err: unknown) {
-              const msg = err instanceof Error ? err.message : 'Error al cancelar la solicitud';
-              Alert.alert('Error', msg);
-            } finally {
-              setCanceling(false);
-            }
-          },
+          onPress: doCancel,
         },
-      ],
+      ]
     );
   }, [clientId, job.id, queryClient]);
 

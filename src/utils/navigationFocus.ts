@@ -16,3 +16,11 @@ export function getFocusedRouteName(state: NavState): string | undefined {
 export function isJobChatRouteFocused(state: NavState): boolean {
   return getFocusedRouteName(state) === 'JobChat';
 }
+
+/** Ocultar soporte WhatsApp en el formulario de Nueva Solicitud — su botón
+ * principal ("Siguiente paso" / "Confirmar Solicitud") queda tapado por la
+ * burbuja ahí, ya que esa pantalla oculta la tab bar y pierde el espacio
+ * que normalmente la mantiene despejada. */
+export function isCreateJobFormFocused(state: NavState): boolean {
+  return getFocusedRouteName(state) === 'CreateJobForm';
+}

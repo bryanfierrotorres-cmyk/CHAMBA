@@ -14,7 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ChambaSlidingToggle } from '@components/chamba/ChambaSlidingToggle';
+import { HomeModeToggle } from '@components/client/HomeModeToggle';
 import { ChambaServiceOptionRow } from '@components/chamba/ChambaServiceOptionRow';
 import { B2bHireModeCards, type B2bHireMode } from '@components/client/B2bHireModeCards';
 import {
@@ -23,18 +23,17 @@ import {
 } from '@components/client/ExpressServiceCompactGrid';
 import { PremiumSubcategoryList, SERVICE_LIST_BOTTOM_PAD } from '@components/client/PremiumSubcategoryList';
 import { useSupportBubbleScrollHandlers } from '@hooks/useSupportBubbleScrollHandlers';
+import { useClientLocationLabel } from '@hooks/useClientLocationLabel';
 import { useAuthStore } from '@store/authStore';
-import { Avatar } from '@components/Avatar';
 import {
   CARD_STEP_SHADOW,
   CHAMBA,
   chambaStyles,
-  getSubcategoryIconColor,
 } from '@constants/chambaUI';
+import { HOME_PALETTE } from '@constants/clientHomeTheme';
 import {
   getServiceIconBg,
   renderEmpresaServiceIcon,
-  renderExpressTileIcon,
   renderSpecializedIcon,
 } from '@constants/clientHomeServiceIcons';
 import { formatCurrency } from '@utils/formatters';
@@ -51,7 +50,7 @@ import {
 import { ClientHomeHeroCarousel } from '@components/client/ClientHomeHeroCarousel';
 import { ClientHomeSearchBar } from '@components/client/ClientHomeSearchBar';
 import { openWhatsAppSupport } from '@utils/whatsappSupport';
-import { getService3dAsset, getService3dImageSize, getService3dImageOffsetY } from '@constants/service3dAssets';
+import { EXPRESS_MAIN_SERVICE_IMAGES } from '@constants/clientHomeImages';
 import {
   CLIENT_EMPRESA_HERO_SLIDES,
   CLIENT_HOGAR_HERO_SLIDES,
@@ -80,6 +79,16 @@ const premiumSortIndex = (slug: string): number => {
   return i >= 0 ? i : 999;
 };
 
+/** Ícono vectorial por tile principal Express (spec Home v1.0 — sin ilustraciones). */
+const EXPRESS_TILE_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  limpieza: 'sparkles-outline',
+  car: 'car-sport-outline',
+  ac: 'snow-outline',
+  jardineria: 'leaf-outline',
+  pet: 'paw-outline',
+  mandados: 'bicycle-outline',
+};
+
 export const ClientHomeScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
@@ -87,8 +96,10 @@ export const ClientHomeScreen: React.FC = () => {
   const catalog = useCatalog();
   const publishLimit = useClientPublishLimit();
   const supportBubbleScroll = useSupportBubbleScrollHandlers();
+  const locationLabel = useClientLocationLabel('Managua, Nicaragua');
 
   const scrollRef = useRef<ScrollView>(null);
+  const expressSectionY = useRef(0);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('hogar');
   const [selectedExpressCat, setSelectedExpressCat] = useState<ExpressSubmenu | null>(null);
@@ -115,6 +126,17 @@ export const ClientHomeScreen: React.FC = () => {
     if (!slug) return formatCurrency(fallback);
     const fromCatalog = catalog.getSuggestedPrice(slug);
     return formatCurrency(fromCatalog > 0 ? fromCatalog : fallback);
+  };
+
+  /** Precio "Desde" de una categoría — mínimo entre sus sub-servicios (dato real, no inventado). */
+  const minCategoryPrice = (submenu: ExpressSubmenu): number => {
+    const prices = EXPRESS_SUB_TILES[submenu]
+      .map((t) => {
+        const fromCatalog = t.slug ? catalog.getSuggestedPrice(t.slug) : 0;
+        return fromCatalog > 0 ? fromCatalog : (t.fallbackPrice ?? 0);
+      })
+      .filter((p) => p > 0);
+    return prices.length ? Math.min(...prices) : 0;
   };
 
   const filteredSpecialized = CLIENT_SPECIALIZED_SERVICES;
@@ -170,24 +192,26 @@ export const ClientHomeScreen: React.FC = () => {
   };
 
   const expressCompactItems = useMemo((): ExpressCompactItem[] => {
-    return activeExpressTiles.map((tile, index) => {
+    return activeExpressTiles.map((tile) => {
       const isCategory = !!(tile.submenu || tile.priceLabel === 'Ver opciones');
-      const iconColor = selectedExpressCat
-        ? getSubcategoryIconColor(index)
-        : getServiceIconBg(tile.id, tile.slug);
+      const price = isCategory && tile.submenu
+        ? minCategoryPrice(tile.submenu)
+        : (() => {
+            const fromCatalog = tile.slug ? catalog.getSuggestedPrice(tile.slug) : 0;
+            return fromCatalog > 0 ? fromCatalog : (tile.fallbackPrice ?? 0);
+          })();
       return {
         id: tile.id,
         title: tile.title,
-        iconColor,
-        icon: renderExpressTileIcon(tile.id, selectedExpressCat),
-        imageSource: selectedExpressCat ? null : getService3dAsset(tile.id),
-        imageSize: selectedExpressCat ? undefined : getService3dImageSize(tile.id),
-        imageOffsetY: selectedExpressCat ? undefined : getService3dImageOffsetY(tile.id),
+        description: tile.description,
+        icon: selectedExpressCat ? undefined : EXPRESS_TILE_ICONS[tile.id],
+        photoSource: selectedExpressCat
+          ? null
+          : (EXPRESS_MAIN_SERVICE_IMAGES[tile.id] ? { uri: EXPRESS_MAIN_SERVICE_IMAGES[tile.id] } : null),
+        availableBadge: selectedExpressCat ? undefined : 'Disponible hoy',
         onPress: () => onExpressPress(tile),
         isCategory,
-        footer: isCategory
-          ? 'VER OPCIONES'
-          : `Desde ${priceFor(tile.slug, tile.fallbackPrice ?? 0)}`,
+        footer: `Desde ${formatCurrency(price).replace(/\.00$/, '').replace(/C\$\s+/, 'C$')}`,
       };
     });
   }, [activeExpressTiles, selectedExpressCat, catalog.serviceTypes]);
@@ -208,14 +232,14 @@ export const ClientHomeScreen: React.FC = () => {
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.headerStack}>
           <View style={styles.header}>
-            <View>
+            <View style={styles.locationCol}>
               <View style={styles.locationRow}>
-                <Ionicons name="location-sharp" size={16} color={CYAN} />
-                <Text style={styles.locationTitle}> Ubicación</Text>
+                <Ionicons name="location-sharp" size={15} color={HOME_PALETTE.blue} />
+                <Text style={styles.locationText} numberOfLines={1}>{locationLabel}</Text>
+                <Ionicons name="chevron-down" size={14} color={HOME_PALETTE.midGray} />
               </View>
-              <Text style={styles.locationText}>Managua, Altamira</Text>
             </View>
-            <View style={styles.logoCenter}>
+            <View style={styles.logoCenter} pointerEvents="none">
               <TouchableOpacity
                 activeOpacity={1}
                 accessibilityLabel="CHAMBA"
@@ -223,21 +247,21 @@ export const ClientHomeScreen: React.FC = () => {
                 <Text style={styles.logoText}>CHAMBA</Text>
               </TouchableOpacity>
             </View>
-            <Avatar uri={profile?.avatar_url} name={profile?.full_name ?? firstName} size={36} />
+            <TouchableOpacity
+              style={styles.bellButton}
+              activeOpacity={0.7}
+              accessibilityLabel="Notificaciones"
+              accessibilityRole="button"
+            >
+              <Ionicons name="notifications-outline" size={22} color={HOME_PALETTE.darkGray} />
+              <View style={styles.bellDot} />
+            </TouchableOpacity>
           </View>
 
-          <ChambaSlidingToggle<ActiveTab>
-            options={[
-              { id: 'hogar', label: 'Para tu Hogar' },
-              { id: 'empresa', label: 'Para tu Negocio' },
-            ]}
-            active={activeTab}
-            onChange={(id) => {
-              setActiveTab(id);
-              setSelectedExpressCat(null);
-            }}
-            style={styles.modeToggle}
-          />
+          <View style={styles.greetingBlock}>
+            <Text style={styles.greetingText}>Hola, {firstName} 👋</Text>
+            <Text style={styles.greetingSubtitle}>¿Qué necesitás hoy?</Text>
+          </View>
 
           {activeTab === 'hogar' && (
             <ClientHomeSearchBar
@@ -260,15 +284,30 @@ export const ClientHomeScreen: React.FC = () => {
         >
           {activeTab === 'hogar' && (
             <View>
-              <ClientHomeHeroCarousel slides={CLIENT_HOGAR_HERO_SLIDES} />
+              <ClientHomeHeroCarousel
+                slides={CLIENT_HOGAR_HERO_SLIDES}
+                onExpressCtaPress={() => {
+                  scrollRef.current?.scrollTo({ y: Math.max(0, expressSectionY.current - 12), animated: true });
+                }}
+              />
 
-            <View style={styles.sectionHeader}>
-              <View style={chambaStyles.sectionHeader}>
-                <Text style={chambaStyles.sectionTitle}>
+            <View style={styles.modeToggle}>
+              <HomeModeToggle
+                value={activeTab}
+                onChange={(id) => {
+                  setActiveTab(id);
+                  setSelectedExpressCat(null);
+                }}
+              />
+            </View>
+
+            <View style={styles.sectionHeader} onLayout={(e) => { expressSectionY.current = e.nativeEvent.layout.y; }}>
+              <View>
+                <Text style={styles.expressSectionTitle}>
                   {'Servicios Express'}
                 </Text>
-                <Text style={chambaStyles.sectionSubtitle}>
-                  {'Precio fijo, sin complicaciones'}
+                <Text style={styles.expressSectionSubtitle}>
+                  {'Los más solicitados hoy en tu zona'}
                 </Text>
               </View>
               <TouchableOpacity activeOpacity={0.7}>
@@ -363,6 +402,16 @@ export const ClientHomeScreen: React.FC = () => {
           <View>
             <ClientHomeHeroCarousel slides={CLIENT_EMPRESA_HERO_SLIDES} />
 
+            <View style={styles.modeToggle}>
+              <HomeModeToggle
+                value={activeTab}
+                onChange={(id) => {
+                  setActiveTab(id);
+                  setSelectedExpressCat(null);
+                }}
+              />
+            </View>
+
             <B2bHireModeCards value={b2bMode} onChange={setB2bMode} />
 
             <View style={styles.sectionHeader}>
@@ -418,7 +467,7 @@ export const ClientHomeScreen: React.FC = () => {
 const styles = StyleSheet.create({
   screenRoot: {
     flex: 1,
-    backgroundColor: CHAMBA.bg,
+    backgroundColor: HOME_PALETTE.bg,
   },
   headerGradient: {
     position: 'absolute',
@@ -433,22 +482,59 @@ const styles = StyleSheet.create({
   },
   headerStack: {
     zIndex: 1,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
   },
-  scrollContainer: { paddingHorizontal: 20, paddingBottom: 100 },
+  scrollContainer: { paddingHorizontal: 16, paddingBottom: 100 },
 
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 12,
     backgroundColor: 'transparent',
   },
-  locationRow: { flexDirection: 'row', alignItems: 'center' },
-  locationTitle: { fontSize: 11, color: CHAMBA.muted },
-  locationText: { fontSize: 13, fontWeight: '700', color: CHAMBA.navy },
-  logoCenter: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  logoText: { fontSize: 20, fontWeight: '900', color: CHAMBA.teal, letterSpacing: 1 },
+  locationCol: { flexShrink: 0 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  locationText: { fontSize: 15, fontWeight: '500', color: HOME_PALETTE.locationGray, maxWidth: 170 },
+  logoCenter: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  logoText: { fontSize: 22, fontWeight: '800', color: HOME_PALETTE.teal, letterSpacing: 0.3 },
+  bellButton: {
+    flexShrink: 0,
+    position: 'relative',
+  },
+  bellDot: {
+    position: 'absolute',
+    top: -1,
+    right: -1,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: HOME_PALETTE.blue,
+    borderWidth: 1.5,
+    borderColor: HOME_PALETTE.bg,
+  },
+  greetingBlock: {
+    marginTop: 28,
+    marginBottom: 20,
+  },
+  greetingText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: HOME_PALETTE.darkGray,
+    letterSpacing: -0.2,
+  },
+  greetingSubtitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: HOME_PALETTE.darkGray,
+    marginTop: 4,
+    letterSpacing: -0.4,
+  },
   secretFlashHit: {
     opacity: 0.42,
     paddingHorizontal: 2,
@@ -469,17 +555,29 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
-  modeToggle: { marginTop: 4, marginBottom: 16 },
+  modeToggle: { marginTop: 4, marginBottom: 24 },
 
 
 
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    marginBottom: 4,
+    alignItems: 'flex-start',
+    marginBottom: 12,
   },
-  verTodos: { fontSize: 13, fontWeight: '600', color: BLUE },
+  expressSectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: HOME_PALETTE.darkGray,
+    letterSpacing: -0.2,
+  },
+  expressSectionSubtitle: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: HOME_PALETTE.midGray,
+    marginTop: 2,
+  },
+  verTodos: { fontSize: 14, fontWeight: '700', color: HOME_PALETTE.blue },
   backBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -520,7 +618,8 @@ const styles = StyleSheet.create({
   gridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    columnGap: 20,
+    rowGap: 20,
     marginBottom: 12,
   },
   sheetHeader: {

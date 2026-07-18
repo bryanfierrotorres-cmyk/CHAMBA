@@ -53,6 +53,11 @@ const NATIVE_ICON_MAP: Record<string, keyof typeof MaterialCommunityIcons.glyphM
   category:                 'shape-outline',
   attach_money:             'currency-usd',
   people:                   'account-group',
+  bolt:                     'lightning-bolt',
+  hourglass_empty:          'timer-sand',
+  priority_high:            'alert',
+  person_search:            'account-search',
+  timer:                    'timer-outline',
 };
 
 interface MaterialSymbolProps {

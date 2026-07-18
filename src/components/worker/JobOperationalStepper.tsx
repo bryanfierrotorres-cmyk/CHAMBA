@@ -20,6 +20,7 @@ import {
   type StepVisualState,
 } from '@utils/workerOperationalPhase';
 import { JobQuickContactActions } from './JobQuickContactActions';
+import { StatusMarker } from '@features/workers/components/static/StatusMarker';
 
 interface Props {
   job: Partial<Job>;
@@ -31,25 +32,6 @@ interface Props {
   showQuickActions?: boolean;
   compact?: boolean;
 }
-
-const StepDot: React.FC<{ state: StepVisualState }> = ({ state }) => {
-  const done = state === 'done';
-  const active = state === 'active';
-
-  return (
-    <View
-      style={[
-        styles.dot,
-        done && styles.dotDone,
-        active && styles.dotActive,
-        !done && !active && styles.dotUpcoming,
-      ]}
-    >
-      {done && <Ionicons name="checkmark" size={12} color="#FFF" />}
-      {active && <View style={styles.dotPulse} />}
-    </View>
-  );
-};
 
 export const JobOperationalStepper: React.FC<Props> = ({
   job,
@@ -83,9 +65,10 @@ export const JobOperationalStepper: React.FC<Props> = ({
       <View style={styles.stepperRow}>
         {OPERATIONAL_STEPS.map((step, index) => {
           const visual = getStepVisualState(step.phase, phase);
+          const markerStatus = visual === 'done' ? 'completed' : visual === 'active' ? 'in_progress' : 'pending';
           return (
             <View key={step.phase} style={styles.stepItem}>
-              <StepDot state={visual} />
+              <StatusMarker status={markerStatus} />
               <Text
                 style={[
                   styles.stepLabel,

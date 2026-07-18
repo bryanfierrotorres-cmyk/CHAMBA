@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CHAMBA } from '@constants/chambaUI';
+import { HOME_PALETTE, HOME_SEARCH_SHADOW } from '@constants/clientHomeTheme';
 import { searchServices } from '@utils/searchSynonyms';
 import type { ServiceType } from '@features/catalog/types';
 
@@ -140,7 +141,7 @@ export const ClientHomeSearchBar: React.FC<Props> = ({
 
   const containerBorderColor = focusAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [CHAMBA.border, CHAMBA.cyan],
+    outputRange: ['transparent', HOME_PALETTE.blueLight],
   });
 
   const showDropdown = isFocused && query.length > 0;
@@ -148,7 +149,7 @@ export const ClientHomeSearchBar: React.FC<Props> = ({
   return (
     <View style={styles.wrapper}>
       <Animated.View style={[styles.searchContainer, { borderColor: containerBorderColor }]}>
-        <Ionicons name="search" size={20} color={isFocused ? CHAMBA.cyan : CHAMBA.muted} style={styles.searchIcon} />
+        <Ionicons name="search" size={24} color={isFocused ? HOME_PALETTE.blue : HOME_PALETTE.placeholderGray} style={styles.searchIcon} />
         
         {query.length === 0 && !isFocused && (
           <Animated.View style={[styles.placeholderContainer, { opacity: fadeAnim }]} pointerEvents="none">
@@ -173,6 +174,10 @@ export const ClientHomeSearchBar: React.FC<Props> = ({
             <Ionicons name="close-circle" size={18} color={CHAMBA.muted} />
           </TouchableOpacity>
         </Animated.View>
+
+        <TouchableOpacity style={styles.filterButton} activeOpacity={0.7} accessibilityLabel="Filtros">
+          <Ionicons name="options-outline" size={20} color={HOME_PALETTE.darkGray} />
+        </TouchableOpacity>
       </Animated.View>
 
       {/* Floating Overlay & Dropdown */}
@@ -256,40 +261,36 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     flexDirection: 'row',
-    backgroundColor: CHAMBA.white,
-    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
     alignItems: 'center',
-    paddingHorizontal: 12,
-    borderWidth: 1.5,
-    height: 48,
+    paddingHorizontal: 20,
+    borderWidth: 0,
+    height: 64,
     position: 'relative',
-    shadowColor: CHAMBA.cyan,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
     zIndex: 2,
+    ...HOME_SEARCH_SHADOW,
   },
   searchIcon: {
-    marginRight: 8,
+    marginRight: 10,
   },
   placeholderContainer: {
     position: 'absolute',
-    left: 40,
+    left: 54,
     right: 40,
     top: 0,
     bottom: 0,
     justifyContent: 'center',
   },
   placeholderText: {
-    fontSize: 14,
-    color: CHAMBA.muted,
+    fontSize: 16,
+    color: HOME_PALETTE.placeholderGray,
   },
   searchInput: {
     flex: 1,
     height: '100%',
-    fontSize: 14,
-    color: CHAMBA.navy,
+    fontSize: 16,
+    color: HOME_PALETTE.darkGray,
     paddingVertical: 0,
     ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
   },
@@ -297,12 +298,21 @@ const styles = StyleSheet.create({
     padding: 6,
     marginLeft: 4,
   },
+  filterButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: HOME_PALETTE.filterBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
   // Dropdown overlay
   dropdownWrapper: {
     position: 'absolute',
-    top: 56, // justo debajo de la barra
-    left: -20, // asumiendo que el headerStack tiene paddingHorizontal 20
-    right: -20,
+    top: 72, // justo debajo de la barra (64px + margen)
+    left: -16, // asumiendo que el headerStack tiene paddingHorizontal 16
+    right: -16,
     height: height, // cubrir toda la pantalla hacia abajo
     zIndex: 1,
   },
@@ -318,7 +328,7 @@ const styles = StyleSheet.create({
   },
   dropdown: {
     backgroundColor: CHAMBA.white,
-    marginHorizontal: 20,
+    marginHorizontal: 16,
     borderRadius: 16,
     paddingVertical: 8,
     shadowColor: '#000',

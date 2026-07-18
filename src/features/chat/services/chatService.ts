@@ -1,6 +1,11 @@
 import { supabase } from '@services/supabase';
 import { syncProfileWithDatabase } from '@utils/profileSync';
+import { ENV } from '@utils/env';
+import { demoDb } from '@/demo/demoDb';
 import type { JobStatus, ServiceMessage, UserProfile } from '@/types';
+
+/** True cuando la app corre 100 % offline con el backend demo en memoria. */
+const IS_DEMO = ENV.DATA_MODE === 'demo';
 
 export interface JobChatContext {
   jobId: string;
@@ -48,6 +53,10 @@ const unwrapProfileJoin = (
 };
 
 export async function fetchJobChatContext(jobId: string, callerId?: string): Promise<JobChatContext | null> {
+  if (IS_DEMO) {
+    return demoDb.getJobChatContext(jobId);
+  }
+
   // 1) Intento directo (funciona con JWT real)
   const { data, error } = await supabase
     .from('jobs')
@@ -135,6 +144,10 @@ export async function fetchJobMessages(
   callerId?: string,
   profile?: UserProfile | null,
 ): Promise<ServiceMessage[]> {
+  if (IS_DEMO) {
+    return demoDb.listJobMessages(servicioId);
+  }
+
   const loadViaRpc = async (actorId: string): Promise<ServiceMessage[]> => {
     const { data, error } = await supabase.rpc('get_job_chat_messages', {
       p_servicio_id: servicioId,
@@ -210,6 +223,10 @@ export async function sendJobMessage(
 ): Promise<ServiceMessage> {
   const trimmed = texto.trim();
   if (!trimmed) throw new Error('Escribí un mensaje');
+
+  if (IS_DEMO) {
+    return demoDb.addJobMessage(servicioId, remitenteId, trimmed);
+  }
 
   const sendViaRpc = async (actorId: string): Promise<ServiceMessage> => {
     const { data, error } = await supabase.rpc('send_job_chat_message', {

@@ -84,7 +84,7 @@ export const CONFIGURED_SERVICE_SEEDS = SEEDS;
 export const CONFIGURED_CATEGORY_SEEDS = [
   { slug: 'limpieza', name: 'Limpieza y Desinfección', icon: '🧹', sort_order: 1 },
   { slug: 'mantenimiento', name: 'Oficios y Mantenimiento', icon: '🔧', sort_order: 2 },
-  { slug: 'vehiculos', name: 'Car Wash', icon: '🚗', sort_order: 3 },
+  { slug: 'vehiculos', name: 'Servicios Automotrices', icon: '🚗', sort_order: 3 },
   { slug: 'especializados', name: 'Técnicos Especializados', icon: '⚡', sort_order: 4 },
   { slug: 'mascotas', name: 'Cuidado de Mascotas', icon: '🐕', sort_order: 5 },
   { slug: 'express', name: 'Servicios Express', icon: '🛵', sort_order: 6 },

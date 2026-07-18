@@ -169,6 +169,20 @@ export const ProfileScreen: React.FC = () => {
     );
   };
 
+  // Aviso previo: evita aperturas accidentales del flujo de eliminación.
+  const handleDeleteAccountPress = () => {
+    const warning =
+      'Estás por iniciar la eliminación de tu cuenta. Esta acción es permanente y borra tu perfil, historial y reputación.';
+    if (Platform.OS === 'web') {
+      if (confirm(`⚠️ ${warning}\n\n¿Querés continuar?`)) setShowDeleteAccount(true);
+      return;
+    }
+    Alert.alert('⚠️ Eliminar cuenta', `${warning}\n\n¿Querés continuar?`, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Continuar', style: 'destructive', onPress: () => setShowDeleteAccount(true) },
+    ]);
+  };
+
   const scrollToReviews = useCallback(() => {
     setActiveTab('reviews');
   }, []);
@@ -376,22 +390,6 @@ export const ProfileScreen: React.FC = () => {
           iconColor="#34C759"
           icon={<Ionicons name="call" size={22} color="#FFF" />}
         />
-        <ChambaMenuRow
-          title="Cerrar sesión"
-          subtitle="Salir de tu cuenta de forma segura"
-          iconColor="#FF453A"
-          icon={<Ionicons name="log-out-outline" size={22} color="#FFF" />}
-          onPress={handleSignOut}
-          destructive
-        />
-        <ChambaMenuRow
-          title="Eliminar cuenta"
-          subtitle="Borrar tu cuenta y tus datos de forma permanente"
-          iconColor="#DC2626"
-          icon={<Ionicons name="trash-outline" size={22} color="#FFF" />}
-          onPress={() => setShowDeleteAccount(true)}
-          destructive
-        />
       </View>
 
       <View style={styles.section}>
@@ -430,6 +428,26 @@ export const ProfileScreen: React.FC = () => {
           iconColor="#10B981"
           icon={<Ionicons name="mail" size={22} color="#FFF" />}
           onPress={() => openLegalLink(LEGAL_LINKS.support)}
+        />
+      </View>
+
+      <View style={styles.section}>
+        <SectionTitle label="Sesión y cuenta" subtitle="Acciones sensibles" />
+        <ChambaMenuRow
+          title="Cerrar sesión"
+          subtitle="Salir de tu cuenta de forma segura"
+          iconColor="#FF453A"
+          icon={<Ionicons name="log-out-outline" size={22} color="#FFF" />}
+          onPress={handleSignOut}
+          destructive
+        />
+        <ChambaMenuRow
+          title="Eliminar cuenta"
+          subtitle="Borrar tu cuenta y tus datos de forma permanente"
+          iconColor="#DC2626"
+          icon={<Ionicons name="trash-outline" size={22} color="#FFF" />}
+          onPress={handleDeleteAccountPress}
+          destructive
         />
       </View>
 
@@ -615,7 +633,11 @@ const styles = StyleSheet.create({
   },
   tabButtonActive: {
     backgroundColor: M3.primary,
-    ...chambaStyles.shadowSm,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
   tabText: {
     fontSize: 14,

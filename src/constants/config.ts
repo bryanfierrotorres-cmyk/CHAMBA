@@ -8,9 +8,6 @@ export const CONFIG = {
   stripe: {
     publishableKey: readPublicEnv('EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY'),
   },
-  googleMaps: {
-    apiKey: readPublicEnv('EXPO_PUBLIC_GOOGLE_MAPS_API_KEY'),
-  },
   firebase: {
     webApiKey: readPublicEnv('EXPO_PUBLIC_FIREBASE_WEB_API_KEY'),
     projectId: readPublicEnv('EXPO_PUBLIC_FIREBASE_PROJECT_ID') || 'chamba-app',

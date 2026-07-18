@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Marker } from 'react-native-maps';
+import { Marker } from './ChambaMap';
 import { Ionicons } from '@expo/vector-icons';
 import { renderServiceIconBySlug } from '@constants/clientHomeServiceIcons';
 import { CHAMBA_MAP_DEEP_BLUE } from './mapMarkerWebIcon';
@@ -39,6 +39,7 @@ export const ChambaMapMarkerPin: React.FC<ChambaMapMarkerPinProps> = ({ category
 };
 
 export interface ChambaMapMarkerProps {
+  id?: string;
   coordinate: { latitude: number; longitude: number };
   title?: string;
   description?: string;
@@ -47,18 +48,18 @@ export interface ChambaMapMarkerProps {
 
 /** Marcador de mapa corporativo con icono de servicio y ancla en la punta. */
 export const ChambaMapMarker: React.FC<ChambaMapMarkerProps> = ({
+  id,
   coordinate,
   title,
   description,
   categorySlug,
 }) => (
   <Marker
+    id={id}
     coordinate={coordinate}
     title={title}
-    description={description}
     anchor={MAP_MARKER_ANCHOR}
-    tracksViewChanges={false}
-    {...({ categorySlug } as Record<string, unknown>)}
+    {...({ description, categorySlug } as Record<string, unknown>)}
   >
     <ChambaMapMarkerPin categorySlug={categorySlug} />
   </Marker>

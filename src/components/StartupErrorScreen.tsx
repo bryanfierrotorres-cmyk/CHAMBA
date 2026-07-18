@@ -36,14 +36,14 @@ export const StartupErrorScreen: React.FC<StartupErrorScreenProps> = ({
           </TouchableOpacity>
         )}
 
-        <View style={styles.hintBox}>
-          <Text style={styles.hintTitle}>¿Faltan variables?</Text>
-          <Text style={styles.hintText}>
-            Agrega estas variables en Project Settings → Environment Variables y vuelve a desplegar:{'\n\n'}
-            • EXPO_PUBLIC_SUPABASE_URL{'\n'}
-            • EXPO_PUBLIC_SUPABASE_ANON_KEY
-          </Text>
-        </View>
+        {details?.toLowerCase().includes('supabase') && (
+          <View style={styles.hintBox}>
+            <Text style={styles.hintTitle}>¿Problemas de conexión a la Base de Datos?</Text>
+            <Text style={styles.hintText}>
+              Verifica tus variables de entorno (EXPO_PUBLIC_SUPABASE_URL y ANON_KEY) o tu conexión de red.
+            </Text>
+          </View>
+        )}
         {Platform.OS === 'web' ? (
           <Text style={styles.footer}>
             Revisa la consola del navegador (F12) para más información.

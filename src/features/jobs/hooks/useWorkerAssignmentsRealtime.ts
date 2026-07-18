@@ -4,7 +4,7 @@ import { supabase } from '@services/supabase';
 import { useAuthStore } from '@store/authStore';
 import { syncProfileWithDatabase } from '@utils/profileSync';
 import { JOB_KEYS } from '@features/jobs/hooks/useJobs';
-import { workerActiveCountKey } from '@features/jobs/hooks/useJobActiveLimits';
+import { workerActiveCountKey } from '@features/jobs/hooks/jobKeys';
 
 const refreshWorkerAgenda = (
   queryClient: ReturnType<typeof useQueryClient>,
@@ -32,6 +32,15 @@ export function useWorkerAssignmentsRealtime(): void {
 
     let cancelled = false;
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    let fallbackInterval: NodeJS.Timeout | null = null;
+    let isConnectingTimeout: NodeJS.Timeout | null = null;
+
+    const clearFallback = () => {
+      if (fallbackInterval) {
+        clearInterval(fallbackInterval);
+        fallbackInterval = null;
+      }
+    };
 
     const setup = async () => {
       const synced = await syncProfileWithDatabase(profile);
@@ -73,11 +82,32 @@ export function useWorkerAssignmentsRealtime(): void {
             refreshWorkerAgenda(queryClient, workerId);
           },
         )
-        .subscribe((status, err) => {
-          if (status === 'CHANNEL_ERROR') {
+        .subscribe(async (status, err) => {
+          if (status === 'SUBSCRIBED') {
+            clearFallback();
+            if (isConnectingTimeout) clearTimeout(isConnectingTimeout);
+          } else if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
             console.warn('[WorkerRealtime] asignaciones:', err?.message ?? status);
+            // Activar fallback
+            clearFallback();
+            
+            fallbackInterval = setInterval(() => {
+              if (!cancelled) refreshWorkerAgenda(queryClient, workerId);
+            }, 5000);
           }
         });
+
+      // Handle long connecting status
+      isConnectingTimeout = setTimeout(() => {
+        if (channel?.state !== 'joined' && channel?.state !== 'joining') {
+          // If after 10s we are not joined, forcefully trigger fallback
+          if (!fallbackInterval) {
+            fallbackInterval = setInterval(() => {
+              if (!cancelled) refreshWorkerAgenda(queryClient, workerId);
+            }, 5000);
+          }
+        }
+      }, 10000);
 
     };
 
@@ -85,6 +115,8 @@ export function useWorkerAssignmentsRealtime(): void {
 
     return () => {
       cancelled = true;
+      clearFallback();
+      if (isConnectingTimeout) clearTimeout(isConnectingTimeout);
       if (channel) void supabase.removeChannel(channel);
     };
   }, [profile?.id, profile?.role, queryClient, session?.access_token]);

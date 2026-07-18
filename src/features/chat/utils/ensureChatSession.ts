@@ -1,6 +1,7 @@
 import { Alert, Platform } from 'react-native';
 import { useAuthStore } from '@store/authStore';
 import { syncProfileWithDatabase } from '@utils/profileSync';
+import { ENV } from '@utils/env';
 import type { UserProfile } from '@/types';
 
 /**
@@ -9,13 +10,15 @@ import type { UserProfile } from '@/types';
 export async function ensureChatSessionForProfile(
   profile: UserProfile,
 ): Promise<boolean> {
+  // DEMO MODE: no hay RLS ni sesión Supabase; el chat opera con el backend en memoria.
+  if (ENV.DATA_MODE === 'demo') return true;
+
   const synced = await syncProfileWithDatabase(profile);
 
   if (synced.id !== profile.id || synced.is_approved !== profile.is_approved) {
     useAuthStore.getState().setProfile(synced);
   }
 
-  const store = useAuthStore.getState();
   return true;
 }
 

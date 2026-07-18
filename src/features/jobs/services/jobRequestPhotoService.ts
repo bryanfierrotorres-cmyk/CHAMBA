@@ -1,6 +1,9 @@
 import { Platform } from 'react-native';
 import { supabase } from '@services/supabase';
-import { blobToDataUri } from '@features/jobs/services/jobWorkPhotosService';
+import { ENV } from '@utils/env';
+import { demoLatency } from '@/demo/demoDb';
+
+const IS_DEMO = ENV.DATA_MODE === 'demo';
 
 const BUCKET = 'job-work-photos';
 
@@ -9,6 +12,13 @@ export async function uploadJobRequestPhoto(
   clientId: string,
   localUri: string,
 ): Promise<string> {
+  // DEMO: no hay Storage real — la URI local (file:// en nativo, blob:/data:
+  // en web) sirve directamente como fuente de <Image>, igual que uploadAvatar.
+  if (IS_DEMO) {
+    await demoLatency();
+    return localUri;
+  }
+
   const response = await fetch(localUri);
   if (!response.ok) {
     throw new Error('No se pudo leer la imagen seleccionada');
@@ -18,20 +28,15 @@ export async function uploadJobRequestPhoto(
   const contentType = blob.type || 'image/jpeg';
   const path = `requests/${clientId}/${Date.now()}.jpg`;
 
-  try {
-    const body = Platform.OS === 'web' ? blob : await blob.arrayBuffer();
-    const { error } = await supabase.storage
-      .from(BUCKET)
-      .upload(path, body, { contentType, upsert: false });
+  const body = Platform.OS === 'web' ? blob : await blob.arrayBuffer();
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(path, body, { contentType, upsert: false });
 
-    if (!error) {
-      const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-      return data.publicUrl;
-    }
-    console.warn('[uploadJobRequestPhoto] Storage:', error.message);
-  } catch (err) {
-    console.warn('[uploadJobRequestPhoto] fallback data URI:', err);
+  if (error) {
+    throw new Error(`Error al subir la foto: ${error.message}`);
   }
 
-  return blobToDataUri(blob, contentType);
+  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
+  return data.publicUrl;
 }

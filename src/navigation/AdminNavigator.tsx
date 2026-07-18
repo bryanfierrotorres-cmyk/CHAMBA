@@ -5,16 +5,25 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AdminDashboardScreen } from '@features/admin/screens/AdminDashboardScreen';
-import { CreateJobScreen }      from '@features/admin/screens/CreateJobScreen';
-import { ManageWorkersScreen }  from '@features/admin/screens/ManageWorkersScreen';
-import { ManageCatalogScreen }  from '@features/admin/screens/ManageCatalogScreen';
-import { AdminProfileScreen }   from '@features/admin/screens/AdminProfileScreen';
+import { AdminDashboardScreen } from '@features/admin/operational/screens/AdminDashboardScreen';
+import { CreateJobScreen }      from '@features/admin/operational/screens/CreateJobScreen';
+import { ManageWorkersScreen }  from '@features/admin/operational/screens/ManageWorkersScreen';
+import { ManageCatalogScreen }  from '@features/admin/operational/screens/ManageCatalogScreen';
+import { AdminProfileScreen }   from '@features/admin/operational/screens/AdminProfileScreen';
+import { TechnicalDashboardScreen } from '@features/admin/technical/screens/TechnicalDashboardScreen';
 import { JobDetailScreen }      from '@features/jobs/screens/JobDetailScreen';
 import { webAppShellStyle, webFixedTabBarStyle, webTabScenePadding } from '@constants/webMobileLayout';
 import { CHAMBA } from '@constants/chambaUI';
 import { useAuthSessionWarmup } from '@/hooks/useAuthSessionWarmup';
+import { useAdminDevMode } from '@features/admin/devModeFlag';
 import type { AdminTabParamList, JobStackParamList } from '@/types';
+
+// NOTA: se intentó React.lazy + import() dinámico para code-splitting real,
+// pero el servidor de desarrollo de Metro (expo start --web) revienta con
+// "Requiring unknown module" al resolver el chunk async — este proyecto no
+// tiene configuración de serializer para bundle-splitting. Se revirtió a
+// imports estáticos normales; la reorganización en operational/ (organización
+// de código) se mantiene, que es la parte de valor real de esta fase.
 
 const Tab   = createBottomTabNavigator<AdminTabParamList>();
 const Stack = createNativeStackNavigator<JobStackParamList>();
@@ -35,6 +44,7 @@ const TAB_CONFIG: Record<TabRoute, { label: string; icon: keyof typeof Ionicons.
   ManageCatalog: { label: 'Catálogo', icon: 'grid',           iconOutline: 'grid-outline' },
   ManageWorkers: { label: 'Equipo',   icon: 'people',         iconOutline: 'people-outline' },
   Profile:       { label: 'Perfil',   icon: 'person',         iconOutline: 'person-outline' },
+  Technical:     { label: 'Dev',      icon: 'construct',      iconOutline: 'construct-outline' },
 };
 
 const AdminTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) => {
@@ -120,6 +130,7 @@ const tabStyles = StyleSheet.create({
 
 export const AdminNavigator: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const devModeEnabled = useAdminDevMode((s) => s.enabled);
   useAuthSessionWarmup();
 
   return (
@@ -134,6 +145,9 @@ export const AdminNavigator: React.FC = () => {
         <Tab.Screen name="ManageCatalog" component={ManageCatalogScreen} />
         <Tab.Screen name="ManageWorkers" component={ManageWorkersScreen} />
         <Tab.Screen name="Profile"       component={AdminProfileScreen} />
+        {devModeEnabled && (
+          <Tab.Screen name="Technical" component={TechnicalDashboardScreen} />
+        )}
       </Tab.Navigator>
     </View>
   );

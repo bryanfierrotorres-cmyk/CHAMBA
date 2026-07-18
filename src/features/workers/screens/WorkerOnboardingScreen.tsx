@@ -8,6 +8,7 @@
  *   4. Submit → status = 'pending_approval' in Supabase
  */
 import React, { useState, useEffect, useMemo } from 'react';
+const _keepReact = React;
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Alert, Platform, Image,
@@ -406,7 +407,8 @@ export const WorkerOnboardingScreen: React.FC = () => {
             <View style={styles.infoBox}>
               <Ionicons name="lock-closed-outline" size={16} color={COLORS.brand[400]} />
               <Text style={styles.infoText}>
-                Tus documentos se almacenan con cifrado y solo el equipo de CHAMBA puede verlos.
+                Tus documentos se usan solo para verificar tu identidad y no se muestran públicamente
+                a otros usuarios de la app.
               </Text>
             </View>
 

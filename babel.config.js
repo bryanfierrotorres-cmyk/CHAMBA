@@ -1,15 +1,9 @@
 module.exports = function (api) {
   api.cache(true);
-  const plugins = [];
-  if (process.env.NODE_ENV === 'production') {
-    // Elimina console.* excepto error y warn en producción
-    plugins.push(['transform-remove-console', { exclude: ['error', 'warn'] }]);
-  }
   return {
     presets: ['babel-preset-expo'],
     plugins: [
-      'react-native-reanimated/plugin',
-      ...plugins,
+      'react-native-reanimated/plugin', // Vital para las animaciones que agregamos
       [
         'module-resolver',
         {

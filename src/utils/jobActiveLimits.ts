@@ -30,7 +30,7 @@ type AssignmentRow = JobAssignment & { selection_status?: string | null };
 /** Postulación enviada — el cliente aún no eligió técnico. */
 export const isWorkerPendingClientSelection = (row: AssignmentRow): boolean => {
   const job = row.job;
-  if (job?.status !== JOB_STATUS.OPEN) return false;
+  if (![JOB_STATUS.OPEN, 'pending_bidding', 'counter_offered'].includes(job?.status as string)) return false;
   const selection = row.selection_status;
   if (selection === SELECTION_STATUS.REJECTED) return false;
   return !selection || selection === SELECTION_STATUS.PENDING;
@@ -53,7 +53,7 @@ export const isWorkerCommitmentActive = (row: AssignmentRow): boolean => {
   const isAssignedToWorker =
     job.assigned_worker_id != null && job.assigned_worker_id === row.worker_id;
 
-  if (status === JOB_STATUS.OPEN) {
+  if ([JOB_STATUS.OPEN, 'pending_bidding', 'counter_offered'].includes(status as string)) {
     return selection === SELECTION_STATUS.PENDING
       && (job.assigned_worker_id == null || isAssignedToWorker);
   }

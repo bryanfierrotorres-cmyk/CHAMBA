@@ -1,169 +1,241 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
   Image,
+  Animated,
+  Easing,
   StyleSheet,
-  Platform,
   type ImageSourcePropType,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { ChambaPressable } from '@components/chamba/ChambaPressable';
-import { CHAMBA, chambaStyles } from '@constants/chambaUI';
+import { HOME_PALETTE, HOME_CARD_SHADOW } from '@constants/clientHomeTheme';
 
-const DEEP_BLUE = '#1E293B';
-/** Tamaño estándar del avatar 3D en tarjetas Express. */
-export const SERVICE_CARD_IMAGE_SIZE = 128;
-/** Tamaño compacto (p. ej. jardinería — composición ya equilibrada). */
-export const SERVICE_CARD_IMAGE_SIZE_COMPACT = 96;
+/** Punto verde con pulso (radar ping) — mismo patrón que el anillo de WhatsAppBubble. */
+const PulseDot: React.FC = () => {
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 1400,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 0,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [pulse]);
+
+  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 2.4] });
+  const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0] });
+
+  return (
+    <View style={styles.dotWrap}>
+      <Animated.View style={[styles.dotGhost, { opacity, transform: [{ scale }] }]} />
+      <View style={styles.availableBadgeDot} />
+    </View>
+  );
+};
 
 export interface ServiceCardProps {
   title: string;
   footer: string;
   onPress: () => void;
   style?: StyleProp<ViewStyle>;
-  /** Avatar 3D local (prioridad sobre icono vectorial). */
-  imageSource?: ImageSourcePropType | null;
-  /** Side del cuadro 3D; default 128px. */
-  imageSize?: number;
-  /** Desplazamiento vertical del render dentro de la ficha (px). */
-  imageOffsetY?: number;
-  /** Fallback vectorial para subcategorías sin asset 3D. */
-  icon?: React.ReactNode;
-  iconColor?: string;
+  /** Foto real del servicio — ~54% de la tarjeta (proporción de la referencia). */
+  photoSource?: ImageSourcePropType | null;
+  /** Descripción corta bajo el título (ej. "Hogares y oficinas"). */
+  description?: string;
+  /** Ícono vectorial pequeño al lado del título. */
+  icon?: keyof typeof Ionicons.glyphMap;
   isCategory?: boolean;
+  /** Badge verde superior ("Disponible hoy"). */
+  availableBadge?: string;
 }
 
 /**
- * Tarjeta claymorphism para el grid de servicios del home cliente.
+ * Tarjeta del grid "Servicios Express" — clon proporcional de la referencia
+ * v1.3: foto arriba (~54%), fila [chip pequeño | título+subtítulo], footer
+ * precio (azul) + "Ver opciones →" (gris) alineados en una sola línea.
  */
 export const ServiceCard: React.FC<ServiceCardProps> = ({
   title,
   footer,
   onPress,
   style,
-  imageSource,
-  imageSize = SERVICE_CARD_IMAGE_SIZE,
-  imageOffsetY = 0,
+  photoSource,
+  description,
   icon,
-  iconColor = '#E2E8F0',
   isCategory = false,
+  availableBadge,
 }) => (
-  <ChambaPressable
-    style={[styles.card, style]}
-    onPress={onPress}
-    pressScale={0.97}
-  >
-    {imageSource ? (
-      <View
-        style={[
-          styles.imageWrap,
-          {
-            width: imageSize,
-            height: imageSize,
-            marginTop: imageOffsetY,
-            backgroundColor: 'transparent',
-          },
-        ]}
-      >
-        <Image
-          source={imageSource}
-          style={{
-            width: imageSize,
-            height: imageSize,
-            backgroundColor: 'transparent',
-          }}
-          resizeMode="contain"
-          accessibilityIgnoresInvertColors
-        />
-      </View>
-    ) : icon ? (
-      <View style={[styles.iconWrap, { backgroundColor: iconColor }]}>
-        {icon}
-      </View>
-    ) : null}
-
-    <View style={styles.textBlock}>
-      <Text style={styles.title} numberOfLines={2}>
-        {title}
-      </Text>
-
-      {isCategory ? (
-        <Text style={styles.categoryFooter} numberOfLines={1}>
-          {footer}
-        </Text>
+  <ChambaPressable style={[styles.card, style]} onPress={onPress} pressScale={0.97}>
+    <View style={styles.photoWrap}>
+      {photoSource ? (
+        <Image source={photoSource} style={styles.photo} resizeMode="cover" accessibilityIgnoresInvertColors />
       ) : (
-        <Text style={[chambaStyles.priceLine, styles.priceFooter]} numberOfLines={1}>
-          {footer}
-        </Text>
+        <View style={[styles.photo, styles.photoFallback]} />
       )}
+      {!!availableBadge && (
+        <View style={styles.availableBadge}>
+          <Text style={styles.availableBadgeText}>{availableBadge}</Text>
+          <PulseDot />
+        </View>
+      )}
+    </View>
+
+    <View style={styles.body}>
+      <View style={styles.infoRow}>
+        {!!icon && (
+          <View style={styles.iconChip}>
+            <Ionicons name={icon} size={12} color={HOME_PALETTE.blue} />
+          </View>
+        )}
+        <View style={styles.infoCol}>
+          <Text style={styles.title} numberOfLines={1}>{title}</Text>
+          {!!description && (
+            <Text style={styles.description} numberOfLines={1}>{description}</Text>
+          )}
+        </View>
+      </View>
+
+      <View style={styles.footerRow}>
+        <Text style={styles.priceFooter} numberOfLines={1}>{footer}</Text>
+        <View style={styles.optionsLinkRow}>
+          <Text style={styles.optionsLink} numberOfLines={1}>
+            {isCategory ? 'Ver opciones' : 'Solicitar'}
+          </Text>
+          <Ionicons name="arrow-forward" size={10} color={HOME_PALETTE.midGray} />
+        </View>
+      </View>
     </View>
   </ChambaPressable>
 );
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#F8F9FA',
-    borderRadius: 22,
-    padding: 12,
-    alignItems: 'center',
-    minHeight: 196,
-    justifyContent: 'space-between',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#0F172A',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.05,
-        shadowRadius: 10,
-      },
-      android: {
-        elevation: 2,
-      },
-      default: {},
-    }),
+    height: 162,
+    backgroundColor: HOME_PALETTE.card,
+    borderRadius: 20,
+    overflow: 'hidden',
+    ...HOME_CARD_SHADOW,
   },
-  imageWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-    overflow: 'visible',
-  },
-  textBlock: {
+  photoWrap: {
     width: '100%',
-    alignItems: 'center',
+    height: 86,
+    position: 'relative',
+    backgroundColor: HOME_PALETTE.lightGray,
   },
-  iconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+  photo: {
+    width: '100%',
+    height: '100%',
+  },
+  photoFallback: {
+    backgroundColor: HOME_PALETTE.lightGray,
+  },
+  availableBadge: {
+    position: 'absolute',
+    top: 7,
+    right: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    height: 19,
+    backgroundColor: HOME_PALETTE.greenLight,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+  },
+  dotWrap: {
+    width: 6,
+    height: 6,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+  },
+  dotGhost: {
+    position: 'absolute',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: HOME_PALETTE.green,
+  },
+  availableBadgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: HOME_PALETTE.green,
+  },
+  availableBadgeText: {
+    fontSize: 9.5,
+    fontWeight: '600',
+    color: HOME_PALETTE.greenDark,
+  },
+  body: {
+    flex: 1,
+    paddingTop: 9,
+    paddingHorizontal: 10,
+    paddingBottom: 10,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  iconChip: {
+    width: 22,
+    height: 22,
+    borderRadius: 7,
+    backgroundColor: HOME_PALETTE.blueLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoCol: {
+    flex: 1,
   },
   title: {
-    fontSize: 15,
+    fontSize: 11,
     fontWeight: '600',
-    color: DEEP_BLUE,
-    textAlign: 'center',
-    lineHeight: 20,
-    minHeight: 40,
-    width: '100%',
-    letterSpacing: -0.2,
+    color: HOME_PALETTE.darkGray,
+    letterSpacing: -0.1,
+  },
+  description: {
+    fontSize: 10,
+    fontWeight: '400',
+    color: HOME_PALETTE.midGray,
+    marginTop: 1,
+  },
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 'auto',
+    gap: 4,
   },
   priceFooter: {
-    textAlign: 'center',
-    marginTop: 6,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: HOME_PALETTE.blue,
+    flexShrink: 1,
   },
-  categoryFooter: {
-    marginTop: 6,
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    color: CHAMBA.muted,
-    textAlign: 'center',
+  optionsLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  optionsLink: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: HOME_PALETTE.midGray,
   },
 });

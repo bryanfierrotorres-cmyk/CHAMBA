@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@services/supabase';
+import { ENV } from '@utils/env';
 import { useClientOrders } from '@features/client/hooks/useClientOrders';
 import { useMyJobs } from '@features/jobs/hooks/useJobs';
 import { useAuthStore } from '@store/authStore';
@@ -17,10 +18,16 @@ import {
   workerCommitmentLimitMessage,
 } from '@utils/jobActiveLimits';
 
-const workerActiveCountKey = (workerId: string) =>
-  ['worker-active-commitment-count', workerId] as const;
+import { workerActiveCountKey } from './jobKeys';
+
+const IS_DEMO = ENV.DATA_MODE === 'demo';
 
 const fetchWorkerActiveCount = async (workerId: string): Promise<number> => {
+  // Ese RPC no existe en Demo Mode. `enabled: false` no alcanza por sí solo —
+  // un .refetch() explícito (como el de useFocusEffect en HomeScreen) lo ignora
+  // y llamaría a la red igual, así que el corte va también aquí.
+  if (IS_DEMO) return -1;
+
   const { data, error } = await supabase.rpc('count_worker_active_commitments', {
     p_worker_id: workerId,
   });
@@ -66,11 +73,14 @@ export function useWorkerCommitmentLimit() {
   const countQuery = useQuery({
     queryKey: workerActiveCountKey(workerId),
     queryFn: () => fetchWorkerActiveCount(workerId),
-    enabled: !!workerId && profile?.role === 'worker',
+    // Demo Mode no tiene ese RPC — se apoya en localCount (ya calculado arriba
+    // desde useMyJobs, que sí lee demoDb correctamente).
+    enabled: !IS_DEMO && !!workerId && profile?.role === 'worker',
     staleTime: 15_000,
     refetchInterval: 30_000,
     refetchOnMount: true,
     refetchOnWindowFocus: true,
+    retry: 0,
   });
 
   const remoteCount = countQuery.data;
@@ -79,9 +89,12 @@ export function useWorkerCommitmentLimit() {
 
   const atLimit = activeCount >= MAX_WORKER_ACTIVE_COMMITMENTS;
 
-  const refreshLimit = async () => {
+  // Referencia estable — HomeScreen la pone en el deps array de un useCallback
+  // dentro de useFocusEffect; si esta función se recreara en cada render,
+  // ese efecto se re-dispararía en bucle en cada foco de pantalla.
+  const refreshLimit = useCallback(async () => {
     await Promise.all([countQuery.refetch(), refetch()]);
-  };
+  }, [countQuery.refetch, refetch]);
 
   return {
     activeCount,
@@ -96,4 +109,4 @@ export function useWorkerCommitmentLimit() {
   };
 }
 
-export { workerActiveCountKey };
+

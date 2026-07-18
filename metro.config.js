@@ -8,20 +8,21 @@ if (!config.resolver.platforms.includes('web')) {
   config.resolver.platforms = [...config.resolver.platforms, 'web'];
 }
 
-// Enable aggressive optimizations for production builds
+// Ignore Next.js dashboard folder to avoid crashing Metro
+config.resolver.blockList = [
+  new RegExp(`${path.resolve(__dirname, 'telemetry-dashboard').replace(/\\/g, '\\\\')}\\/.*`),
+];
+
+// Keep transformer defaults — do NOT enable experimentalImportSupport or
+// inlineRequires; they break "import React" on the web platform.
 config.transformer = {
   ...config.transformer,
-  // Inline requires reduces initial bundle size by loading modules on demand
-  inlineRequires: true,
-  // Enable experimental import support for better tree‑shaking
-  experimentalImportSupport: true,
-  // Uncomment the line below to use esbuild (requires expo-esbuild package)
-  // babelTransformerPath: require.resolve('expo-esbuild'),
+  inlineRequires: false,
+  experimentalImportSupport: false,
 };
 
 // Stub native modules that break on web
 const WEB_STUBS = {
-  'react-native-maps': path.resolve(__dirname, 'src/stubs/react-native-maps.web.tsx'),
   '@stripe/stripe-react-native': path.resolve(__dirname, 'src/stubs/stripe-react-native.web.ts'),
 };
 

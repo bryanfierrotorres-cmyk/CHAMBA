@@ -1,4 +1,6 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
+import { useEffect, useRef } from 'react';
+const _keepReact = React; // VACUNA: fuerza al compilador a no borrar el import
 import { View, Animated, StyleSheet, Dimensions } from 'react-native';
 import { CARD_STEP_SHADOW } from '@constants/chambaUI';
 

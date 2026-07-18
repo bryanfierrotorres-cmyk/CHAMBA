@@ -35,6 +35,9 @@ export interface UserProfile {
   fcm_token: string | null;
   created_at: string;
   updated_at: string;
+  // Reputación recibida (cliente; los técnicos usan worker_profiles)
+  rating_avg?: number | null;
+  total_reviews?: number;
 }
 
 export interface WorkerProfile {
@@ -54,7 +57,7 @@ export interface WorkerProfile {
   updated_at:          string;
 }
 
-export type ReviewerRole = 'admin' | 'client';
+export type ReviewerRole = 'admin' | 'client' | 'worker';
 
 export interface WorkerReview {
   id: string;
@@ -140,7 +143,19 @@ export interface JobWorkerApplication {
 
 // ─── Jobs ─────────────────────────────────────────────────────────────────────
 
-export type JobStatus = 'open' | 'taken' | 'in_progress' | 'completed' | 'cancelled' | 'pending_bidding' | 'counter_offered';
+export type JobStatus =
+  | 'pending'
+  | 'assigned'
+  | 'arrived'
+  | 'in_progress'
+  | 'completed'
+  | 'rejected'
+  // Legacy states para no quebrar otras pantallas locales
+  | 'open' 
+  | 'taken' 
+  | 'cancelled' 
+  | 'pending_bidding' 
+  | 'counter_offered';
 
 export type JobModerationReason = 'spam' | 'mistake' | 'admin';
 
@@ -172,10 +187,12 @@ export interface Job {
   title: string;
   description: string;
   category: JobCategory;
+  booking_type?: 'express' | 'custom';
   status: JobStatus;
   operational_phase?: WorkerOperationalPhase | null;
   pay_amount: number;
   platform_fee: number;
+  dispatch_data?: Record<string, { wave: number; score: number }> | null;
   worker_payout: number;
   location: JobLocation;
   scheduled_at: string | null;
@@ -244,7 +261,7 @@ export type RootStackParamList = {
 };
 
 export type AuthStackParamList = {
-  Login: undefined;
+  Login: { prefillPhone?: string } | undefined;
   Register: undefined;
   RoleSelection: { email: string; password: string };
   VerifyOtp: { phone: string; role: UserRole };
@@ -264,6 +281,7 @@ export type ProfileStackParamList = {
 };
 
 export type WorkerTabParamList = {
+  Home:       undefined;
   JobFeed:    NavigatorScreenParams<JobStackParamList> | undefined;
   MyJobs:     undefined;
   Wallet:     undefined;
@@ -276,6 +294,8 @@ export type AdminTabParamList = {
   ManageCatalog: undefined;
   ManageWorkers: undefined;
   Profile: undefined;
+  /** Centro Técnico — solo visible con "Modo desarrollador" activo. */
+  Technical: undefined;
 };
 
 // ─── Client navigation ────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   ActivityIndicator,
   Alert,
@@ -22,11 +23,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@store/authStore';
 import {
   createJob,
-  fetchClientOrders,
   resolveClientIdForJobs,
 } from '@features/jobs/services/jobsService';
+import { clientOrdersQueryKey } from '@features/client/hooks/useClientOrders';
+import type { ClientOrderJob } from '@/types';
 import { assertClientJobPlatformReady } from '@services/clientJobPlatform';
-import { JOB_KEYS } from '@features/jobs/hooks/useJobs';
 import { uploadJobRequestPhoto } from '@features/jobs/services/jobRequestPhotoService';
 import { JobRequestPhotoPicker } from '@components/jobs/JobRequestPhotoPicker';
 import {
@@ -100,6 +101,7 @@ export const CreateJobFormScreen: React.FC = () => {
   const [serviceLat, setServiceLat] = useState<number | null>(null);
   const [serviceLng, setServiceLng] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<'idle' | 'publicando' | 'buscando' | 'confirmando'>('idle');
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [publishedMeta, setPublishedMeta] = useState<{ id: string; created_at: string } | null>(null);
@@ -107,6 +109,7 @@ export const CreateJobFormScreen: React.FC = () => {
   const [offerPriceText, setOfferPriceText] = useState(
     route.params.initialOfferPrice ? String(route.params.initialOfferPrice) : ''
   );
+  const [bookingType, setBookingType] = useState<'express' | 'custom'>('custom');
   const schedulingFields = useJobSchedulingFields();
 
   const suggestedMinimum = useMemo(
@@ -146,7 +149,7 @@ export const CreateJobFormScreen: React.FC = () => {
     if (!isStep1Valid) {
       const msg =
         schedulingFields.scheduleError ??
-        'Contanos qué necesitás y elegí cuándo lo querés.';
+        'Cuéntanos qué necesitas y elige cuándo lo quieres.';
       if (Platform.OS === 'web') window.alert(msg);
       else Alert.alert('Completá el paso 1', msg);
       return;
@@ -172,7 +175,7 @@ export const CreateJobFormScreen: React.FC = () => {
     }
 
     if (!schedulingFields.isScheduleValid) {
-      const msg = schedulingFields.scheduleError ?? 'Revisá la fecha del servicio';
+      const msg = schedulingFields.scheduleError ?? 'Revisa la fecha del servicio';
       if (Platform.OS === 'web') window.alert(msg);
       else Alert.alert('Programación', msg);
       return;
@@ -186,6 +189,11 @@ export const CreateJobFormScreen: React.FC = () => {
     }
 
     setIsSubmitting(true);
+    setSubmitStatus('publicando');
+    
+    const timeout1 = setTimeout(() => setSubmitStatus('buscando'), 2000);
+    const timeout2 = setTimeout(() => setSubmitStatus('confirmando'), 4500);
+
     try {
       await assertClientJobPlatformReady();
       const creatorId = await resolveClientIdForJobs(profile);
@@ -213,7 +221,8 @@ export const CreateJobFormScreen: React.FC = () => {
         urgencyLevel: schedulingFields.schedulingPayload.urgencyLevel,
         scheduledDate: schedulingFields.schedulingPayload.scheduledDate,
         scheduledTime: schedulingFields.schedulingPayload.scheduledTime,
-      });
+        bookingType,
+      } as any);
 
       setPublishedMeta({ id: created.id, created_at: created.created_at });
 
@@ -224,20 +233,20 @@ export const CreateJobFormScreen: React.FC = () => {
       });
 
       setSuccessMessage(
-        `Tu solicitud de "${serviceLabel}" quedó en pendiente. Revisala en Mis Solicitudes → Pendientes.`,
+        `Tu solicitud de "${serviceLabel}" ha quedado pendiente. Revísala en Mis Solicitudes → Pendientes.`,
       );
       setShowSuccess(true);
 
-      const ordersKey = JOB_KEYS.clientOrders(creatorId);
+      // Optimistic update: add the new job immediately to the client orders cache
+      // so it appears in Pendientes without waiting for a background refetch.
+      const ordersKey = clientOrdersQueryKey(creatorId);
+      queryClient.setQueryData<ClientOrderJob[]>(ordersKey, (old: ClientOrderJob[] | undefined) => {
+        const existing = old ?? [];
+        if (existing.some((j: ClientOrderJob) => j.id === created.id)) return existing;
+        return [created as unknown as ClientOrderJob, ...existing];
+      });
+      // Invalidate in background so the real server data replaces the optimistic entry
       void queryClient.invalidateQueries({ queryKey: ['client-orders'] });
-      void queryClient
-        .prefetchQuery({
-          queryKey: ordersKey,
-          queryFn: () => fetchClientOrders(creatorId),
-        })
-        .catch((cacheErr) => {
-          console.warn('[CreateJobForm] prefetch orders:', cacheErr);
-        });
     } catch (err) {
       console.error('[CreateJobForm] publish failed — raw error:', err);
       if (err && typeof err === 'object') {
@@ -258,7 +267,10 @@ export const CreateJobFormScreen: React.FC = () => {
       if (Platform.OS === 'web') window.alert(`Error: ${message}`);
       else Alert.alert('Error', message);
     } finally {
+      clearTimeout(timeout1);
+      clearTimeout(timeout2);
       setIsSubmitting(false);
+      setSubmitStatus('idle');
     }
   };
 
@@ -323,7 +335,7 @@ export const CreateJobFormScreen: React.FC = () => {
           <>
             <Text style={styles.blockTitle}>Detalles del Trabajo</Text>
             <Text style={styles.blockSubtitle}>
-              Contanos qué necesitás y cuándo lo querés
+              Cuéntanos qué necesitas y cuándo lo quieres
             </Text>
 
             <View style={styles.card}>
@@ -338,7 +350,7 @@ export const CreateJobFormScreen: React.FC = () => {
                 <TextInput
                   value={description}
                   onChangeText={setDescription}
-                  placeholder="Contanos un poco más sobre lo que necesitás..."
+                  placeholder="Cuéntanos un poco más sobre lo que necesitas..."
                   placeholderTextColor={CHAMBA.muted}
                   multiline
                   style={[styles.descriptionInput, textInputWebFocusStyle]}
@@ -355,7 +367,7 @@ export const CreateJobFormScreen: React.FC = () => {
             </View>
 
             <View style={styles.card}>
-              <Text style={styles.cardSectionLabel}>¿Cuándo lo necesitás?</Text>
+              <Text style={styles.cardSectionLabel}>¿Cuándo lo necesitas?</Text>
               <JobSchedulingSection
                 hideTitle
                 embedded
@@ -377,7 +389,7 @@ export const CreateJobFormScreen: React.FC = () => {
           <>
             <Text style={styles.blockTitle}>Ubicación y Confirmación</Text>
             <Text style={styles.blockSubtitle}>
-              Indicá dónde y revisá el precio antes de enviar
+              Indica dónde y revisa el precio antes de enviar
             </Text>
             <View style={styles.radarHintRow}>
               <Ionicons name="radio-outline" size={14} color="#0284C7" />
@@ -449,6 +461,37 @@ export const CreateJobFormScreen: React.FC = () => {
                     El pago se realiza directamente al técnico al finalizar.
                   </Text>
                 )}
+                
+                <View style={styles.bookingTypeContainer}>
+                  <View style={styles.bookingTypeHeader}>
+                    <Text style={styles.priceLabel}>Tipo de Asignación</Text>
+                  </View>
+                  <View style={styles.bookingTypeOptions}>
+                    <Pressable
+                      style={[styles.bookingOption, bookingType === 'custom' && styles.bookingOptionSelected]}
+                      onPress={() => setBookingType('custom')}
+                    >
+                      <Ionicons name="people" size={20} color={bookingType === 'custom' ? '#FFFFFF' : CHAMBA.blue} />
+                      <Text style={[styles.bookingOptionText, bookingType === 'custom' && styles.bookingOptionTextSelected]}>
+                        Selección Manual
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.bookingOption, bookingType === 'express' && styles.bookingOptionSelected]}
+                      onPress={() => setBookingType('express')}
+                    >
+                      <Ionicons name="flash" size={20} color={bookingType === 'express' ? '#FFFFFF' : CHAMBA.blue} />
+                      <Text style={[styles.bookingOptionText, bookingType === 'express' && styles.bookingOptionTextSelected]}>
+                        Express (Uber)
+                      </Text>
+                    </Pressable>
+                  </View>
+                  <Text style={styles.bookingTypeHint}>
+                    {bookingType === 'custom' 
+                      ? 'Recibes perfiles de técnicos y eliges a tu favorito.' 
+                      : 'El primer técnico disponible se asigna automáticamente.'}
+                  </Text>
+                </View>
               </View>
             </View>
           </>
@@ -489,7 +532,14 @@ export const CreateJobFormScreen: React.FC = () => {
               ]}
             >
               {isSubmitting ? (
-                <ActivityIndicator color="#FFF" />
+                <>
+                  <ActivityIndicator color="#FFF" />
+                  <Text style={[styles.primaryBtnText, { marginLeft: 10 }]}>
+                    {submitStatus === 'publicando' && 'Publicando...'}
+                    {submitStatus === 'buscando' && 'Ampliando radar...'}
+                    {submitStatus === 'confirmando' && 'Confirmando...'}
+                  </Text>
+                </>
               ) : (
                 <>
                   <Ionicons name="checkmark-circle-outline" size={22} color="#FFF" />
@@ -682,6 +732,51 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  bookingTypeContainer: {
+    marginTop: 8,
+    gap: 10,
+  },
+  bookingTypeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  bookingTypeOptions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  bookingOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+    gap: 8,
+  },
+  bookingOptionSelected: {
+    borderColor: CHAMBA.blue,
+    backgroundColor: CHAMBA.blue,
+  },
+  bookingOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  bookingOptionTextSelected: {
+    color: '#FFFFFF',
+  },
+  bookingTypeHint: {
+    marginTop: 10,
+    fontSize: 12,
+    color: '#6B7280',
+    lineHeight: 18,
+    fontStyle: 'italic',
   },
   priceLabel: {
     fontSize: 13,

@@ -15,6 +15,16 @@ export interface ClientHeroSlide {
   /** Punto focal vertical 0–1 para recorte cover (0=arriba, 1=abajo). */
   imageFocusY?: number;
   placeholderLabel?: string;
+  /**
+   * Marca este slide como el banner "Servicio Express" (spec v1.0): tarjeta
+   * clara con badge + CTA + foto recortada a la derecha + chip flotante de
+   * tiempo, en vez del tratamiento foto-completa-oscurecida de los demás
+   * slides. Solo el primer slide lo usa.
+   */
+  isExpressSlide?: boolean;
+  badge?: string;
+  ctaLabel?: string;
+  timeBadge?: string;
 }
 
 const slide = (
@@ -40,14 +50,19 @@ const slide = (
 
 /** Slides — tab Para tu Hogar. */
 export const CLIENT_HOGAR_HERO_SLIDES: ClientHeroSlide[] = [
-  slide(
-    'hogar-promo-segundo-servicio',
-    'Ahorra en tu próximo servicio',
-    'Obtén un 15% de descuento al realizar tu segundo servicio con nosotros.',
-    'Promoción',
-    require('../../assets/client-hero-hogar-promo.png'),
-    0.32,
-  ),
+  {
+    ...slide(
+      'hogar-express-tecnico',
+      'Técnico en menos de 30 min',
+      'Soluciones rápidas, cuando más las necesitás.',
+      'Servicio Express',
+    ),
+    imageLocal: require('../../assets/banner-tecnico-van-test.jpg'),
+    isExpressSlide: true,
+    badge: '⚡ Servicio Express',
+    ctaLabel: 'Solicitar ahora',
+    timeBadge: '30 min',
+  },
   slide(
     'hogar-limpieza',
     'Tu hogar impecable sin complicaciones',
@@ -59,7 +74,7 @@ export const CLIENT_HOGAR_HERO_SLIDES: ClientHeroSlide[] = [
     'Clima, plomería y más en un solo lugar',
     'Técnicos capacitados para resolver antes de que empeore',
     'Mantenimiento',
-    require('../../assets/client-hero-hogar-promo.png'),
+    require('../../assets/client-hero-hogar-promo.jpg'),
     0.32,
   ),
   slide(

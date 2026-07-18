@@ -20,7 +20,10 @@ export interface RadarFilterItem {
 }
 
 interface FloatingRadarFiltersProps {
-  topOffset: number;
+  /** Offset superior cuando flota sobre el mapa (modo absoluto). */
+  topOffset?: number;
+  /** Render en flujo normal (dentro de la hoja de Solicitudes) sin posición absoluta. */
+  inline?: boolean;
   items: RadarFilterItem[];
   selectedSlug: string | null;
   onSelect: (slug: string | null) => void;
@@ -28,6 +31,7 @@ interface FloatingRadarFiltersProps {
 
 export const FloatingRadarFilters: React.FC<FloatingRadarFiltersProps> = ({
   topOffset,
+  inline = false,
   items,
   selectedSlug,
   onSelect,
@@ -35,7 +39,7 @@ export const FloatingRadarFilters: React.FC<FloatingRadarFiltersProps> = ({
   if (items.length === 0) return null;
 
   return (
-    <View style={[styles.wrap, { top: topOffset }]}>
+    <View style={inline ? styles.inlineWrap : [styles.wrap, { top: topOffset }]}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -74,6 +78,10 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 10,
+  },
+  inlineWrap: {
+    marginHorizontal: -12,
+    marginBottom: 4,
   },
   scrollContent: {
     paddingHorizontal: RADAR_HORIZONTAL,

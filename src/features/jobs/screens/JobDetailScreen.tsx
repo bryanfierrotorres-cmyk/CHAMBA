@@ -7,7 +7,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import MapView from 'react-native-maps';
+import MapView from '@components/maps/ChambaMap';
 import { ChambaMapMarker } from '@components/maps/ChambaMapMarker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@components/Button';

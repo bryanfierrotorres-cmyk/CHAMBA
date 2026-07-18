@@ -17,7 +17,7 @@ import { CompactJobCard } from '@components/worker/radar/CompactJobCard';
 import { SwipeableRadarJobCard } from '@components/worker/radar/SwipeableRadarJobCard';
 import { RADAR_BORDER, RADAR_DEEP_BLUE, RADAR_MUTED } from '@components/worker/radar/radarTheme';
 import { RadarFullMap } from '@components/worker/radar/RadarFullMap';
-import { FloatingRadarHeader } from '@components/worker/radar/FloatingRadarHeader';
+import { RadarTopPanel } from '@components/worker/radar/RadarTopPanel';
 import { FloatingRadarFilters } from '@components/worker/radar/FloatingRadarFilters';
 import { JobBottomSheet } from '@components/worker/radar/JobBottomSheet';
 import { useJobFeed, JOB_KEYS, useAcceptJob } from '../hooks/useJobs';
@@ -26,12 +26,10 @@ import { useProfileStore } from '@store/profileStore';
 import { useJobStore } from '@store/jobStore';
 import { FONT_SIZE, SPACING } from '@constants/workerTheme';
 import { CARD_ELEVATION } from '@constants/stitchStyles';
-import { sortServiceTypesByConfig } from '@constants/servicesConfig';
-import { useCatalog } from '@features/catalog/hooks/useCatalog';
-import type { ServiceType } from '@features/catalog/types';
+import { EXPRESS_MAIN_TILES, CLIENT_SPECIALIZED_SERVICES } from '@constants/clientHomeExpress';
+import { fromDbJobCategory } from '@constants/chambaCategories';
 import {
-  expandWorkerFeedCategories,
-  getWorkerApprovedCategories,
+  getWorkerCategoryFamily,
   getWorkerFeedCategories,
   workerCoversJobCategory,
 } from '@utils/workerCategoryAccess';
@@ -45,14 +43,40 @@ import {
 } from '@utils/radarDismissedJobs';
 import { isJobExpiredLocally } from '@constants/jobExpiry';
 import { useSyncWorkerLocationOnFocus } from '@hooks/useSyncWorkerLocationOnFocus';
+import { syncWorkerLastLocation } from '@utils/syncWorkerLastLocation';
+import { haversineDistanceKm } from '@utils/geoDistance';
+import { hasUsableJobCoordinates } from '@utils/shareJobLocation';
+import { formatRatingAvg } from '@utils/formatters';
+import {
+  loadWorkerSearchRadiusKm,
+  saveWorkerSearchRadiusKm,
+  DEFAULT_RADIUS_KM,
+} from '@utils/workerSearchRadius';
+import { fetchWorkerTodayStats } from '@features/workers/services/profileService';
 import type { Job, JobCategory, JobStackParamList, WorkerTabParamList } from '@/types';
 
 type StackNav = NativeStackNavigationProp<JobStackParamList, 'JobList'>;
 
 type CategoryItem = { value: string; label: string };
 
-const FLOATING_HEADER_HEIGHT = 68;
-const FILTERS_GAP = 10;
+/**
+ * Filtros del radar = categorías PRINCIPALES del panel del cliente (coherencia
+ * visual). Cada uno expande a su familia de sub-servicios para filtrar el feed.
+ */
+interface RadarMainFilter { id: string; label: string; family: Set<string>; }
+
+const RADAR_MAIN_FILTERS: RadarMainFilter[] = [
+  ...EXPRESS_MAIN_TILES.map((t) => {
+    const rep = t.submenu ? t.id : (t.slug ?? t.id);
+    return { id: rep, label: t.title, family: new Set(getWorkerCategoryFamily(rep)) };
+  }),
+  ...CLIENT_SPECIALIZED_SERVICES.map((s) => ({
+    id: s.slug,
+    label: s.title,
+    family: new Set(getWorkerCategoryFamily(s.slug)),
+  })),
+];
+
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -136,24 +160,106 @@ export const HomeScreen: React.FC = () => {
   const toast = useToast();
   const { mutateAsync: acceptMut } = useAcceptJob();
   const workerLimit = useWorkerCommitmentLimit();
+  const setAvailability = useProfileStore((s) => s.setAvailability);
+  const isTogglingAvail = useProfileStore((s) => s.isTogglingAvail);
   useSyncWorkerLocationOnFocus();
+
+  const [radiusKm, setRadiusKm] = useState<number>(DEFAULT_RADIUS_KM);
+  const [todayStats, setTodayStats] = useState({ earningsToday: 0, jobsToday: 0 });
+  const [topPanelHeight, setTopPanelHeight] = useState(0);
+  const [radiusBarTop, setRadiusBarTop] = useState(0);
+
+  useEffect(() => {
+    if (profile?.role !== 'worker' || !profile.id) return;
+    void (async () => {
+      const km = await loadWorkerSearchRadiusKm(profile.id);
+      setRadiusKm(km);
+    })();
+  }, [profile?.id, profile?.role]);
+
+  const handleChangeRadius = useCallback((km: number) => {
+    setRadiusKm(km);
+    if (profile?.id) void saveWorkerSearchRadiusKm(profile.id, km);
+  }, [profile?.id]);
+
+  const workerHasLocation = hasUsableJobCoordinates(
+    workerProfile?.last_lat,
+    workerProfile?.last_lng,
+  );
+
+  const handleToggleOnline = useCallback(async (next: boolean) => {
+    if (!profile?.id) return;
+    if (!next) {
+      void setAvailability(profile.id, 'offline');
+      return;
+    }
+    // Encender el radar exige ubicación GPS: sin ella no se puede pasar a "Disponible".
+    const alreadyHasLocation = hasUsableJobCoordinates(
+      workerProfile?.last_lat,
+      workerProfile?.last_lng,
+    );
+    if (!alreadyHasLocation) {
+      const captured = await syncWorkerLastLocation(profile.id, true);
+      if (!captured) {
+        toast.show({
+          type: 'error',
+          message: '📍 Activá la ubicación (GPS) para encender el radar y recibir solicitudes',
+        }, 4200);
+        return;
+      }
+    }
+    void setAvailability(profile.id, 'available');
+  }, [profile?.id, workerProfile?.last_lat, workerProfile?.last_lng, setAvailability, toast]);
 
   useFocusEffect(
     useCallback(() => {
       if (profile?.role !== 'worker' || !profile.id) return;
+      let cancelled = false;
       void (async () => {
-        const { syncProfileWithDatabase } = await import('@utils/profileSync');
-        const synced = await syncProfileWithDatabase(profile);
-        if (synced.id !== profile.id || synced.is_approved !== profile.is_approved) {
-          useAuthStore.getState().setProfile(synced);
+        try {
+          const stats = await fetchWorkerTodayStats(profile.id);
+          if (!cancelled) setTodayStats(stats);
+        } catch {
+          // estadísticas opcionales — silenciar error
         }
-        void workerLimit.refetch();
-        void queryClient.invalidateQueries({ queryKey: JOB_KEYS.feed('open') });
       })();
-    }, [profile, queryClient, workerLimit.refetch]),
+      return () => { cancelled = true; };
+    }, [profile?.id, profile?.role]),
   );
 
-  const [selectedCategory, setSelectedCategory] = useState<JobCategory | null>(null);
+  // Sync profile from DB on mount (once per session / user change) so that
+  // is_approved and category approvals are current before the radar is interactive.
+  useEffect(() => {
+    if (profile?.role !== 'worker' || !profile.id) return;
+    let cancelled = false;
+    void (async () => {
+      const { syncProfileWithDatabase } = await import('@utils/profileSync');
+      const synced = await syncProfileWithDatabase(profile);
+      if (
+        !cancelled &&
+        (synced.id !== profile.id ||
+          synced.is_approved !== profile.is_approved ||
+          synced.category_1_approved !== profile.category_1_approved ||
+          synced.category_2_approved !== profile.category_2_approved)
+      ) {
+        useAuthStore.getState().setProfile(synced);
+      }
+    })();
+    return () => { cancelled = true; };
+  // Only re-run when the user's identity changes, not on every profile field update
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.id, profile?.role]);
+
+  // On every focus: refresh limits and invalidate radar feed
+  useFocusEffect(
+    useCallback(() => {
+      if (profile?.role !== 'worker' || !profile.id) return;
+      void workerLimit.refetch();
+      void queryClient.invalidateQueries({ queryKey: JOB_KEYS.feed('open') });
+    }, [profile?.id, profile?.role, queryClient, workerLimit.refetch]),
+  );
+
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [acceptingJobId, setAcceptingJobId] = useState<string | null>(null);
   const [acceptedJobIds, setAcceptedJobIds] = useState<Set<string>>(new Set());
   const [processJobIds, setProcessJobIds] = useState<Set<string>>(new Set());
@@ -179,39 +285,56 @@ export const HomeScreen: React.FC = () => {
     })();
   }, [profile?.id, profile?.role]);
 
-  const catalog = useCatalog();
-
-  const approvedCategories = useMemo(
-    () => getWorkerApprovedCategories(profile),
-    [profile],
-  );
-
   const feedCategories = useMemo(
     () => getWorkerFeedCategories(profile),
     [profile],
   );
 
+  // Solo las categorías principales que el técnico realmente cubre.
   const filterChips = useMemo<CategoryItem[]>(() => {
-    const allowed = new Set(feedCategories);
-    return sortServiceTypesByConfig(
-      catalog.serviceTypes.filter((t: ServiceType) => allowed.has(t.slug)) as ServiceType[],
-    ).map((t) => ({
-      value: t.slug,
-      label: t.name.trim(),
-    }));
-  }, [catalog.serviceTypes, feedCategories]);
+    const covered = new Set(feedCategories);
+    return RADAR_MAIN_FILTERS
+      .filter((f) => [...f.family].some((s) => covered.has(s)))
+      .map((f) => ({ value: f.id, label: f.label }));
+  }, [feedCategories]);
+
+  const selectedFamily = useMemo<Set<string> | null>(() => {
+    if (!selectedCategory) return null;
+    return RADAR_MAIN_FILTERS.find((f) => f.id === selectedCategory)?.family ?? null;
+  }, [selectedCategory]);
 
   const effectiveCategories = useMemo<JobCategory[] | undefined>(() => {
     if (!profile?.is_approved) return undefined;
-    if (selectedCategory) {
-      if (!approvedCategories.includes(selectedCategory)) return undefined;
-      return expandWorkerFeedCategories([selectedCategory]);
+    if (selectedFamily) {
+      const covered = new Set(feedCategories);
+      const inter = [...selectedFamily].filter((s) => covered.has(s));
+      return (inter.length > 0 ? inter : feedCategories) as JobCategory[];
     }
     return feedCategories.length > 0 ? feedCategories : undefined;
-  }, [selectedCategory, approvedCategories, feedCategories, profile?.is_approved]);
+  }, [selectedFamily, feedCategories, profile?.is_approved]);
+
+  const handleWorkerApproved = useCallback((job: Job) => {
+    // Client selected this worker — transition from "awaiting" to "accepted"
+    setPendingApplicationIds((prev) => { const s = new Set(prev); s.delete(job.id); return s; });
+    setAcceptedJobIds((prev) => new Set([...prev, job.id]));
+    toast.show({ type: 'success', message: '🎉 ¡Fuiste seleccionado! El cliente te eligió para la chamba.' }, 4000);
+    const workerId = useAuthStore.getState().profile?.id ?? profile?.id;
+    setTimeout(() => {
+      if (workerId) {
+        void useAssignmentsStore.getState().refresh(workerId);
+        queryClient.invalidateQueries({ queryKey: JOB_KEYS.myJobs(workerId) });
+      }
+      navigation
+        .getParent<BottomTabNavigationProp<WorkerTabParamList>>()
+        ?.navigate('MyJobs');
+    }, 2500);
+    setTimeout(() => {
+      setRemovedFromFeedIds((prev) => new Set([...prev, job.id]));
+    }, 4000);
+  }, [navigation, toast, profile?.id, queryClient]);
 
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
-    useJobFeed('open', undefined, effectiveCategories);
+    useJobFeed('open', undefined, effectiveCategories, handleWorkerApproved);
 
   // Precargar páginas adicionales para el radar (todos los marcadores en mapa).
   useEffect(() => {
@@ -239,17 +362,22 @@ export const HomeScreen: React.FC = () => {
 
   const feedJobs = useMemo(() => {
     const filterByCategory = effectiveCategories && effectiveCategories.length > 0;
+    // Filtro por categoría principal seleccionada (chip) — familia de sub-servicios.
+    const inSelectedGroup = (category: string): boolean =>
+      !selectedFamily || selectedFamily.has(fromDbJobCategory(category) ?? category);
     const byId = new Map<string, Job>();
 
     for (const j of queryJobs) {
       if (removedFromFeedIds.has(j.id)) continue;
       if (filterByCategory && !workerCoversJobCategory(profile, j.category)) continue;
+      if (!inSelectedGroup(j.category)) continue;
       byId.set(j.id, storeMap.get(j.id) ?? j);
     }
 
     for (const raw of storeJobs) {
       if (byId.has(raw.id)) continue;
       if (filterByCategory && !workerCoversJobCategory(profile, raw.category)) continue;
+      if (!inSelectedGroup(raw.category)) continue;
       if (raw.status !== 'open' && !processJobIds.has(raw.id)) continue;
       if (removedFromFeedIds.has(raw.id)) continue;
       byId.set(raw.id, storeMap.get(raw.id) ?? raw);
@@ -273,16 +401,33 @@ export const HomeScreen: React.FC = () => {
     removedFromFeedIds,
     expiredLocallyIds,
     effectiveCategories,
+    selectedFamily,
     profile,
   ]);
 
-  const prevFeedCountRef = useRef(feedJobs.length);
+  // Filtro por radio de búsqueda — solo de presentación (no toca la query ni el matching server-side).
+  // Si aún no tenemos GPS propio o el trabajo no tiene coordenadas, no lo ocultamos.
+  const feedJobsInRadius = useMemo(() => {
+    const workerLat = workerProfile?.last_lat;
+    const workerLng = workerProfile?.last_lng;
+    if (!hasUsableJobCoordinates(workerLat, workerLng)) return feedJobs;
+
+    return feedJobs.filter((j) => {
+      const lat = j.location?.lat;
+      const lng = j.location?.lng;
+      if (!hasUsableJobCoordinates(lat, lng)) return true;
+      const km = haversineDistanceKm(workerLat!, workerLng!, lat!, lng!);
+      return !Number.isFinite(km) || km <= radiusKm;
+    });
+  }, [feedJobs, workerProfile?.last_lat, workerProfile?.last_lng, radiusKm]);
+
+  const prevFeedCountRef = useRef(feedJobsInRadius.length);
   useEffect(() => {
-    if (prevFeedCountRef.current === 0 && feedJobs.length > 0) {
+    if (prevFeedCountRef.current === 0 && feedJobsInRadius.length > 0) {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     }
-    prevFeedCountRef.current = feedJobs.length;
-  }, [feedJobs.length]);
+    prevFeedCountRef.current = feedJobsInRadius.length;
+  }, [feedJobsInRadius.length]);
 
   const handleAccept = useCallback(async (job: Job) => {
     if (!profile?.id || !profile.is_approved) return;
@@ -385,11 +530,16 @@ export const HomeScreen: React.FC = () => {
   const availability = workerProfile?.availability_status ?? 'offline';
   const isOnline = availability === 'available';
 
-  const filtersTopOffset =
-    insets.top + 8 + FLOATING_HEADER_HEIGHT + FILTERS_GAP;
-
   const sheetListHeader = (
     <>
+      {filterChips.length > 0 && (
+        <FloatingRadarFilters
+          inline
+          items={filterChips.map((c) => ({ slug: c.value, label: c.label }))}
+          selectedSlug={selectedCategory}
+          onSelect={(slug) => setSelectedCategory(slug)}
+        />
+      )}
       {!isApproved && (
         <View style={styles.pendingBanner}>
           <Ionicons name="time-outline" size={14} color={RADAR_MUTED} />
@@ -419,7 +569,7 @@ export const HomeScreen: React.FC = () => {
           </Text>
         </Pressable>
       )}
-      {isApproved && feedJobs.length > 0 && dismissedCount === 0 && (
+      {isApproved && feedJobsInRadius.length > 0 && dismissedCount === 0 && (
         <View style={styles.swipeHintBanner}>
           <Ionicons name="list-outline" size={15} color={RADAR_MUTED} />
           <Text style={styles.swipeHintText}>
@@ -475,32 +625,40 @@ export const HomeScreen: React.FC = () => {
   ]);
 
   const emptyHint = selectedCategory
-    ? `Filtrando por ${catalog.getLabel(selectedCategory)}`
+    ? `Filtrando por ${filterChips.find((c) => c.value === selectedCategory)?.label ?? ''}`
     : undefined;
+
+  // El mapa arranca sutilmente por encima de la barra de radio (no llega al tope superior).
+  const mapTop = radiusBarTop > 0 ? Math.max(0, radiusBarTop - 12) : 0;
 
   return (
     <View style={styles.root}>
-      <RadarFullMap
-        jobs={feedJobs}
-        searchHint={emptyHint}
-        isSearching={isOnline && isApproved}
-      />
+      <View style={[styles.mapWrap, { top: mapTop }]}>
+        <RadarFullMap
+          jobs={feedJobsInRadius}
+          searchHint={emptyHint}
+          isSearching={isOnline && isApproved && workerHasLocation}
+          workerLat={workerProfile?.last_lat}
+          workerLng={workerProfile?.last_lng}
+          radiusKm={radiusKm}
+        />
+      </View>
 
-      <FloatingRadarHeader
+      <RadarTopPanel
         topInset={insets.top}
         avatarUri={profile?.avatar_url}
         fullName={profile?.full_name}
         isOnline={isOnline}
+        onToggleOnline={handleToggleOnline}
+        isToggling={isTogglingAvail}
+        ratingLabel={formatRatingAvg(workerProfile?.rating_avg)}
+        earningsTodayCents={todayStats.earningsToday}
+        jobsToday={todayStats.jobsToday}
+        radiusKm={radiusKm}
+        onChangeRadiusKm={handleChangeRadius}
+        onRadiusBarTop={setRadiusBarTop}
+        onLayoutHeight={setTopPanelHeight}
       />
-
-      {filterChips.length > 0 && (
-        <FloatingRadarFilters
-          topOffset={filtersTopOffset}
-          items={filterChips.map((c) => ({ slug: c.value, label: c.label }))}
-          selectedSlug={selectedCategory}
-          onSelect={(slug) => setSelectedCategory(slug as JobCategory | null)}
-        />
-      )}
 
       {toast.visible && (
         <Animated.View
@@ -521,7 +679,7 @@ export const HomeScreen: React.FC = () => {
       )}
 
       <JobBottomSheet
-        jobs={feedJobs}
+        jobs={feedJobsInRadius}
         isLoading={isLoading}
         isFetchingNextPage={isFetchingNextPage}
         onEndReached={handleEndReached}
@@ -539,7 +697,13 @@ export const TechnicalRadarScreen = HomeScreen;
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#EEF2F7',
+  },
+  mapWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   toast: {
     position: 'absolute',

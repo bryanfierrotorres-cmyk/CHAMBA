@@ -1,5 +1,9 @@
 import { supabase } from '@services/supabase';
+import { ENV } from '@utils/env';
+import { demoDb } from '@/demo/demoDb';
 import type { JobCategory } from '@/types';
+
+const IS_DEMO = ENV.DATA_MODE === 'demo';
 
 export type WorkerWalletPaymentStatus = 'pending' | 'processing' | 'paid' | 'failed';
 
@@ -87,6 +91,25 @@ const mapWalletRow = (row: WalletRow): WorkerWalletEarning => ({
 export const fetchWorkerWalletEarnings = async (
   workerId: string,
 ): Promise<WorkerWalletEarning[]> => {
+  if (IS_DEMO) {
+    const assignments = await demoDb.listWorkerAssignments(workerId);
+    return assignments
+      .filter((a) => a.selection_status === 'approved' && a.job?.status === 'completed' && a.completed_at)
+      .sort((a, b) => new Date(b.completed_at!).getTime() - new Date(a.completed_at!).getTime())
+      .map((a) => ({
+        id: a.id,
+        jobId: a.job_id,
+        workerId: a.worker_id,
+        assignedAt: a.assigned_at,
+        completedAt: a.completed_at,
+        paymentStatus: a.payment_status,
+        title: a.job?.title?.trim() || 'Servicio completado',
+        category: (a.job?.category ?? 'otro') as JobCategory,
+        workerPayout: Number(a.job?.worker_payout) || 0,
+        jobUpdatedAt: a.job?.updated_at ?? a.assigned_at,
+      }));
+  }
+
   const { data, error } = await supabase
     .from('job_assignments')
     .select(WALLET_EARNINGS_SELECT)

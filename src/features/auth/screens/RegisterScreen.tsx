@@ -127,9 +127,9 @@ export const RegisterScreen: React.FC = () => {
         'Cuenta creada',
         role === 'worker'
           ? 'Ingresá con tu nombre y celular. Completá tus documentos y esperá la aprobación del administrador.'
-          : 'Ingresá con tu nombre y celular. Tu cuenta quedará en revisión hasta que el administrador la apruebe.',
+          : 'Ingresá con tu nombre y celular para empezar a solicitar servicios.',
       );
-      navigation.navigate('Login');
+      navigation.navigate('Login', { prefillPhone: telefono });
     } catch {
       // Error ya está en el store
     }

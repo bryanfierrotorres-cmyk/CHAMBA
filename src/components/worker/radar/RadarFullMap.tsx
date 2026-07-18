@@ -1,11 +1,19 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import MapView from 'react-native-maps';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
+import MapView from '@components/maps/ChambaMap';
 import { ChambaMapMarker } from '@components/maps/ChambaMapMarker';
-import { RadarSearchingEmptyState } from './RadarSearchingEmptyState';
+import { RadarSweepOverlay } from './RadarSweepOverlay';
 import { formatCurrency } from '@utils/formatters';
 import { hasUsableJobCoordinates } from '@utils/shareJobLocation';
 import type { Job } from '@/types';
+
+/**
+ * Desplazamiento vertical (px) del centro visual hacia abajo. El mapa ya no llega
+ * al tope superior (arranca sobre la barra de radio), así que solo hace falta un
+ * pequeño empuje para dejar el punto azul cómodo sobre la hoja inferior. El mapa
+ * se desplaza con el MISMO offset, así el punto sigue coincidiendo con la ubicación.
+ */
+const RADAR_CENTER_OFFSET_Y = 20;
 
 const MANAGUA_REGION = {
   latitude: 12.1364,
@@ -23,25 +31,47 @@ interface RadarPin {
   longitude: number;
 }
 
-const mapRegionForPins = (pins: RadarPin[]) => {
-  if (pins.length === 0) return MANAGUA_REGION;
-  if (pins.length === 1) {
+interface WorkerCoords {
+  latitude: number;
+  longitude: number;
+}
+
+const KM_PER_DEGREE_LAT = 111;
+
+/** Convierte el radio (km) al span en grados de latitud que debe mostrar el mapa (diámetro + 35% margen). */
+const radiusToDelta = (radiusKm: number): number =>
+  Math.max(0.02, (radiusKm * 2 * 1.35) / KM_PER_DEGREE_LAT);
+
+/**
+ * El técnico siempre queda en el centro exacto del mapa (como apps de despacho) y
+ * el zoom depende únicamente del radio elegido — no de los pines ni del arrastre.
+ * El radar se dibuja centrado sobre este mismo punto, así que ambos coinciden.
+ */
+const computeRadarRegion = (
+  workerCoords: WorkerCoords | null,
+  radiusKm: number,
+  pins: RadarPin[],
+) => {
+  if (workerCoords) {
+    const delta = radiusToDelta(radiusKm);
     return {
-      latitude: pins[0].latitude,
-      longitude: pins[0].longitude,
-      latitudeDelta: 0.025,
-      longitudeDelta: 0.025,
+      latitude: workerCoords.latitude,
+      longitude: workerCoords.longitude,
+      latitudeDelta: delta,
+      longitudeDelta: delta,
     };
   }
+
+  // Sin ubicación del técnico el radar no se enciende; este fallback solo aplica
+  // a estados transitorios (mapa de fondo mientras se resuelve el GPS).
+  if (pins.length === 0) return MANAGUA_REGION;
   const lats = pins.map((p) => p.latitude);
   const lngs = pins.map((p) => p.longitude);
-  const latSpan = Math.max(...lats) - Math.min(...lats);
-  const lngSpan = Math.max(...lngs) - Math.min(...lngs);
   return {
     latitude: (Math.min(...lats) + Math.max(...lats)) / 2,
     longitude: (Math.min(...lngs) + Math.max(...lngs)) / 2,
-    latitudeDelta: Math.max(0.03, latSpan * 1.6 + 0.02),
-    longitudeDelta: Math.max(0.03, lngSpan * 1.6 + 0.02),
+    latitudeDelta: 0.05,
+    longitudeDelta: 0.05,
   };
 };
 
@@ -51,12 +81,20 @@ interface RadarFullMapProps {
   searchHint?: string;
   /** Técnico en línea y buscando — activa el radar central sobre el mapa. */
   isSearching?: boolean;
+  /** Última ubicación GPS conocida del técnico — centra el mapa y el radar en ella. */
+  workerLat?: number | null;
+  workerLng?: number | null;
+  /** Radio de búsqueda (km) — controla el nivel de zoom automático del mapa. */
+  radiusKm?: number;
 }
 
 export const RadarFullMap: React.FC<RadarFullMapProps> = ({
   jobs,
   searchHint,
   isSearching = true,
+  workerLat,
+  workerLng,
+  radiusKm = 8,
 }) => {
   const pins = useMemo(() => {
     return jobs
@@ -76,20 +114,55 @@ export const RadarFullMap: React.FC<RadarFullMapProps> = ({
       .filter((p): p is RadarPin => p !== null);
   }, [jobs]);
 
-  const region = useMemo(() => mapRegionForPins(pins), [pins]);
-  /** Radar visible mientras busca y no hay marcadores GPS en el mapa. */
-  const showSearchingRadar = isSearching && pins.length === 0;
+  const workerCoords = useMemo<WorkerCoords | null>(
+    () => (hasUsableJobCoordinates(workerLat, workerLng) ? { latitude: workerLat!, longitude: workerLng! } : null),
+    [workerLat, workerLng],
+  );
+  const region = useMemo(
+    () => computeRadarRegion(workerCoords, radiusKm, pins),
+    [workerCoords, radiusKm, pins],
+  );
+  /** El radar giratorio se dibuja centrado sobre la ubicación del técnico mientras busca. */
+  const showSweep = isSearching;
+
+  // Aparición/desaparición suave del radar al cambiar disponibilidad (no de golpe).
+  const sweepOpacity = useRef(new Animated.Value(showSweep ? 1 : 0)).current;
+  const [sweepMounted, setSweepMounted] = useState(showSweep);
+
+  useEffect(() => {
+    if (showSweep) {
+      setSweepMounted(true);
+      Animated.timing(sweepOpacity, {
+        toValue: 1,
+        duration: 480,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(sweepOpacity, {
+        toValue: 0,
+        duration: 340,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished) setSweepMounted(false);
+      });
+    }
+  }, [showSweep, sweepOpacity]);
 
   return (
     <View style={styles.container}>
       <MapView
-        key={pins.map((p) => p.jobId).join('|') || 'empty'}
         style={styles.map}
         initialRegion={region}
+        scrollEnabled={false}
+        zoomEnabled={false}
+        centerOffsetY={RADAR_CENTER_OFFSET_Y}
       >
         {pins.map((pin) => (
           <ChambaMapMarker
             key={pin.jobId}
+            id={pin.jobId}
             coordinate={{ latitude: pin.latitude, longitude: pin.longitude }}
             title={pin.title}
             description={pin.price}
@@ -98,13 +171,15 @@ export const RadarFullMap: React.FC<RadarFullMapProps> = ({
         ))}
       </MapView>
 
-      {showSearchingRadar && (
-        <View style={styles.emptyOverlay} pointerEvents="none">
-          <RadarSearchingEmptyState hint={searchHint} />
-        </View>
+      {sweepMounted && (
+        <Animated.View style={[styles.sweepCenterOverlay, { opacity: sweepOpacity }]} pointerEvents="none">
+          <View style={{ transform: [{ translateY: RADAR_CENTER_OFFSET_Y }] }}>
+            <RadarSweepOverlay size={170} />
+          </View>
+        </Animated.View>
       )}
 
-      {!showSearchingRadar && jobs.length > 0 && pins.length === 0 && (
+      {!isSearching && jobs.length > 0 && pins.length === 0 && (
         <View style={styles.hintOverlay} pointerEvents="none">
           <Text style={styles.hintText}>
             Sin coordenadas GPS — revisá la dirección en cada solicitud
@@ -123,15 +198,12 @@ const styles = StyleSheet.create({
   map: {
     ...StyleSheet.absoluteFillObject,
   },
-  emptyOverlay: {
+  sweepCenterOverlay: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 8,
-    elevation: 8,
-    backgroundColor: 'rgba(248, 250, 252, 0.78)',
+    zIndex: 6,
+    elevation: 6,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingBottom: '18%',
   },
   hintOverlay: {
     position: 'absolute',

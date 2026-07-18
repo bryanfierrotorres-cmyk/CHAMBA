@@ -1,6 +1,7 @@
+import React from 'react';
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery, type QueryClient } from '@tanstack/react-query';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 
 import {
 
@@ -40,9 +41,9 @@ import {
 } from '@utils/localAssignments';
 
 import { QUERY_STALE_FEED_MS } from '@constants/queryCache';
-import { workerActiveCountKey } from '@features/jobs/hooks/useJobActiveLimits';
+import { JOB_KEYS, workerActiveCountKey } from './jobKeys';
+export { JOB_KEYS, workerActiveCountKey };
 import { isWorkerPendingClientSelection } from '@utils/jobActiveLimits';
-import { WALLET_KEYS } from '@features/jobs/hooks/useWorkerWallet';
 import { fromDbJobCategory } from '@constants/chambaCategories';
 import { workerCoversJobCategory } from '@utils/workerCategoryAccess';
 import { syncProfileWithDatabase } from '@utils/profileSync';
@@ -56,28 +57,6 @@ import type {
 } from '@/types';
 import { phaseToJobStatus } from '@utils/workerOperationalPhase';
 import { patchClientOrderRowInCache } from '@features/client/hooks/useClientOrders';
-
-
-
-export const JOB_KEYS = {
-
-  all: ['jobs'] as const,
-
-  feed: (status?: JobStatus, category?: JobCategory) =>
-
-    ['jobs', 'feed', status, category] as const,
-
-  detail: (id: string) => ['jobs', id] as const,
-
-  myJobs: (workerId: string) => ['jobs', 'my', workerId] as const,
-
-  adminAll: () => ['jobs', 'admin', 'all'] as const,
-
-  clientOrders: (userId: string) => ['client-orders', userId] as const,
-
-  adminControl: () => ['admin', 'control', 'jobs'] as const,
-
-};
 
 
 
@@ -139,6 +118,8 @@ export const useJobFeed = (
 
   categories?: JobCategory[],
 
+  onWorkerApproved?: (job: Job) => void,
+
 ) => {
 
   const { upsertJob, removeJob } = useJobStore();
@@ -146,6 +127,10 @@ export const useJobFeed = (
   const profile = useAuthStore((s) => s.profile);
 
   const queryClient = useQueryClient();
+
+  // Stable ref so the Realtime callback always calls the latest handler without restarting the subscription
+  const onWorkerApprovedRef = useRef(onWorkerApproved);
+  useEffect(() => { onWorkerApprovedRef.current = onWorkerApproved; }, [onWorkerApproved]);
 
 
 
@@ -185,9 +170,15 @@ export const useJobFeed = (
 
     refetchOnMount: true,
 
+    // Fallback poll — keeps the feed alive if Realtime WebSocket drops
+    refetchInterval: 8_000,
+    refetchIntervalInBackground: false,
+
   });
 
 
+
+  const dispatchTimeoutsRef = React.useRef<Map<string, NodeJS.Timeout>>(new Map());
 
   useEffect(() => {
 
@@ -216,16 +207,37 @@ export const useJobFeed = (
     };
 
     const start = async () => {
-      const synced = await syncProfileWithDatabase(profile);
-      if (cancelled) return;
-
-      if (synced.id !== profile.id || synced.is_approved !== profile.is_approved) {
-        useAuthStore.getState().setProfile(synced);
-      }
-
+      // Subscribe immediately — don't block on profile sync to avoid missing early events
       teardown = subscribeToWorkerRadarJobs(({ job, eventType }) => {
+        const timeoutMap = dispatchTimeoutsRef.current;
         if (eventType === 'DELETE' || job.status !== 'open') {
-          removeJob(job.id);
+          // Si el técnico ya aplicó a este job (está en pending_bidding),
+          // lo actualizamos en el store pero NO lo quitamos del radar.
+          const workerHasApplication = useAssignmentsStore
+            .getState()
+            .items.some((a) => a.job_id === job.id);
+
+          if (timeoutMap.has(job.id)) {
+            clearTimeout(timeoutMap.get(job.id)!);
+            timeoutMap.delete(job.id);
+          }
+
+          if (workerHasApplication && job.status === 'pending_bidding') {
+            // Mantener en radar con estado actualizado para mostrar "awaitingClientChoice"
+            upsertJob(job);
+          } else if (workerHasApplication && job.status === 'taken') {
+            const currentWorkerId = useAuthStore.getState().profile?.id;
+            if (job.assigned_worker_id && job.assigned_worker_id === currentWorkerId) {
+              // Este técnico fue el elegido — mantener en store y notificar al HomeScreen
+              upsertJob(job);
+              onWorkerApprovedRef.current?.(job);
+            } else {
+              // Otro técnico fue seleccionado — quitar del radar silenciosamente
+              removeJob(job.id);
+            }
+          } else {
+            removeJob(job.id);
+          }
           void queryClient.invalidateQueries({ queryKey: feedQueryKey });
           return;
         }
@@ -235,6 +247,13 @@ export const useJobFeed = (
         upsertJob(job);
         void queryClient.invalidateQueries({ queryKey: feedQueryKey });
       });
+
+      // Sync profile in parallel — update store if approval/categories changed
+      const synced = await syncProfileWithDatabase(profile);
+      if (cancelled) return;
+      if (synced.id !== profile.id || synced.is_approved !== profile.is_approved) {
+        useAuthStore.getState().setProfile(synced);
+      }
     };
 
     void start();
@@ -243,6 +262,8 @@ export const useJobFeed = (
       cancelled = true;
       teardown?.();
       teardown = undefined;
+      dispatchTimeoutsRef.current.forEach(clearTimeout);
+      dispatchTimeoutsRef.current.clear();
     };
 
   }, [
@@ -321,7 +342,7 @@ export const useMyJobs = () => {
       if (synced.id !== profile.id || synced.is_approved !== profile.is_approved) {
         useAuthStore.getState().setProfile(synced);
       }
-      return fetchWorkerAssignments(synced.id, synced);
+      return fetchWorkerAssignments(synced.id, null);
     },
 
     enabled: !!profile?.id && profile.role === 'worker',
@@ -333,11 +354,12 @@ export const useMyJobs = () => {
     refetchOnMount: true,
 
     refetchInterval: (query) =>
-      workerAgendaNeedLivePoll(query.state.data) ? 8_000 : false,
+      workerAgendaNeedLivePoll(query.state.data) ? 10_000 : false,
 
     refetchIntervalInBackground: true,
 
-    placeholderData: (previousData) => previousData ?? storeItems,
+    // Keep previous data visible while refetching — prevents card flicker
+    placeholderData: (previousData) => previousData ?? (storeItems.length > 0 ? storeItems : undefined),
 
   });
 
@@ -393,6 +415,8 @@ export const useActiveJob = (jobId: string) => {
 
     staleTime: 10_000,
 
+    retry: 0,
+
   });
 
 };
@@ -400,8 +424,6 @@ export const useActiveJob = (jobId: string) => {
 
 
 export const useStartJob = () => {
-
-  const queryClient = useQueryClient();
 
   const profile = useAuthStore((s) => s.profile);
 
@@ -411,22 +433,8 @@ export const useStartJob = () => {
 
     mutationFn: (jobId: string) => startJob(jobId, profile?.id),
 
-    onSuccess: (_data, jobId) => {
-
-      queryClient.invalidateQueries({ queryKey: JOB_KEYS.all });
-
-      queryClient.invalidateQueries({ queryKey: JOB_KEYS.detail(jobId) });
-
-      if (profile?.id) {
-
-        queryClient.invalidateQueries({ queryKey: JOB_KEYS.myJobs(profile.id) });
-
-      }
-
-      queryClient.invalidateQueries({ queryKey: ['client-orders'] });
-
-      queryClient.invalidateQueries({ queryKey: JOB_KEYS.adminControl() });
-
+    onSuccess: (_data, _jobId) => {
+      // Opt-out of invalidateQueries to avoid race conditions with optimistic cache/Realtime
     },
 
   });
@@ -437,7 +445,6 @@ export const useStartJob = () => {
 
 export const useAdvanceOperationalPhase = () => {
   const queryClient = useQueryClient();
-  const profile = useAuthStore((s) => s.profile);
 
   return useMutation({
     mutationFn: ({
@@ -469,11 +476,14 @@ export const useAdvanceOperationalPhase = () => {
       const status = phaseToJobStatus(nextPhase);
       const profileId = useAuthStore.getState().profile?.id;
       const patchWorkerId = workerId ?? profileId;
+      const now = new Date().toISOString();
+
+      // 1. Patch Zustand store (by composite key and by match)
       if (patchWorkerId) {
         useAssignmentsStore.getState().patchItem(
           `${jobId}-${patchWorkerId}`,
           {},
-          { operational_phase: nextPhase, status, updated_at: new Date().toISOString() },
+          { operational_phase: nextPhase, status, updated_at: now },
         );
       }
       const items = useAssignmentsStore.getState().items;
@@ -482,20 +492,58 @@ export const useAdvanceOperationalPhase = () => {
         useAssignmentsStore.getState().patchItem(
           match.id,
           {},
-          { operational_phase: nextPhase, status, updated_at: new Date().toISOString() },
+          { operational_phase: nextPhase, status, updated_at: now },
         );
       }
+
+      // 2. Patch React Query cache directly — instant UI update
+      const effectiveWorkerId = patchWorkerId ?? profileId;
+      if (effectiveWorkerId) {
+        queryClient.setQueryData<JobAssignment[]>(
+          JOB_KEYS.myJobs(effectiveWorkerId),
+          (old: JobAssignment[] | undefined) =>
+            (old ?? []).map((a: JobAssignment) =>
+              a.job_id === jobId
+                ? {
+                    ...a,
+                    job: a.job
+                      ? {
+                          ...a.job,
+                          status,
+                          operational_phase: nextPhase,
+                          updated_at: now,
+                        }
+                      : a.job,
+                  }
+                : a,
+            ),
+        );
+      }
+
+      // 3. Patch detail queries (used by JobActiveScreen)
+      queryClient.setQueryData<Job>(
+        JOB_KEYS.detail(jobId),
+        (old: Job | undefined) => old ? { ...old, status, operational_phase: nextPhase, updated_at: now } : old
+      );
+
+      if (profileId) {
+        queryClient.setQueryData<{ job: Job, assignment: JobAssignment }>(
+          [...JOB_KEYS.detail(jobId), 'active', profileId],
+          (old: { job: Job, assignment: JobAssignment } | undefined) => {
+            if (!old) return old;
+            return {
+              ...old,
+              job: { ...old.job, status, operational_phase: nextPhase, updated_at: now },
+            };
+          }
+        );
+      }
+
       await patchLocalJobStatus(jobId, status, undefined, nextPhase);
     },
 
-    onSettled: (_data, _err, { jobId }) => {
-      queryClient.invalidateQueries({ queryKey: JOB_KEYS.all });
-      queryClient.invalidateQueries({ queryKey: JOB_KEYS.detail(jobId) });
-      if (profile?.id) {
-        queryClient.invalidateQueries({ queryKey: JOB_KEYS.myJobs(profile.id) });
-        queryClient.invalidateQueries({ queryKey: workerActiveCountKey(profile.id) });
-      }
-      queryClient.invalidateQueries({ queryKey: ['client-orders'] });
+    onSettled: () => {
+      // Optimistic updates are already in place, avoid refetching right away to prevent flicker.
     },
   });
 };
@@ -544,7 +592,25 @@ export const useCompleteJob = () => {
                 : a,
             ),
         );
+        
+        queryClient.setQueryData<{ job: Job, assignment: JobAssignment }>(
+          [...JOB_KEYS.detail(jobId), 'active', profile.id],
+          (old: { job: Job, assignment: JobAssignment } | undefined) => {
+            if (!old) return old;
+            return {
+              ...old,
+              assignment: { ...old.assignment, completed_at: now },
+              job: { ...old.job, status: 'completed' as const, operational_phase: 'completed' as const, updated_at: now },
+            };
+          }
+        );
       }
+      
+      queryClient.setQueryData<Job>(
+        JOB_KEYS.detail(jobId),
+        (old: Job | undefined) => old ? { ...old, status: 'completed' as const, operational_phase: 'completed' as const, updated_at: now } : old
+      );
+
       if (clientId) {
         patchClientOrderRowInCache(queryClient, clientId, {
           id: jobId,
@@ -556,24 +622,8 @@ export const useCompleteJob = () => {
       await patchLocalJobStatus(jobId, 'completed', now, 'completed');
     },
 
-    onSettled: (_data, _err, { jobId, job }) => {
-      queryClient.invalidateQueries({ queryKey: JOB_KEYS.all });
-      queryClient.invalidateQueries({ queryKey: JOB_KEYS.adminControl() });
-      queryClient.invalidateQueries({ queryKey: JOB_KEYS.detail(jobId) });
-      queryClient.invalidateQueries({ queryKey: ['client-orders'] });
-      if (job?.created_by) {
-        patchClientOrderRowInCache(queryClient, job.created_by, {
-          id: jobId,
-          status: 'completed',
-          operational_phase: 'completed',
-          updated_at: new Date().toISOString(),
-        });
-      }
-      if (profile?.id) {
-        queryClient.invalidateQueries({ queryKey: JOB_KEYS.myJobs(profile.id) });
-        queryClient.invalidateQueries({ queryKey: workerActiveCountKey(profile.id) });
-        queryClient.invalidateQueries({ queryKey: WALLET_KEYS.earnings(profile.id) });
-      }
+    onSettled: () => {
+      // Prevents UI flicker by keeping optimistic data until Realtime Sync
     },
   });
 };
@@ -621,26 +671,14 @@ export const useAcceptJob = () => {
 
 
 
-    onSuccess: async (data, { jobId, job }) => {
+    onSuccess: async (data, { job }) => {
 
       if (data.assignment) {
 
         await syncAcceptedJobCache(data.assignment, job, queryClient);
 
       }
-
-      queryClient.invalidateQueries({ queryKey: JOB_KEYS.all });
-
-      queryClient.invalidateQueries({ queryKey: JOB_KEYS.detail(jobId) });
-
-      queryClient.invalidateQueries({ queryKey: ['client-orders'] });
-
-      queryClient.invalidateQueries({ queryKey: JOB_KEYS.adminControl() });
-
-      if (profile?.id) {
-        queryClient.invalidateQueries({ queryKey: workerActiveCountKey(profile.id) });
-      }
-
+      // No invalidateQueries immediately after to let Optimistic Sync handle UI without flickering
     },
 
 

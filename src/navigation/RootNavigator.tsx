@@ -10,6 +10,7 @@ import { AdminNavigator }  from './AdminNavigator';
 import { ClientNavigator } from './ClientNavigator';
 import { SplashScreen }    from '@features/auth/screens/SplashScreen';
 import { attachWebHistory, syncWebHistoryOnNavigate } from './webHistory';
+import { useAppLifecycleResilience } from '../hooks/useAppLifecycleResilience';
 import type { RootStackParamList } from '@/types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -24,6 +25,8 @@ export const RootNavigator: React.FC = () => {
   const [splashDone, setSplashDone]      = useState(false);
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
   const detachHistoryRef = useRef<(() => void) | null>(null);
+
+  useAppLifecycleResilience(navigationRef);
 
   /** Splash decorativo — nunca bloquear el acceso a login/home. */
   useEffect(() => {

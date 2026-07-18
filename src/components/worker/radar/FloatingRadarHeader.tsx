@@ -1,27 +1,30 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Switch, Platform } from 'react-native';
 import { Avatar } from '@components/Avatar';
 import {
   RADAR_BORDER,
   RADAR_DEEP_BLUE,
   RADAR_FLOAT_BG,
-  RADAR_HORIZONTAL,
   RADAR_MUTED,
   RADAR_TITLE,
 } from './radarTheme';
 
 interface FloatingRadarHeaderProps {
-  topInset: number;
   avatarUri?: string | null;
   fullName?: string | null;
   isOnline: boolean;
+  /** Si se provee, muestra un switch interactivo en vez del badge pasivo. */
+  onToggleOnline?: (next: boolean) => void;
+  isToggling?: boolean;
 }
 
+/** Fila de saludo + estado — se posiciona externamente (ver RadarTopPanel). */
 export const FloatingRadarHeader: React.FC<FloatingRadarHeaderProps> = ({
-  topInset,
   avatarUri,
   fullName,
   isOnline,
+  onToggleOnline,
+  isToggling,
 }) => {
   const displayName = fullName?.trim() || 'Técnico';
   const initials = useMemo(() => {
@@ -31,7 +34,6 @@ export const FloatingRadarHeader: React.FC<FloatingRadarHeaderProps> = ({
   }, [displayName]);
 
   return (
-    <View style={[styles.wrap, { top: topInset + 8 }]}>
       <View style={styles.card}>
         <View style={styles.left}>
           {avatarUri ? (
@@ -49,24 +51,38 @@ export const FloatingRadarHeader: React.FC<FloatingRadarHeaderProps> = ({
           </View>
         </View>
 
-        <View style={[styles.statusBadge, !isOnline && styles.statusBadgeOffline]}>
-          <Text style={styles.statusDot}>{isOnline ? '🟢' : '⚪️'}</Text>
-          <Text style={[styles.statusText, !isOnline && styles.statusTextOffline]} numberOfLines={2}>
-            {isOnline ? 'Buscando chambas…' : 'Fuera de línea'}
-          </Text>
-        </View>
+        {onToggleOnline ? (
+          <View style={[styles.toggleBadge, !isOnline && styles.toggleBadgeOffline]}>
+            <View style={styles.toggleTextCol}>
+              <Text style={[styles.toggleTitle, !isOnline && styles.toggleTitleOffline]} numberOfLines={1}>
+                {isOnline ? 'Disponible' : 'Sin conexión'}
+              </Text>
+              <Text style={[styles.toggleSub, !isOnline && styles.toggleSubOffline]} numberOfLines={1}>
+                {isOnline ? 'Recibiendo solicitudes' : 'Activá para buscar'}
+              </Text>
+            </View>
+            <Switch
+              value={isOnline}
+              onValueChange={onToggleOnline}
+              disabled={isToggling}
+              trackColor={{ false: '#D1D5DB', true: '#86EFAC' }}
+              thumbColor={Platform.OS === 'android' ? (isOnline ? '#16A34A' : '#F3F4F6') : undefined}
+              ios_backgroundColor="#D1D5DB"
+            />
+          </View>
+        ) : (
+          <View style={[styles.statusBadge, !isOnline && styles.statusBadgeOffline]}>
+            <Text style={styles.statusDot}>{isOnline ? '🟢' : '⚪️'}</Text>
+            <Text style={[styles.statusText, !isOnline && styles.statusTextOffline]} numberOfLines={2}>
+              {isOnline ? 'Buscando chambas…' : 'Fuera de línea'}
+            </Text>
+          </View>
+        )}
       </View>
-    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  wrap: {
-    position: 'absolute',
-    left: RADAR_HORIZONTAL,
-    right: RADAR_HORIZONTAL,
-    zIndex: 10,
-  },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -151,5 +167,41 @@ const styles = StyleSheet.create({
   statusTextOffline: {
     color: RADAR_MUTED,
     fontWeight: '600',
+  },
+  toggleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+    flexShrink: 0,
+  },
+  toggleBadgeOffline: {
+    backgroundColor: '#F3F4F6',
+    borderColor: RADAR_BORDER,
+  },
+  toggleTextCol: {
+    alignItems: 'flex-end',
+  },
+  toggleTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#166534',
+  },
+  toggleTitleOffline: {
+    color: RADAR_MUTED,
+  },
+  toggleSub: {
+    fontSize: 9.5,
+    fontWeight: '600',
+    color: '#16A34A',
+    marginTop: 1,
+  },
+  toggleSubOffline: {
+    color: RADAR_MUTED,
   },
 });

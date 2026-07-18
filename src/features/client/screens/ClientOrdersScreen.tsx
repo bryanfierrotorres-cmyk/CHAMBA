@@ -10,12 +10,15 @@ import {
   StyleSheet,
   RefreshControl,
   ActivityIndicator,
+  Alert,
+  Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { ClientActiveServiceCard } from '@components/client/ClientActiveServiceCard';
 import { useAuthStore } from '@store/authStore';
-import { useClientOrders, patchClientOrderAfterWorkerApproval } from '@features/client/hooks/useClientOrders';
+import { useClientOrders, patchClientOrderAfterWorkerApproval, patchClientOrderRowInCache, clientOrdersQueryKey } from '@features/client/hooks/useClientOrders';
+import { cancelClientJob } from '@features/jobs/services/jobsService';
 import { WorkerRatingPrompt } from '@components/reviews/WorkerRatingPrompt';
 import { ClientJobApplicantPanel } from '@components/client/ClientJobApplicantPanel';
 import {
@@ -137,12 +140,13 @@ const OrderCard = React.memo<OrderCardProps>(function OrderCard({
 }) {
   const ownerClientId = job.created_by || clientId;
   const isOpen = job.status === 'open';
+  const isBiddingPhase = ['open', 'pending_bidding', 'counter_offered'].includes(job.status);
   const {
     data: apps = [],
     isLoading: appsLoading,
     error: appsError,
     refetch: refetchApps,
-  } = useJobWorkerApplications(job.id, ownerClientId, isOpen);
+  } = useJobWorkerApplications(job.id, ownerClientId, isBiddingPhase);
   const pendingCount = apps.filter(
     (a: JobWorkerApplication) => a.selection_status === 'pending',
   ).length;
@@ -155,7 +159,54 @@ const OrderCard = React.memo<OrderCardProps>(function OrderCard({
     setLocalExpired(isJobExpiredLocally(job.created_at));
   }, [job.created_at, job.id]);
 
-  const showApplicantPanel = isOpen && (!localExpired || pendingCount > 0);
+  const queryClient = useQueryClient();
+  const [canceling, setCanceling] = useState(false);
+
+  const handleCancel = useCallback(() => {
+    const doCancel = async () => {
+      setCanceling(true);
+      try {
+        const updated = await cancelClientJob(job.id);
+        patchClientOrderRowInCache(queryClient, ownerClientId, {
+          id: updated.id,
+          status: updated.status,
+          updated_at: updated.updated_at,
+        });
+        void queryClient.invalidateQueries({ queryKey: clientOrdersQueryKey(ownerClientId) });
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Error al cancelar la solicitud';
+        if (Platform.OS === 'web') {
+          window.alert(msg);
+        } else {
+          Alert.alert('Demasiado tarde', msg);
+        }
+      } finally {
+        setCanceling(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('¿Estás seguro de que deseas cancelar esta solicitud?')) {
+        void doCancel();
+      }
+      return;
+    }
+
+    Alert.alert(
+      'Cancelar Solicitud',
+      '¿Estás seguro de que deseas cancelar esta solicitud?',
+      [
+        { text: 'No, mantener', style: 'cancel' },
+        {
+          text: 'Sí, cancelar',
+          style: 'destructive',
+          onPress: doCancel,
+        },
+      ]
+    );
+  }, [job.id, ownerClientId, queryClient]);
+
+  const showApplicantPanel = isBiddingPhase && (!localExpired || pendingCount > 0);
 
   return (
     <View style={styles.orderWrap}>
@@ -166,6 +217,8 @@ const OrderCard = React.memo<OrderCardProps>(function OrderCard({
         onExpiredChange={setLocalExpired}
         onOpenChat={onOpenChat}
         onPressCompleted={onOpenCompleted}
+        onCancel={handleCancel}
+        canceling={canceling}
       />
 
       {showApplicantPanel && (
@@ -220,13 +273,18 @@ export const ClientOrdersScreen: React.FC = () => {
   );
 
   const handleApplicantDecision = useCallback(
-    (result?: { jobId: string; workerId: string }) => {
+    (result?: {
+      jobId: string;
+      workerId: string;
+      workerSummary?: { id: string; full_name: string; avatar_url: string | null; phone: string | null } | null;
+    }) => {
       if (result && profileId) {
         patchClientOrderAfterWorkerApproval(
           queryClient,
           profileId,
           result.jobId,
           result.workerId,
+          result.workerSummary ?? null,
         );
       }
       void refetch();

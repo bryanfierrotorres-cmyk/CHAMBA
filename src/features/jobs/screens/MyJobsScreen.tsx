@@ -45,7 +45,6 @@ import {
 } from '@utils/jobActiveLimits';
 import { useSyncWorkerLocationOnFocus } from '@hooks/useSyncWorkerLocationOnFocus';
 import {
-  isWorkerAgendaActive,
   isWorkerAgendaHistory,
   isActiveOperationalJob,
   getPhaseAction,
@@ -84,7 +83,9 @@ export const MyJobsScreen: React.FC = () => {
     for (const item of assignments) {
       if (isWorkerAgendaHistory(item)) {
         history.push(item);
-      } else if (isWorkerAgendaActive(item)) {
+      } else {
+        // Defensivo: todo lo no-terminal (no historial) cae en Activas.
+        // Evita la pérdida silenciosa de estados no contemplados (assigned, arrived, etc.).
         active.push(item);
       }
     }

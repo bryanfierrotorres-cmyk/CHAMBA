@@ -11,10 +11,11 @@ import { webFixedTabBarStyle } from '@constants/webMobileLayout';
 const CYAN = CHAMBA.cyan;
 const SLATE_MUTED = '#94A3B8';
 
-type TabRoute = 'JobFeed' | 'MyJobs' | 'Wallet' | 'Profile';
+type TabRoute = 'Home' | 'JobFeed' | 'MyJobs' | 'Wallet' | 'Profile';
 
 const TAB_CONFIG: Record<TabRoute, { label: string; iconOutline: keyof typeof Ionicons.glyphMap; iconFilled: keyof typeof Ionicons.glyphMap }> = {
-  JobFeed: { label: 'Inicio', iconOutline: 'radio-outline', iconFilled: 'radio' },
+  Home:    { label: 'Inicio', iconOutline: 'home-outline', iconFilled: 'home' },
+  JobFeed: { label: 'Radar de trabajo', iconOutline: 'radio-outline', iconFilled: 'radio' },
   MyJobs:  { label: 'Agenda', iconOutline: 'receipt-outline', iconFilled: 'receipt' },
   Wallet:  { label: 'Billetera', iconOutline: 'wallet-outline', iconFilled: 'wallet' },
   Profile: { label: 'Perfil', iconOutline: 'person-outline', iconFilled: 'person' },
@@ -31,10 +32,9 @@ export const WorkerTabBar: React.FC<BottomTabBarProps> = ({ state, navigation })
         const cfg = TAB_CONFIG[route.name as TabRoute];
         if (!cfg) return null;
 
-        const isFeed = route.name === 'JobFeed';
-        const isAgenda = route.name === 'MyJobs';
-        const isWallet = route.name === 'Wallet';
-        const accentFocused = focused && (isAgenda || isWallet);
+        const isRadar = route.name === 'JobFeed';
+        const isAccentTab = route.name === 'Home' || route.name === 'MyJobs' || route.name === 'Wallet';
+        const accentFocused = focused && isAccentTab;
 
         return (
           <TouchableOpacity
@@ -43,12 +43,14 @@ export const WorkerTabBar: React.FC<BottomTabBarProps> = ({ state, navigation })
             activeOpacity={0.85}
             style={styles.tabItem}
           >
-            {focused && isFeed ? (
+            {isRadar ? (
               <>
-                <View style={styles.homeActiveOrb}>
+                <View style={[styles.homeActiveOrb, !focused && styles.homeOrbInactive]}>
                   <Ionicons name="radio" size={22} color="#FFFFFF" />
                 </View>
-                <Text style={styles.homeLabel}>{cfg.label}</Text>
+                <Text style={[styles.homeLabel, !focused && styles.homeLabelInactive]} numberOfLines={2}>
+                  {cfg.label}
+                </Text>
               </>
             ) : (
               <>
@@ -114,10 +116,20 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   homeLabel: {
-    fontSize: 10,
+    fontSize: 9.5,
     color: CYAN,
-    fontWeight: '600',
+    fontWeight: '700',
     marginTop: 4,
+    textAlign: 'center',
+    lineHeight: 12,
+  },
+  homeOrbInactive: {
+    backgroundColor: SLATE_MUTED,
+    shadowColor: SLATE_MUTED,
+  },
+  homeLabelInactive: {
+    color: SLATE_MUTED,
+    fontWeight: '600',
   },
   tabLabel: {
     fontSize: 10,

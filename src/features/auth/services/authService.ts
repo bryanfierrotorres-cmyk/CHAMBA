@@ -1,5 +1,19 @@
 import { supabase } from '@services/supabase';
+import { ENV } from '@utils/env';
+import { demoDb, demoLatency } from '@/demo/demoDb';
 import type { UserProfile, UserRole } from '@/types';
+
+/**
+ * True cuando la app corre 100% offline con el backend demo en memoria (`demoDb`).
+ *
+ * Nota de arquitectura: existe un `DemoProfileRepository` (src/repositories/profile/)
+ * de un piloto anterior del patrón Repository, pero NO está conectado a ninguna
+ * pantalla real — ClientProfileScreen y ProfileScreen (worker) llaman directamente
+ * a las funciones de este archivo. Por eso el modo demo se resuelve aquí, contra
+ * `demoDb` (la misma fuente de verdad que ya usan auth/jobs/reviews/chat), y no
+ * contra ese repositorio: usar ambos crearía dos estados de perfil divergentes.
+ */
+const IS_DEMO = ENV.DATA_MODE === 'demo';
 
 interface RegisterParams {
   email: string;
@@ -35,7 +49,7 @@ export const signUp = async ({
     phone,
     avatar_url: null,
     role,
-    is_approved: role === 'admin',
+    is_approved: role === 'admin' || role === 'client',
     worker_status: role === 'worker' ? 'incomplete' : null,
     cedula_url: null,
     record_policia_url: null,
@@ -80,6 +94,15 @@ export const updateProfile = async (
   userId: string,
   updates: Partial<Pick<UserProfile, 'full_name' | 'phone' | 'avatar_url' | 'fcm_token'>>,
 ) => {
+  // DEMO MODE: persiste en el backend en memoria (AsyncStorage), no en Supabase.
+  // Diferencia deliberada con producción: aquí SÍ se acepta un avatar_url en
+  // formato data: URI (lo típico al elegir imagen en web) porque el destino es
+  // almacenamiento local del dispositivo, no una fila compartida de Postgres.
+  // El guard de abajo sigue protegiendo intacta la ruta de producción.
+  if (IS_DEMO) {
+    return demoDb.updateProfile(userId, updates);
+  }
+
   if (updates.avatar_url != null && updates.avatar_url.startsWith('data:')) {
     throw new Error('avatar_url inválida: no se permiten imágenes en base64');
   }
@@ -95,8 +118,16 @@ export const updateProfile = async (
   return data as UserProfile;
 };
 
-/** Upload avatar to Supabase Storage. */
+/** Upload avatar to Supabase Storage (producción) o al backend en memoria (demo). */
 export const uploadAvatar = async (userId: string, uri: string): Promise<string> => {
+  // DEMO MODE: no hay Storage real que suba nada — la URI local elegida
+  // (file:// en nativo, data: en web) ya sirve directamente como fuente de
+  // <Image>, igual que la URL pública que produciría el upload real.
+  if (IS_DEMO) {
+    await demoLatency();
+    return uri;
+  }
+
   let blob: Blob;
   let extension: string;
   let contentType: string;
