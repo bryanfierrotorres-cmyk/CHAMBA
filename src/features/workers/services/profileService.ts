@@ -454,4 +454,64 @@ export const fetchWorkerTodayStats = async (workerId: string): Promise<WorkerTod
   return rowsToTodayStats((data ?? []) as unknown as StatsRow[]);
 };
 
+export interface WorkerInicioStats {
+  earningsToday: number;
+  earningsYesterday: number;
+  jobsToday: number;
+  weekCompleted: number;
+  weekEarned: number;
+}
+
+const startOfWeek = (ref: Date): Date => {
+  const d = new Date(ref);
+  const day = (d.getDay() + 6) % 7;
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - day);
+  return d;
+};
+
+const rowsToInicioStats = (rows: StatsRow[]): WorkerInicioStats => {
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const weekStart = startOfWeek(now).getTime();
+
+  const completed = rows.filter(isCompletedApproved);
+  const payout = (r: StatsRow) => r.job?.worker_payout ?? 0;
+
+  const today = completed.filter((r) => isSameLocalDay(r.completed_at, now));
+  const yest = completed.filter((r) => isSameLocalDay(r.completed_at, yesterday));
+  const week = completed.filter((r) => r.completed_at != null && new Date(r.completed_at).getTime() >= weekStart);
+
+  return {
+    earningsToday: today.reduce((s, r) => s + payout(r), 0),
+    earningsYesterday: yest.reduce((s, r) => s + payout(r), 0),
+    jobsToday: today.length,
+    weekCompleted: week.length,
+    weekEarned: week.reduce((s, r) => s + payout(r), 0),
+  };
+};
+
+/** Stats para el dashboard Inicio: hoy, ayer (para el delta) y acumulado de la semana. */
+export const fetchWorkerInicioStats = async (workerId: string): Promise<WorkerInicioStats> => {
+  if (IS_DEMO) {
+    const assignments = await demoDb.listWorkerAssignments(workerId);
+    return rowsToInicioStats(assignments.map((a) => ({
+      payment_status: a.payment_status,
+      completed_at: a.completed_at,
+      selection_status: a.selection_status,
+      job: a.job ? { worker_payout: a.job.worker_payout ?? 0, status: a.job.status } : null,
+    })));
+  }
+
+  const { data, error } = await supabase
+    .from('job_assignments')
+    .select('id, payment_status, completed_at, selection_status, job:jobs(worker_payout, status)')
+    .eq('worker_id', workerId)
+    .eq('selection_status', 'approved');
+
+  if (error) throw new Error(error.message);
+  return rowsToInicioStats((data ?? []) as unknown as StatsRow[]);
+};
+
 

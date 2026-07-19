@@ -356,6 +356,11 @@ class DemoDb {
       .map((j) => this.withCreator(j));
   }
 
+  async countApprovedWorkers(): Promise<number> {
+    await this.ready();
+    return this.state.profiles.filter((p) => p.role === 'worker' && p.is_approved).length;
+  }
+
   /** Panel del cliente: sus solicitudes con el técnico asignado embebido. */
   async listClientOrders(clientId: string): Promise<ClientOrderJob[]> {
     await this.ready();

@@ -19,7 +19,7 @@ import { RADAR_BORDER, RADAR_DEEP_BLUE, RADAR_MUTED } from '@components/worker/r
 import { RadarFullMap } from '@components/worker/radar/RadarFullMap';
 import { RadarTopPanel } from '@components/worker/radar/RadarTopPanel';
 import { FloatingRadarFilters } from '@components/worker/radar/FloatingRadarFilters';
-import { JobBottomSheet } from '@components/worker/radar/JobBottomSheet';
+import { JobBottomSheet, type JobBottomSheetHandle } from '@components/worker/radar/JobBottomSheet';
 import { useJobFeed, JOB_KEYS, useAcceptJob } from '../hooks/useJobs';
 import { useAuthStore } from '@store/authStore';
 import { useProfileStore } from '@store/profileStore';
@@ -162,6 +162,7 @@ export const HomeScreen: React.FC = () => {
   const workerLimit = useWorkerCommitmentLimit();
   const setAvailability = useProfileStore((s) => s.setAvailability);
   const isTogglingAvail = useProfileStore((s) => s.isTogglingAvail);
+  const bottomSheetRef = useRef<JobBottomSheetHandle>(null);
   useSyncWorkerLocationOnFocus();
 
   const [radiusKm, setRadiusKm] = useState<number>(DEFAULT_RADIUS_KM);
@@ -504,12 +505,16 @@ export const HomeScreen: React.FC = () => {
     setRemovedFromFeedIds((prev) => new Set([...prev, job.id]));
     if (profile?.id) {
       void dismissRadarJob(profile.id, job.id);
+      // La solicitud deja de ser protagonista del radar; ahora solo se ve en Inicio.
+      void queryClient.invalidateQueries({ queryKey: ['radar-inbox', profile.id] });
     }
+    // El radar sigue activo; la hoja vuelve a su tamaño normal en vez de quedar expandida.
+    bottomSheetRef.current?.collapse();
     toast.show({
       type: 'success',
-      message: 'Solicitud apartada — deslizá menos prioritarias para enfocarte en las importantes',
+      message: 'Solicitud apartada — ahora la ves en Inicio',
     }, 2600);
-  }, [profile?.id, toast]);
+  }, [profile?.id, toast, queryClient]);
 
   const dismissedCount = removedFromFeedIds.size;
 
@@ -679,6 +684,7 @@ export const HomeScreen: React.FC = () => {
       )}
 
       <JobBottomSheet
+        ref={bottomSheetRef}
         jobs={feedJobsInRadius}
         isLoading={isLoading}
         isFetchingNextPage={isFetchingNextPage}

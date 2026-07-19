@@ -1,4 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   View,
   Text,
@@ -51,6 +59,11 @@ interface JobBottomSheetProps {
   emptyHint?: string;
 }
 
+export interface JobBottomSheetHandle {
+  /** Baja la hoja a su estado normal/compacto (ej. tras apartar una solicitud). */
+  collapse: () => void;
+}
+
 const SheetHandle: React.FC<{
   jobCount: number;
   peekTitle?: string;
@@ -91,7 +104,7 @@ const SheetHandle: React.FC<{
   </View>
 );
 
-const NativeJobBottomSheet: React.FC<JobBottomSheetProps> = ({
+const NativeJobBottomSheet = forwardRef<JobBottomSheetHandle, JobBottomSheetProps>(({
   jobs,
   isLoading,
   isFetchingNextPage,
@@ -99,7 +112,7 @@ const NativeJobBottomSheet: React.FC<JobBottomSheetProps> = ({
   listHeader,
   renderJob,
   emptyHint,
-}) => {
+}, ref) => {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const sheetRef = useRef<BottomSheet>(null);
@@ -164,6 +177,13 @@ const NativeJobBottomSheet: React.FC<JobBottomSheetProps> = ({
     setSheetIndex(nextIndex);
   }, [sheetIndex]);
 
+  useImperativeHandle(ref, () => ({
+    collapse: () => {
+      sheetRef.current?.snapToIndex(0);
+      setSheetIndex(0);
+    },
+  }), []);
+
   return (
     <BottomSheet
       ref={sheetRef}
@@ -203,12 +223,13 @@ const NativeJobBottomSheet: React.FC<JobBottomSheetProps> = ({
       />
     </BottomSheet>
   );
-};
+});
+NativeJobBottomSheet.displayName = 'NativeJobBottomSheet';
 
 const clampSheetHeight = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
-const WebJobBottomSheet: React.FC<JobBottomSheetProps> = (props) => {
+const WebJobBottomSheet = forwardRef<JobBottomSheetHandle, JobBottomSheetProps>((props, ref) => {
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isEmpty = props.jobs.length === 0;
@@ -263,6 +284,10 @@ const WebJobBottomSheet: React.FC<JobBottomSheetProps> = (props) => {
       snapTo(nextExpanded ? expandedHeight : compactHeight, nextExpanded);
     });
   }, [compactHeight, expandedHeight, heightAnim, snapTo]);
+
+  useImperativeHandle(ref, () => ({
+    collapse: () => snapTo(compactHeight, false),
+  }), [compactHeight, snapTo]);
 
   const readPageY = useCallback((e: { nativeEvent: { pageY?: number; touches?: { pageY: number }[] } }) => {
     const ne = e.nativeEvent;
@@ -406,14 +431,16 @@ const WebJobBottomSheet: React.FC<JobBottomSheetProps> = (props) => {
       />
     </Animated.View>
   );
-};
+});
+WebJobBottomSheet.displayName = 'WebJobBottomSheet';
 
-export const JobBottomSheet: React.FC<JobBottomSheetProps> = (props) => {
+export const JobBottomSheet = forwardRef<JobBottomSheetHandle, JobBottomSheetProps>((props, ref) => {
   if (Platform.OS === 'web') {
-    return <WebJobBottomSheet {...props} />;
+    return <WebJobBottomSheet {...props} ref={ref} />;
   }
-  return <NativeJobBottomSheet {...props} />;
-};
+  return <NativeJobBottomSheet {...props} ref={ref} />;
+});
+JobBottomSheet.displayName = 'JobBottomSheet';
 
 const styles = StyleSheet.create({
   sheetBackground: {
