@@ -398,7 +398,7 @@ export const CreateJobFormScreen: React.FC = () => {
               <JobSchedulingSection
                 hideTitle
                 embedded
-                accentColor={DEEP_BLUE}
+                accentColor={ACCENT_PURPLE}
                 urgencyLevel={schedulingFields.urgencyLevel}
                 onUrgencyChange={schedulingFields.setUrgencyLevel}
                 scheduledDate={schedulingFields.scheduledDate}
@@ -664,16 +664,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 14,
-    marginBottom: 16,
+    marginBottom: 0,
     position: 'relative',
-    overflow: 'hidden',
   },
   greetingTechPhoto: {
     position: 'absolute',
     top: 0,
     right: 0,
     width: 118,
-    height: 168,
+    height: 215,
+    zIndex: 1,
   },
   greetingBadgeBolt: {
     position: 'absolute',
@@ -956,7 +956,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     minHeight: TOUCH_TARGET_MIN,
     paddingVertical: 16,
-    backgroundColor: DEEP_BLUE,
+    backgroundColor: ACCENT_PURPLE,
     ...CARD_STEP_SHADOW,
   },
   primaryBtnDisabled: {
