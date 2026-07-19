@@ -15,6 +15,7 @@ import { WalletScreen }              from '@features/jobs/screens/WalletScreen';
 import { ProfileScreen }             from '@features/workers/screens/ProfileScreen';
 import { WorkerOnboardingScreen }    from '@features/workers/screens/WorkerOnboardingScreen';
 import { WorkerTabBar }              from '@components/worker/WorkerTabBar';
+import { withScreenFade }            from '@components/navigation/withScreenFade';
 import { useAuthStore }              from '@store/authStore';
 import { WORKER_COLORS as COLORS, M3, FONT_SIZE, SPACING, BORDER_RADIUS } from '@constants/workerTheme';
 import { CARD_ELEVATION } from '@constants/stitchStyles';
@@ -46,6 +47,13 @@ const ProfileStack: React.FC = () => (
     <ProfileStackNav.Screen name="Onboarding"  component={WorkerOnboardingScreen} />
   </ProfileStackNav.Navigator>
 );
+
+// Pantallas de tab con transición fade suave (bottom-tabs v6 no anima el cambio).
+const HomeTabScreen    = withScreenFade(RadarInboxScreen);
+const AgendaTabScreen  = withScreenFade(MyJobsScreen);
+const RadarTabScreen   = withScreenFade(JobsStack);
+const WalletTabScreen  = withScreenFade(WalletScreen);
+const ProfileTabScreen = withScreenFade(ProfileStack);
 
 // ─── Pending approval waiting screen ─────────────────────────────
 
@@ -120,11 +128,11 @@ export const WorkerNavigator: React.FC = () => {
             screenOptions={{ headerShown: false }}
             sceneContainerStyle={Platform.OS === 'web' ? { paddingBottom: webTabScenePadding(insets.bottom) } : undefined}
           >
-            <Tab.Screen name="Home"    component={RadarInboxScreen} />
-            <Tab.Screen name="MyJobs"  component={MyJobsScreen} />
-            <Tab.Screen name="JobFeed" component={JobsStack} />
-            <Tab.Screen name="Wallet"  component={WalletScreen} />
-            <Tab.Screen name="Profile" component={ProfileStack} />
+            <Tab.Screen name="Home"    component={HomeTabScreen} />
+            <Tab.Screen name="MyJobs"  component={AgendaTabScreen} />
+            <Tab.Screen name="JobFeed" component={RadarTabScreen} />
+            <Tab.Screen name="Wallet"  component={WalletTabScreen} />
+            <Tab.Screen name="Profile" component={ProfileTabScreen} />
           </Tab.Navigator>
           <WhatsAppBubble bottom={insets.bottom + 100} />
         </View>

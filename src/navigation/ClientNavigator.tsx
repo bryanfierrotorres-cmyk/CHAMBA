@@ -16,6 +16,7 @@ import { WhatsAppBubble }      from '@components/WhatsAppBubble';
 import { PendingAccountScreen } from '@components/auth/PendingAccountScreen';
 import { ClientJobPlatformGate } from '@components/client/ClientJobPlatformGate';
 import { ClientJobStatusToast } from '@components/client/ClientJobStatusToast';
+import { withScreenFade } from '@components/navigation/withScreenFade';
 import { useAuthStore } from '@store/authStore';
 import { useAuthSessionWarmup } from '@/hooks/useAuthSessionWarmup';
 import { webAppShellStyle, webFixedTabBarStyle, webTabScenePadding } from '@constants/webMobileLayout';
@@ -124,6 +125,11 @@ const HomeStack: React.FC = () => (
     <Stack.Screen name="CreateJobForm" component={CreateJobFormScreen} />
   </Stack.Navigator>
 );
+
+// Pantallas de tab con transición fade suave (bottom-tabs v6 no anima el cambio).
+const ClientHomeTabScreen    = withScreenFade(HomeStack);
+const ClientOrdersTabScreen  = withScreenFade(ClientOrdersNavigator);
+const ClientProfileTabScreen = withScreenFade(ClientProfileScreen);
 
 type TabRoute = keyof ClientTabParamList;
 
@@ -263,9 +269,9 @@ export const ClientNavigator: React.FC = () => {
           sceneContainerStyle={Platform.OS === 'web' ? { paddingBottom: webTabScenePadding(insets.bottom) } : undefined}
           screenOptions={{ headerShown: false }}
         >
-          <Tab.Screen name="ClientHome"   component={HomeStack} />
-          <Tab.Screen name="ClientOrders" component={ClientOrdersNavigator} />
-          <Tab.Screen name="Profile"      component={ClientProfileScreen} />
+          <Tab.Screen name="ClientHome"   component={ClientHomeTabScreen} />
+          <Tab.Screen name="ClientOrders" component={ClientOrdersTabScreen} />
+          <Tab.Screen name="Profile"      component={ClientProfileTabScreen} />
         </Tab.Navigator>
         <WhatsAppBubble bottom={insets.bottom + 100} />
       </View>
