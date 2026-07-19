@@ -3,6 +3,7 @@ import {
   StyleSheet,
   Text,
   View,
+  Image,
   ScrollView,
   TextInput,
   TouchableOpacity,
@@ -239,14 +240,6 @@ export const ClientHomeScreen: React.FC = () => {
                 <Ionicons name="chevron-down" size={14} color={HOME_PALETTE.midGray} />
               </View>
             </View>
-            <View style={styles.logoCenter} pointerEvents="none">
-              <TouchableOpacity
-                activeOpacity={1}
-                accessibilityLabel="CHAMBA"
-              >
-                <Text style={styles.logoText}>CHAMBA</Text>
-              </TouchableOpacity>
-            </View>
             <TouchableOpacity
               style={styles.bellButton}
               activeOpacity={0.7}
@@ -258,9 +251,18 @@ export const ClientHomeScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
 
+          <Image
+            source={require('../../../../assets/cliente-mujer-telefono.png')}
+            style={styles.greetingPhoto}
+            resizeMode="contain"
+            accessibilityIgnoresInvertColors
+          />
+
           <View style={styles.greetingBlock}>
-            <Text style={styles.greetingText}>Hola, {firstName} 👋</Text>
-            <Text style={styles.greetingSubtitle}>¿Qué necesitás hoy?</Text>
+            <View style={styles.greetingTextCol}>
+              <Text style={styles.greetingText}>Hola, {firstName} 👋</Text>
+              <Text style={styles.greetingSubtitle}>¿Qué necesitás hoy?</Text>
+            </View>
           </View>
 
           {activeTab === 'hogar' && (
@@ -489,20 +491,13 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingVertical: 12,
     backgroundColor: 'transparent',
   },
   locationCol: { flexShrink: 0 },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   locationText: { fontSize: 15, fontWeight: '500', color: HOME_PALETTE.locationGray, maxWidth: 170 },
-  logoCenter: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-  },
-  logoText: { fontSize: 22, fontWeight: '800', color: HOME_PALETTE.teal, letterSpacing: 0.3 },
   bellButton: {
     flexShrink: 0,
     position: 'relative',
@@ -522,6 +517,9 @@ const styles = StyleSheet.create({
     marginTop: 28,
     marginBottom: 20,
   },
+  greetingTextCol: {
+    paddingRight: 140,
+  },
   greetingText: {
     fontSize: 24,
     fontWeight: '700',
@@ -529,11 +527,19 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   greetingSubtitle: {
-    fontSize: 28,
+    fontSize: 21,
     fontWeight: '800',
     color: HOME_PALETTE.darkGray,
     marginTop: 4,
-    letterSpacing: -0.4,
+    letterSpacing: -0.3,
+  },
+  greetingPhoto: {
+    position: 'absolute',
+    top: 22,
+    right: 0,
+    width: 132,
+    height: 164,
+    zIndex: 0,
   },
   secretFlashHit: {
     opacity: 0.42,
