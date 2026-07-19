@@ -3,6 +3,7 @@ import { trackEvent } from '@services/analytics';
 import {
   View,
   Text,
+  Image,
   ScrollView,
   TouchableOpacity,
   Pressable,
@@ -64,6 +65,8 @@ type Route = RouteProp<ClientStackParamList, 'CreateJobForm'>;
 
 const DEEP_BLUE = '#1E293B';
 const SCREEN_BG = '#F9FAFB';
+const ACCENT_PURPLE = '#7C3AED';
+const GREETING_BG = '#F5F3FF';
 const TOTAL_STEPS = 2;
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -86,6 +89,7 @@ export const CreateJobFormScreen: React.FC = () => {
   const catalog = useCatalog();
   const precios = usePreciosCatalog();
   const label = catalog.getLabel(serviceTypeSlug) || serviceLabel;
+  const firstName = profile?.full_name?.split(' ')[0] ?? 'Cliente';
 
   const normalizedServiceSlug = serviceTypeSlug.trim().toLowerCase();
   const suggestedPrice = precios.getSuggestedPrice(normalizedServiceSlug);
@@ -333,10 +337,33 @@ export const CreateJobFormScreen: React.FC = () => {
 
         {currentStep === 1 ? (
           <>
-            <Text style={styles.blockTitle}>Detalles del Trabajo</Text>
-            <Text style={styles.blockSubtitle}>
-              Cuéntanos qué necesitas y cuándo lo quieres
-            </Text>
+            <View style={styles.greetingSection}>
+              <View style={styles.greetingBadgeBolt}>
+                <Ionicons name="flash" size={20} color={ACCENT_PURPLE} />
+              </View>
+              <View style={styles.greetingBadgeChat}>
+                <Ionicons name="chatbubble-ellipses" size={16} color="#FFFFFF" />
+              </View>
+              <Image
+                source={require('../../../../assets/cliente-tecnico-electricista.png')}
+                style={styles.greetingTechPhoto}
+                resizeMode="contain"
+                accessibilityIgnoresInvertColors
+              />
+
+              <Text style={styles.greetingHello}>¡Hola, {firstName}! 👋</Text>
+              <Text style={[styles.blockSubtitle, styles.greetingSubtitlePad]}>
+                Cuéntanos qué necesitas y cuándo lo quieres
+              </Text>
+
+              <View style={styles.verifiedNote}>
+                <Ionicons name="shield-checkmark" size={16} color={ACCENT_PURPLE} />
+                <Text style={styles.verifiedNoteText}>
+                  Te conectaremos con profesionales{' '}
+                  <Text style={styles.verifiedNoteHighlight}>verificados</Text> cerca de ti.
+                </Text>
+              </View>
+            </View>
 
             <View style={styles.card}>
               <Text style={styles.cardSectionLabel}>El servicio</Text>
@@ -630,6 +657,85 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginBottom: 10,
     lineHeight: 20,
+  },
+  greetingSection: {
+    backgroundColor: GREETING_BG,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 14,
+    marginBottom: 16,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  greetingTechPhoto: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 118,
+    height: 168,
+  },
+  greetingBadgeBolt: {
+    position: 'absolute',
+    top: 2,
+    right: 96,
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+    zIndex: 2,
+  },
+  greetingBadgeChat: {
+    position: 'absolute',
+    top: 34,
+    right: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 12,
+    backgroundColor: ACCENT_PURPLE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 2,
+    zIndex: 2,
+  },
+  greetingHello: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#111827',
+    letterSpacing: -0.4,
+    marginBottom: 6,
+    paddingRight: 130,
+  },
+  verifiedNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 8,
+    paddingRight: 130,
+  },
+  verifiedNoteText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#4B5563',
+    lineHeight: 18,
+  },
+  verifiedNoteHighlight: {
+    color: ACCENT_PURPLE,
+    fontWeight: '700',
+  },
+  greetingSubtitlePad: {
+    paddingRight: 130,
   },
   radarHintRow: {
     flexDirection: 'row',
