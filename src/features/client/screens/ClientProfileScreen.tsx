@@ -263,6 +263,15 @@ export const ClientProfileScreen: React.FC = () => {
         </View>
 
         <ChambaMenuRow
+          title="Eliminar cuenta"
+          subtitle="Borrar tu cuenta y tus datos de forma permanente"
+          iconColor="#DC2626"
+          icon={<Ionicons name="trash-outline" size={22} color="#FFF" />}
+          onPress={handleDeleteAccountPress}
+          destructive
+        />
+
+        <ChambaMenuRow
           title={signingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}
           subtitle={signingOut ? 'Un momento' : 'Salir de tu cuenta de forma segura'}
           iconColor="#FF453A"
@@ -270,15 +279,6 @@ export const ClientProfileScreen: React.FC = () => {
           onPress={signingOut ? undefined : handleSignOut}
           destructive
           loading={signingOut}
-        />
-
-        <ChambaMenuRow
-          title="Eliminar cuenta"
-          subtitle="Borrar tu cuenta y tus datos de forma permanente"
-          iconColor="#DC2626"
-          icon={<Ionicons name="trash-outline" size={22} color="#FFF" />}
-          onPress={handleDeleteAccountPress}
-          destructive
         />
 
         <Text style={styles.version}>{APP_VERSION_LABEL}</Text>

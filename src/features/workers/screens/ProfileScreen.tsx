@@ -434,19 +434,19 @@ export const ProfileScreen: React.FC = () => {
       <View style={styles.section}>
         <SectionTitle label="Sesión y cuenta" subtitle="Acciones sensibles" />
         <ChambaMenuRow
-          title="Cerrar sesión"
-          subtitle="Salir de tu cuenta de forma segura"
-          iconColor="#FF453A"
-          icon={<Ionicons name="log-out-outline" size={22} color="#FFF" />}
-          onPress={handleSignOut}
-          destructive
-        />
-        <ChambaMenuRow
           title="Eliminar cuenta"
           subtitle="Borrar tu cuenta y tus datos de forma permanente"
           iconColor="#DC2626"
           icon={<Ionicons name="trash-outline" size={22} color="#FFF" />}
           onPress={handleDeleteAccountPress}
+          destructive
+        />
+        <ChambaMenuRow
+          title="Cerrar sesión"
+          subtitle="Salir de tu cuenta de forma segura"
+          iconColor="#FF453A"
+          icon={<Ionicons name="log-out-outline" size={22} color="#FFF" />}
+          onPress={handleSignOut}
           destructive
         />
       </View>

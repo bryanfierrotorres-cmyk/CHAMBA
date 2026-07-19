@@ -41,6 +41,7 @@ import { SkeletonCard } from '@components/SkeletonCard';
 import { SmoothEntrance } from '@components/SmoothEntrance';
 import { SlidingPillTabs } from '@components/SlidingPillTabs';
 import { AnimatedRefreshIcon } from '@components/AnimatedRefreshIcon';
+import { OrdersWaitingIllustration } from '@components/client/OrdersWaitingIllustration';
 import type {
   AssignedWorkerSummary,
   ClientOrderJob,
@@ -71,6 +72,22 @@ const EMPTY_COPY: Record<OrderFilter, { title: string; subtitle: string }> = {
     title: 'Sin historial aún',
     subtitle: 'Tus servicios completados o cancelados aparecerán aquí.',
   },
+};
+
+const CLIENT_DAILY_TIPS = [
+  'Agregá una foto del problema al pedir el servicio: el técnico llega con las herramientas correctas desde el inicio.',
+  'Poné un punto de referencia claro en tu dirección, así el técnico te encuentra más rápido.',
+  'Si el trabajo necesita materiales especiales, avisá antes: evitás que el técnico tenga que ir y volver.',
+  'Entre más flexible seas con el horario, más rápido conseguís un técnico disponible.',
+  'Calificar a tu técnico al terminar ayuda a que más clientes confíen en él la próxima vez.',
+  'Tené a mano el pago acordado; ayuda a cerrar el trabajo sin demoras.',
+  'Si vas a estar fuera, avisale al técnico con tiempo para reprogramar sin problema.',
+];
+
+const getTipOfDay = (): string => {
+  const start = new Date(new Date().getFullYear(), 0, 0).getTime();
+  const dayOfYear = Math.floor((Date.now() - start) / 86400000);
+  return CLIENT_DAILY_TIPS[dayOfYear % CLIENT_DAILY_TIPS.length];
 };
 
 const filterClientOrders = (jobs: ClientOrderJob[], filter: OrderFilter): ClientOrderJob[] => {
@@ -362,13 +379,44 @@ export const ClientOrdersScreen: React.FC = () => {
           {...supportBubbleScroll}
         >
           {filteredJobs.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <View style={[styles.iconCircleRight, { backgroundColor: '#007AFF' }]}>
-                <Ionicons name="document-text-outline" size={22} color="#FFF" />
+            <>
+              <View style={styles.emptyCard}>
+                <OrdersWaitingIllustration />
+                <Text style={styles.emptyTitle}>{emptyCopy.title}</Text>
+                <Text style={styles.emptySub}>{emptyCopy.subtitle}</Text>
               </View>
-              <Text style={styles.emptyTitle}>{emptyCopy.title}</Text>
-              <Text style={styles.emptySub}>{emptyCopy.subtitle}</Text>
-            </View>
+
+              {activeFilter === 'pendientes' && (
+                <>
+                  <TouchableOpacity
+                    style={styles.nudgeCard}
+                    activeOpacity={0.85}
+                    onPress={() => navigation.getParent()?.navigate('Profile' as never)}
+                  >
+                    <View style={styles.nudgeIconCircle}>
+                      <Ionicons name="shield-checkmark-outline" size={20} color="#FFF" />
+                    </View>
+                    <View style={styles.nudgeTextCol}>
+                      <Text style={styles.nudgeTitle}>Aprovecha y completá tu perfil</Text>
+                      <Text style={styles.nudgeSubtitle}>
+                        Terminá de verificarte para generar más confianza con los técnicos.
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+                  </TouchableOpacity>
+
+                  <View style={styles.tipCard}>
+                    <View style={styles.tipHeader}>
+                      <View style={styles.tipAvatar}>
+                        <Ionicons name="construct" size={14} color="#FFF" />
+                      </View>
+                      <Text style={styles.tipLabel}>Consejo del día · de técnico a cliente</Text>
+                    </View>
+                    <Text style={styles.tipText}>“{getTipOfDay()}”</Text>
+                  </View>
+                </>
+              )}
+            </>
           ) : (
             filteredJobs.map((job) =>
               profileId && job?.id ? (
@@ -432,13 +480,56 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 16, fontWeight: '600', color: '#0F172A', textAlign: 'center' },
   emptySub: { fontSize: 13, color: '#8A94A6', textAlign: 'center', fontWeight: '400', lineHeight: 20 },
-  iconCircleRight: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    justifyContent: 'center',
+
+  nudgeCard: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 14,
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+    ...CARD_STEP_SHADOW,
   },
+  nudgeIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    backgroundColor: '#007AFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nudgeTextCol: { flex: 1 },
+  nudgeTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  nudgeSubtitle: { fontSize: 12, color: '#6B7280', marginTop: 2, lineHeight: 17 },
+
+  tipCard: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: 16,
+    padding: 14,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  tipHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  tipAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    backgroundColor: '#F59E0B',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tipLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#92400E',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  tipText: { fontSize: 13, color: '#78350F', lineHeight: 19, fontStyle: 'italic' },
   errorCard: {
     backgroundColor: '#FFF',
     borderRadius: 18,

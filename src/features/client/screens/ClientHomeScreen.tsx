@@ -535,8 +535,8 @@ const styles = StyleSheet.create({
   },
   greetingPhoto: {
     position: 'absolute',
-    top: 22,
-    right: 0,
+    top: 0,
+    right: 24,
     width: 132,
     height: 164,
     zIndex: 0,
